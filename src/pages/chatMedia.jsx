@@ -20,7 +20,8 @@ const fmtClock = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).pa
 // ---------- recording ----------
 const pickMime = () => {
   if (typeof MediaRecorder === 'undefined') return '';
-  for (const m of ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported?.(m)) return m;
+  // Safari records AAC in MP4, which plays everywhere; Chrome/Firefox fall through to WebM/Opus.
+  for (const m of ['audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported?.(m)) return m;
   return '';
 };
 export const canRecord = () => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
@@ -222,18 +223,33 @@ function VoiceNote({ url, transcript }) {
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const toggle = () => {
+    const a = ref.current;
+    if (playing) return a.pause();
+    a.play().catch(() => setFailed(true));
+  };
   return (
     <div className="voice-note">
       <div className="vn-row">
-        <button type="button" className="vn-play" onClick={() => (playing ? ref.current.pause() : ref.current.play())} aria-label="play">
+        <button type="button" className="vn-play" onClick={toggle} aria-label="play">
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
         <div className="vn-bar"><span style={{ width: dur ? (pos / dur) * 100 + '%' : 0 }} /></div>
         <span className="vn-time">{fmtClock(playing || pos ? pos : dur)}</span>
       </div>
+      {failed && <a className="vn-text" href={url} target="_blank" rel="noreferrer">Este navegador não tocou o áudio: abrir o arquivo</a>}
       {transcript && <div className="vn-text">{transcript}</div>}
       <audio ref={ref} src={url} preload="metadata"
-        onLoadedMetadata={(e) => Number.isFinite(e.target.duration) && setDur(e.target.duration)}
+        onError={() => setFailed(true)}
+        onLoadedMetadata={(e) => {
+          const a = e.target;
+          if (Number.isFinite(a.duration)) return setDur(a.duration);
+          // Browser-recorded WebM has no duration in its header: seeking far ahead makes the browser compute it.
+          const fix = () => { a.removeEventListener('timeupdate', fix); a.currentTime = 0; if (Number.isFinite(a.duration)) setDur(a.duration); };
+          a.addEventListener('timeupdate', fix);
+          a.currentTime = 1e7;
+        }}
         onDurationChange={(e) => Number.isFinite(e.target.duration) && setDur(e.target.duration)}
         onTimeUpdate={(e) => setPos(e.target.currentTime)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setPos(0); }} />

@@ -180,6 +180,33 @@ app.post('/api/coolify/restart', auth, wrap(() => coolify(`/applications/${APP_U
 app.post('/api/coolify/deploy', auth, wrap(() => coolify(`/deploy?uuid=${APP_UUID}`, { method: 'POST' })));
 app.get('/api/coolify/logs', auth, wrap((req) => coolify(`/applications/${APP_UUID}/logs?lines=${Math.min(Number(req.query.lines) || 200, 2000)}`)));
 
+// ---------- web chat files with byte ranges ----------
+// Safari (iPhone/Mac) only plays <audio>/<video> when the server answers Range requests with 206.
+// Files are at most 25 MB, so the proxy fetches the whole file and slices it here.
+app.get('/api/bridge/web/files/:name', auth, async (req, res) => {
+  if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
+  try {
+    const r = await fetch(BRIDGE_URL + '/admin/web/files/' + encodeURIComponent(req.params.name), { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
+    if (!r.ok) return res.status(r.status === 401 ? 502 : r.status).json({ error: 'arquivo não encontrado' });
+    const buf = Buffer.from(await r.arrayBuffer());
+    const size = buf.length;
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+    if (!m || (!m[1] && !m[2])) { res.setHeader('Content-Length', size); return res.end(buf); }
+    let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start >= size || start > end) { res.setHeader('Content-Range', `bytes */${size}`); return res.status(416).end(); }
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+    res.setHeader('Content-Length', end - start + 1);
+    res.end(buf.subarray(start, end + 1));
+  } catch (e) {
+    res.status(502).json({ error: 'Bridge inacessível: ' + (e.cause?.code || e.message) });
+  }
+});
+
 // ---------- bridge /admin proxy (JSON and SSE) ----------
 app.all('/api/bridge/*', auth, async (req, res) => {
   if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
