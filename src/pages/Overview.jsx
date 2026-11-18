@@ -1,10 +1,17 @@
 import { useState } from 'react';
+import { Activity, Box, Brain, Cpu, DollarSign, Globe, MessageCircle, Play, RefreshCw, Rocket, Send, Smartphone, Square } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
-import { Badge, Card, ErrorBox, Field, confirmAsk, fmtAgo, fmtDur, useAction, useLoad, usd } from '../ui.jsx';
+import { useT } from '../i18n.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, confirmAsk, useAction, useFmt, useLoad } from '../ui.jsx';
 
-const statusKind = (s) => (String(s).startsWith('running') ? 'ok' : String(s).includes('exit') || String(s).includes('stop') ? 'err' : 'warn');
+const statusKind = (s) => (String(s).startsWith('running') ? 'ok' : /exit|stop/.test(String(s)) ? 'err' : 'warn');
+const Stat = ({ icon: Icon, label, value, sub }) => (
+  <div className="stat"><small><Icon size={14} />{label}</small><b>{value}</b>{sub && <small>{sub}</small>}</div>
+);
 
 export default function Overview() {
+  const t = useT();
+  const f = useFmt();
   const app = useLoad(() => coolify.status(), [], { interval: 20000 });
   const ov = useLoad(() => bridge.overview(), [], { interval: 10000 });
   const chats = useLoad(() => bridge.chats(), [], { interval: 20000 });
@@ -13,61 +20,61 @@ export default function Overview() {
   const [msg, setMsg] = useState('');
 
   const all = chats.data || [];
-  const totals = all.reduce((t, c) => ({ runs: t.runs + c.totals.runs, cost: t.cost + c.totals.cost, ms: t.ms + c.totals.ms, errors: t.errors + c.totals.errors }), { runs: 0, cost: 0, ms: 0, errors: 0 });
+  const tot = all.reduce((a, c) => ({ runs: a.runs + c.totals.runs, cost: a.cost + c.totals.cost, ms: a.ms + c.totals.ms, errors: a.errors + c.totals.errors }), { runs: 0, cost: 0, ms: 0, errors: 0 });
   const o = ov.data;
 
   return (
     <div className="page">
       <div className="stats">
-        <div className="stat"><small>Container</small><b><Badge kind={statusKind(app.data?.status)}>{app.data?.status || '…'}</Badge></b></div>
-        <div className="stat"><small>Bridge</small><b>{o ? 'v' + o.version.slice(0, 7) : ov.error ? 'offline' : '…'}</b><small>{o ? 'no ar há ' + fmtDur(o.uptime * 1000) : ''}</small></div>
-        <div className="stat"><small>Execuções</small><b>{totals.runs}</b><small>{totals.errors} com erro</small></div>
-        <div className="stat"><small>Custo estimado</small><b>{usd(totals.cost)}</b><small>{fmtDur(totals.ms)} de trabalho</small></div>
-        <div className="stat"><small>ai-memory</small><b><Badge kind={o?.aiMemory.status === 'ok' ? 'ok' : 'warn'}>{o?.aiMemory.status || '…'}</Badge></b></div>
+        <Stat icon={Box} label={t('ov.container')} value={<Badge kind={statusKind(app.data?.status)}>{app.data?.status || '…'}</Badge>} />
+        <Stat icon={Cpu} label={t('ov.bridge')} value={o ? 'v' + o.version.slice(0, 7) : ov.error ? t('ov.offline') : '…'} sub={o && t('ov.upFor', { t: f.dur(o.uptime * 1000) })} />
+        <Stat icon={Activity} label={t('ov.runs')} value={tot.runs} sub={t('ov.withErrors', { n: tot.errors })} />
+        <Stat icon={DollarSign} label={t('ov.cost')} value={f.usd(tot.cost)} sub={t('ov.work', { t: f.dur(tot.ms) })} />
+        <Stat icon={Brain} label="ai-memory" value={<Badge kind={o?.aiMemory.status === 'ok' ? 'ok' : 'warn'}>{o?.aiMemory.status || '…'}</Badge>} />
       </div>
       <ErrorBox error={ov.error && 'Bridge: ' + ov.error} onRetry={() => ov.reload()} />
       <ErrorBox error={app.error && 'Coolify: ' + app.error} onRetry={() => app.reload()} />
 
       <div className="grid2">
-        <Card title="Em andamento">
-          {o && !o.running.length && <p className="muted">Nada rodando agora.</p>}
+        <Card title={t('ov.running')} icon={Play}>
+          {o && !o.running.length && <p className="muted">{t('ov.nothing')}</p>}
           {o?.running.map((r) => (
             <div key={r.chatId} className="list-row">
-              <div><b>{r.chatId.startsWith('web:') ? 'Web' : r.chatId.split('@')[0]}</b><div className="muted small">"{r.prompt}" · há {fmtAgo(r.started)}</div></div>
-              <button className="danger small" disabled={busy === r.chatId} onClick={() => run(r.chatId, () => bridge.stopChat(r.chatId), 'Interrompido').then(() => ov.reload(true))}>Parar</button>
+              <div className="grow"><b>{r.chatId.startsWith('web:') ? 'Web' : r.chatId.split('@')[0]}</b><div className="muted small ellipsis">"{r.prompt}" · {t('ov.ago', { t: f.ago(r.started) })}</div></div>
+              <Btn icon={Square} className="danger small" disabled={busy === r.chatId} onClick={() => run(r.chatId, () => bridge.stopChat(r.chatId), t('common.stopped')).then(() => ov.reload(true))}>{t('common.stop')}</Btn>
             </div>
           ))}
         </Card>
 
-        <Card title="Ações do container">
-          <p className="muted small">{app.data?.name} · {app.data?.git_repository}@{app.data?.git_branch}</p>
+        <Card title={t('ov.actions')} icon={Box}>
+          <p className="muted small ellipsis">{app.data?.git_repository}@{app.data?.git_branch}</p>
           <div className="row wrap">
-            <button className="warn" disabled={!!busy} onClick={() => confirmAsk('Reiniciar o agente? Tarefas em andamento serão interrompidas.') && run('restart', coolify.restart, 'Reinício solicitado')}>Reiniciar</button>
-            <button className="ghost" disabled={!!busy} onClick={() => confirmAsk('Fazer redeploy do agente (puxa o compose do repo)?') && run('deploy', coolify.deploy, 'Deploy enfileirado')}>Redeploy</button>
+            <Btn icon={RefreshCw} className="warn" disabled={!!busy} onClick={() => confirmAsk(t('ov.restartConfirm')) && run('restart', coolify.restart, t('ov.restartOk'))}>{t('ov.restart')}</Btn>
+            <Btn icon={Rocket} className="ghost" disabled={!!busy} onClick={() => confirmAsk(t('ov.deployConfirm')) && run('deploy', coolify.deploy, t('ov.deployOk'))}>{t('ov.redeploy')}</Btn>
           </div>
-          <p className="muted small">Mudanças em variáveis só valem depois de reiniciar ou fazer redeploy.</p>
+          <p className="muted small">{t('ov.envNote')}</p>
         </Card>
       </div>
 
       <div className="grid2">
-        <Card title="Conversas">
+        <Card title={t('ov.chats')} icon={MessageCircle}>
           {all.map((c) => (
             <div key={c.id} className="list-row">
-              <div>
-                <b>{c.kind === 'web' ? '🌐 ' : '📱 '}{c.title}</b>
-                <div className="muted small">{c.provider === 'antigravity' ? 'Antigravity' : 'Claude'} · {c.totals.runs} execuções · {usd(c.totals.cost)} · última {fmtAgo((c.runs.at(-1) || {}).at) || '—'}</div>
+              <div className="grow">
+                <b className="with-ic">{c.kind === 'web' ? <Globe size={14} /> : <Smartphone size={14} />}<span className="ellipsis">{c.title}</span></b>
+                <div className="muted small">{t('ov.chatLine', { p: c.provider === 'antigravity' ? 'Antigravity' : 'Claude', n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' })}</div>
               </div>
-              {c.running ? <Badge kind="warn">rodando</Badge> : c.totals.errors ? <Badge kind="err">{c.totals.errors} erros</Badge> : <Badge>ok</Badge>}
+              {c.running ? <Badge kind="warn">{t('common.running')}</Badge> : c.totals.errors ? <Badge kind="err">{t('common.errors', { n: c.totals.errors })}</Badge> : <Badge>{t('common.ok')}</Badge>}
             </div>
           ))}
-          {chats.data && !all.length && <p className="muted">Nenhuma conversa ainda.</p>}
+          {chats.data && !all.length && <p className="muted">{t('ov.noChats')}</p>}
         </Card>
 
-        <Card title="Enviar WhatsApp">
-          <form className="stack" onSubmit={(e) => { e.preventDefault(); run('send', () => bridge.sendWhatsApp(to, msg), 'Mensagem enviada').then((r) => r && setMsg('')); }}>
-            <Field label="Para" hint="Número com DDI (ex. +55 11 99999-8888) ou id do WhatsApp"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="+55 11 99999-8888" /></Field>
-            <Field label="Mensagem"><textarea rows={3} value={msg} onChange={(e) => setMsg(e.target.value)} /></Field>
-            <button disabled={busy === 'send' || !to || !msg.trim()}>Enviar pelo número do bot</button>
+        <Card title={t('ov.send')} icon={Send}>
+          <form className="stack" onSubmit={(e) => { e.preventDefault(); run('send', () => bridge.sendWhatsApp(to, msg), t('ov.sent')).then((r) => r && setMsg('')); }}>
+            <Field label={t('ov.to')} hint={t('ov.toHint')}><input inputMode="tel" value={to} onChange={(e) => setTo(e.target.value)} placeholder="+55 11 99999-8888" /></Field>
+            <Field label={t('ov.message')}><textarea rows={3} value={msg} onChange={(e) => setMsg(e.target.value)} /></Field>
+            <Btn icon={Send} disabled={busy === 'send' || !to || !msg.trim()}>{t('ov.sendBtn')}</Btn>
           </form>
         </Card>
       </div>

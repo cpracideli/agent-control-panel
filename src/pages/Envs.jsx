@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { Eye, EyeOff, KeyRound, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-react';
 import { coolify } from '../api.js';
-import { Card, ErrorBox, confirmAsk, useAction, useLoad } from '../ui.jsx';
+import { useT } from '../i18n.jsx';
+import { Btn, Card, ErrorBox, IconButton, confirmAsk, useAction, useLoad } from '../ui.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
 
 function EnvRow({ e, onSaved }) {
+  const t = useT();
   const [val, setVal] = useState(e.value || '');
   const [show, setShow] = useState(!SECRET.test(e.key));
   const [busy, run] = useAction();
@@ -12,17 +15,18 @@ function EnvRow({ e, onSaved }) {
   return (
     <div className="env-row">
       <div className="mono env-key" title={e.key}>{e.key}</div>
-      <input className="mono" type={show ? 'text' : 'password'} value={val} onChange={(x) => setVal(x.target.value)} />
+      <input className="mono" type={show ? 'text' : 'password'} value={val} onChange={(x) => setVal(x.target.value)} aria-label={e.key} />
       <div className="row">
-        <button className="ghost small" onClick={() => setShow(!show)}>{show ? 'Ocultar' : 'Ver'}</button>
-        <button className="small" disabled={!dirty || !!busy} onClick={() => run('s', () => coolify.setEnv(e.key, val), e.key + ' salvo').then((r) => r !== undefined && onSaved())}>Salvar</button>
-        <button className="ghost small danger-text" disabled={!!busy} onClick={() => confirmAsk('Remover ' + e.key + '?') && run('d', () => coolify.deleteEnv(e.uuid), 'Removido').then(onSaved)}>✕</button>
+        <IconButton icon={show ? EyeOff : Eye} label={show ? t('common.hide') : t('common.view')} onClick={() => setShow(!show)} />
+        <IconButton icon={Save} className="primary" label={t('common.save')} disabled={!dirty || !!busy} onClick={() => run('s', () => coolify.setEnv(e.key, val), t('env.savedKey', { k: e.key })).then((r) => r !== undefined && onSaved())} />
+        <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} disabled={!!busy} onClick={() => confirmAsk(t('env.removeConfirm', { k: e.key })) && run('d', () => coolify.deleteEnv(e.uuid), t('common.removed')).then(onSaved)} />
       </div>
     </div>
   );
 }
 
 export default function Envs() {
+  const t = useT();
   const envs = useLoad(() => coolify.envs(), []);
   const [filter, setFilter] = useState('');
   const [k, setK] = useState('');
@@ -31,19 +35,19 @@ export default function Envs() {
   const list = (envs.data || []).filter((e) => e.key.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => a.key.localeCompare(b.key));
   return (
     <div className="page">
-      <Card title="Variáveis do agente" actions={<>
-        <input className="filter" placeholder="Filtrar…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <button className="warn small" disabled={!!busy} onClick={() => confirmAsk('Reiniciar o agente para aplicar as variáveis?') && run('r', coolify.restart, 'Reinício solicitado')}>Aplicar (reiniciar)</button>
+      <Card title={t('env.title')} icon={KeyRound} actions={<>
+        <label className="search"><Search size={14} /><input placeholder={t('common.filter')} value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
+        <Btn icon={RefreshCw} className="warn small" disabled={!!busy} onClick={() => confirmAsk(t('env.applyConfirm')) && run('r', coolify.restart, t('ov.restartOk'))}>{t('env.apply')}</Btn>
       </>}>
         <ErrorBox error={envs.error} onRetry={() => envs.reload()} />
-        {envs.loading && !envs.data && <p className="muted">Carregando…</p>}
+        {envs.loading && !envs.data && <p className="muted">{t('common.loading')}</p>}
         {list.map((e) => <EnvRow key={e.uuid + (e.value || '')} e={e} onSaved={() => envs.reload(true)} />)}
       </Card>
-      <Card title="Nova variável">
-        <form className="env-row" onSubmit={(e) => { e.preventDefault(); run('add', () => coolify.addEnv(k.trim(), v), k + ' adicionada').then((r) => { if (r !== undefined) { setK(''); setV(''); envs.reload(true); } }); }}>
-          <input className="mono" placeholder="NOME_DA_VARIAVEL" value={k} onChange={(e) => setK(e.target.value.toUpperCase())} />
-          <input className="mono" placeholder="valor" value={v} onChange={(e) => setV(e.target.value)} />
-          <button disabled={!k.trim() || busy === 'add'}>Adicionar</button>
+      <Card title={t('env.new')} icon={Plus}>
+        <form className="env-row" onSubmit={(e) => { e.preventDefault(); run('add', () => coolify.addEnv(k.trim(), v), t('env.added', { k })).then((r) => { if (r !== undefined) { setK(''); setV(''); envs.reload(true); } }); }}>
+          <input className="mono" placeholder={t('env.name')} value={k} onChange={(e) => setK(e.target.value.toUpperCase())} />
+          <input className="mono" placeholder={t('env.value')} value={v} onChange={(e) => setV(e.target.value)} />
+          <Btn icon={Plus} disabled={!k.trim() || busy === 'add'}>{t('common.add')}</Btn>
         </form>
       </Card>
     </div>

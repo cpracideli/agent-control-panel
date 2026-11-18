@@ -8,6 +8,7 @@ Painel web (React + Vite, backend Express) para o [claude-zap](https://github.co
 - **Agendamentos**: criar, editar, pausar, rodar agora, remover.
 - **Painel**: status do container e do bridge, tarefas em andamento, custo, reiniciar/redeploy, enviar WhatsApp.
 - **Variáveis** do Coolify e **Logs** (container ao vivo + auditoria).
+- Ícones Lucide, tema claro/escuro/sistema, idiomas pt-BR/en/es, layout responsivo (barra inferior no celular) e **PWA** instalável (service worker só guarda o app; a API sempre vai à rede).
 
 ## Variáveis
 

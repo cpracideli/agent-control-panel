@@ -127,7 +127,11 @@ app.all('/api/bridge/*', auth, async (req, res) => {
 
 // ---------- frontend ----------
 const dist = path.join(__dirname, 'dist');
-app.use(express.static(dist, { index: false, maxAge: '1h' }));
-app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+const noCache = /(^|\/)(sw\.js|workbox-[^/]+\.js|manifest\.webmanifest|index\.html)$/;
+app.use(express.static(dist, {
+  index: false,
+  setHeaders: (res, file) => res.setHeader('Cache-Control', noCache.test(file) ? 'no-cache' : file.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'),
+}));
+app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(dist, 'index.html')); });
 
 app.listen(PORT, () => console.log(`Agent Control on :${PORT} | bridge ${BRIDGE_URL} | app ${APP_UUID}`));

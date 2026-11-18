@@ -1,10 +1,14 @@
 import { useState } from 'react';
+import { CalendarClock, Globe, Pause, Pencil, Play, Plus, Smartphone, Trash2, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
-import { Badge, Card, ErrorBox, Field, Modal, confirmAsk, fmtDate, useAction, useLoad } from '../ui.jsx';
+import { useT } from '../i18n.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, confirmAsk, useAction, useFmt, useLoad } from '../ui.jsx';
 
-const CRON_HELP = [['0 8 * * *', 'todo dia às 8h'], ['0 9 * * 1-5', 'dias úteis às 9h'], ['*/30 * * * *', 'a cada 30 min'], ['0 18 * * 5', 'sexta às 18h']];
+const CRON_HELP = [['0 8 * * *', 'daily'], ['0 9 * * 1-5', 'weekdays'], ['*/30 * * * *', '30'], ['0 18 * * 5', 'fri']];
+const ChatIc = ({ id }) => (id.startsWith('web:') ? <Globe size={13} /> : <Smartphone size={13} />);
 
 function ScheduleForm({ initial, chats, onClose, onSaved }) {
+  const t = useT();
   const editing = Boolean(initial?.id);
   const [f, setF] = useState({ chatId: chats[0]?.id || '', kind: 'cron', cron: '0 8 * * *', at: '', description: '', prompt: '', ...initial, ...(initial?.at ? { kind: 'at' } : {}) });
   const [busy, run] = useAction();
@@ -12,36 +16,38 @@ function ScheduleForm({ initial, chats, onClose, onSaved }) {
   const submit = async (e) => {
     e.preventDefault();
     const r = editing
-      ? await run('save', () => bridge.patchSchedule(f.id, { description: f.description, prompt: f.prompt, ...(f.cron && f.kind === 'cron' ? { cron: f.cron } : {}) }), 'Agendamento salvo')
-      : await run('save', () => bridge.addSchedule({ chatId: f.chatId, description: f.description, prompt: f.prompt, ...(f.kind === 'cron' ? { cron: f.cron } : { at: new Date(f.at).toISOString() }) }), 'Agendamento criado');
+      ? await run('save', () => bridge.patchSchedule(f.id, { description: f.description, prompt: f.prompt, ...(f.kind === 'cron' ? { cron: f.cron } : {}) }), t('sch.saved'))
+      : await run('save', () => bridge.addSchedule({ chatId: f.chatId, description: f.description, prompt: f.prompt, ...(f.kind === 'cron' ? { cron: f.cron } : { at: new Date(f.at).toISOString() }) }), t('sch.created'));
     if (r) { onSaved(); onClose(); }
   };
   return (
-    <Modal title={editing ? 'Editar agendamento #' + f.id : 'Novo agendamento'} onClose={onClose} wide>
+    <Modal title={editing ? t('sch.editTitle', { id: f.id }) : t('sch.newTitle')} onClose={onClose} wide>
       <form className="stack" onSubmit={submit}>
         <div className="form-grid">
-          <Field label="Entregar em" hint="A resposta final vai para esta conversa">
+          <Field label={t('sch.deliver')} hint={t('sch.deliverHint')}>
             <select value={f.chatId} onChange={set('chatId')} disabled={editing}>
-              {chats.map((c) => <option key={c.id} value={c.id}>{c.kind === 'web' ? '🌐 ' : '📱 '}{c.title}</option>)}
+              {chats.map((c) => <option key={c.id} value={c.id}>{c.kind === 'web' ? 'Web · ' : 'WhatsApp · '}{c.title}</option>)}
             </select>
           </Field>
-          <Field label="Quando">
-            <select value={f.kind} onChange={set('kind')} disabled={editing}><option value="cron">Recorrente (cron)</option><option value="at">Uma vez</option></select>
+          <Field label={t('sch.when')}>
+            <select value={f.kind} onChange={set('kind')} disabled={editing}><option value="cron">{t('sch.cron')}</option><option value="at">{t('sch.onceOpt')}</option></select>
           </Field>
           {f.kind === 'cron'
-            ? <Field label="Cron" hint="minuto hora dia mês dia-da-semana"><input className="mono" required value={f.cron} onChange={set('cron')} /></Field>
-            : <Field label="Data e hora"><input type="datetime-local" required value={f.at} onChange={set('at')} disabled={editing} /></Field>}
+            ? <Field label="Cron" hint={t('sch.cronHint')}><input className="mono" required value={f.cron} onChange={set('cron')} /></Field>
+            : <Field label={t('sch.datetime')}><input type="datetime-local" required value={editing ? '' : f.at} onChange={set('at')} disabled={editing} /></Field>}
         </div>
-        {f.kind === 'cron' && <div className="presets">{CRON_HELP.map(([c, l]) => <button type="button" key={c} className="ghost small" onClick={() => setF({ ...f, cron: c })}>{l}</button>)}</div>}
-        <Field label="Descrição"><input required value={f.description} onChange={set('description')} placeholder="Resumo de notícias de IA" /></Field>
-        <Field label="Instrução" hint="Roda numa sessão nova, sem contexto: escreva tudo o que o agente precisa saber."><textarea required rows={5} value={f.prompt} onChange={set('prompt')} /></Field>
-        <div className="row end"><button type="button" className="ghost" onClick={onClose}>Cancelar</button><button disabled={busy === 'save'}>Salvar</button></div>
+        {f.kind === 'cron' && <div className="presets">{CRON_HELP.map(([c, k]) => <button type="button" key={c} className="ghost small" onClick={() => setF({ ...f, cron: c })}>{t('sch.c.' + k)}</button>)}</div>}
+        <Field label={t('sch.description')}><input required value={f.description} onChange={set('description')} placeholder={t('sch.descPh')} /></Field>
+        <Field label={t('sch.prompt')} hint={t('sch.promptHint')}><textarea required rows={5} value={f.prompt} onChange={set('prompt')} /></Field>
+        <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button><button disabled={busy === 'save'}>{t('common.save')}</button></div>
       </form>
     </Modal>
   );
 }
 
 export default function Schedules() {
+  const t = useT();
+  const f = useFmt();
   const sch = useLoad(() => bridge.schedules(), [], { interval: 30000 });
   const chats = useLoad(() => bridge.chats(), []);
   const [form, setForm] = useState(null);
@@ -50,22 +56,22 @@ export default function Schedules() {
   return (
     <div className="page">
       <ErrorBox error={sch.error} onRetry={() => sch.reload()} />
-      <Card title={`Agendamentos (${list.length})`} actions={<button className="small" disabled={!chats.data?.length} onClick={() => setForm({})}>+ Novo</button>}>
-        {sch.data && !list.length && <p className="muted">Nenhum agendamento. Crie aqui ou peça no chat: "todo dia às 8h me mande…".</p>}
+      <Card title={t('sch.title', { n: list.length })} icon={CalendarClock} actions={<Btn icon={Plus} className="small" disabled={!chats.data?.length} onClick={() => setForm({})}>{t('sch.new')}</Btn>}>
+        {sch.data && !list.length && <p className="muted">{t('sch.none')}</p>}
         {list.map((s) => (
           <div key={s.id} className="list-row wrap">
             <div className="grow">
-              <b>#{s.id} · {s.description}</b> {s.paused && <Badge kind="warn">pausado</Badge>}
-              <div className="muted small">
-                <span className="mono">{s.cron ? s.cron : 'uma vez em ' + fmtDate(s.at)}</span> · {s.chatId.startsWith('web:') ? '🌐 ' : '📱 '}{s.chatTitle}
-                {s.lastRun && ' · última ' + fmtDate(s.lastRun)}
+              <div className="row wrap"><b>#{s.id} · {s.description}</b>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}</div>
+              <div className="muted small with-ic">
+                <span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span> · <ChatIc id={s.chatId} />{s.chatTitle}
+                {s.lastRun && ' · ' + t('sch.last', { d: f.date(s.lastRun) })}
               </div>
             </div>
-            <div className="row wrap">
-              <button className="ghost small" disabled={busy === 'run' + s.id} onClick={() => run('run' + s.id, () => bridge.runSchedule(s.id), 'Executando agora')}>Rodar agora</button>
-              <button className="ghost small" onClick={() => run('p' + s.id, () => bridge.patchSchedule(s.id, { paused: !s.paused })).then(() => sch.reload(true))}>{s.paused ? 'Retomar' : 'Pausar'}</button>
-              <button className="ghost small" onClick={() => setForm(s)}>Editar</button>
-              <button className="ghost small danger-text" onClick={() => confirmAsk('Remover #' + s.id + '?') && run('d' + s.id, () => bridge.deleteSchedule(s.id), 'Removido').then(() => sch.reload(true))}>Remover</button>
+            <div className="row">
+              <IconButton icon={Zap} label={t('sch.runNow')} disabled={busy === 'run' + s.id} onClick={() => run('run' + s.id, () => bridge.runSchedule(s.id), t('sch.running'))} />
+              <IconButton icon={s.paused ? Play : Pause} label={s.paused ? t('sch.resume') : t('sch.pause')} onClick={() => run('p' + s.id, () => bridge.patchSchedule(s.id, { paused: !s.paused })).then(() => sch.reload(true))} />
+              <IconButton icon={Pencil} label={t('common.edit')} onClick={() => setForm(s)} />
+              <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} onClick={() => confirmAsk(t('sch.removeConfirm', { id: s.id })) && run('d' + s.id, () => bridge.deleteSchedule(s.id), t('common.removed')).then(() => sch.reload(true))} />
             </div>
           </div>
         ))}
