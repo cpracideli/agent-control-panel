@@ -21,7 +21,7 @@ if (!ADMIN_PASSWORD && !env.GOOGLE_OAUTH_CLIENT_ID) console.warn('WARNING: neith
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '40mb' })); // web chat attachments travel as base64 (25 MB per file)
 
 // ---------- Google OAuth ----------
 const GOOGLE_CLIENT_ID = env.GOOGLE_OAUTH_CLIENT_ID || '';

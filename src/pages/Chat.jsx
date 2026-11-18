@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Bot, Copy, Globe, MessagesSquare, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
+import { ArrowUp, AudioLines, Bot, Copy, Globe, Mic, MessagesSquare, Paperclip, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
 import { bridge } from '../api.js';
-import { useT } from '../i18n.jsx';
+import { store, useI18n, useT } from '../i18n.jsx';
+import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, IconButton, Sheet, confirmAsk, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const chatFromHash = () => {
@@ -36,10 +37,19 @@ function ToolList({ tools }) {
 }
 
 function Message({ m }) {
-  const t = useT();
+  const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
-  if (m.role === 'user') return <div className="msg user"><div className="bubble">{m.text}</div></div>;
+  if (m.role === 'user') {
+    return (
+      <div className="msg user">
+        <div className="user-col">
+          <MessageFiles files={m.files} transcript={m.transcript} />
+          {m.text && <div className="bubble">{m.text}</div>}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
       <div className="avatar" aria-hidden><Bot size={16} /></div>
@@ -51,6 +61,7 @@ function Message({ m }) {
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{f.usd(m.usage.cost)}</span> : null}
+          {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
           <IconButton icon={Copy} size={13} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(m.text); toast(t('common.copied')); }} />
         </div>
       </div>
@@ -108,7 +119,7 @@ function ChatSettings({ chat, providers, onChange }) {
 }
 
 export default function Chat({ openMore, me }) {
-  const t = useT();
+  const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
   const chats = useLoad(() => bridge.chats(), [], { interval: 15000 });
@@ -121,6 +132,15 @@ export default function Chat({ openMore, me }) {
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
   const [showOpts, setShowOpts] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [voiceMode, setVoiceModeState] = useState(() => store.get('acp_voice') === '1');
+  const setVoiceMode = (on) => { store.set('acp_voice', on ? '1' : '0'); setVoiceModeState(on); if (!on) stopSpeaking(); else unlockSpeech(); };
+  const rec = useRecorder(lang);
+  const fileRef = useRef(null);
+  // Read inside the SSE handler, which is created once per conversation.
+  const speakRef = useRef({ voiceMode, lastVoice: false, lang });
+  speakRef.current.voiceMode = voiceMode; speakRef.current.lang = lang;
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -151,7 +171,11 @@ export default function Chat({ openMore, me }) {
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.type === 'hello') { load(); setLive(ev.running ? { started: ev.running.started, texts: [], tools: [] } : null); }
-      else if (ev.type === 'message') setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
+      else if (ev.type === 'message') {
+        setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
+        const sp = speakRef.current;
+        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang);
+      }
       else if (ev.type === 'start') setLive({ started: Date.now(), texts: [], tools: [], provider: ev.provider });
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
@@ -172,18 +196,40 @@ export default function Chat({ openMore, me }) {
       setTimeout(() => inputRef.current?.focus(), 50);
     } catch (e) { toast(e.message, 'err'); }
   };
-  const send = async () => {
+  const send = async (voice) => {
     const msg = text.trim();
-    if (!msg) return;
+    const pending = files;
+    if (!msg && !pending.length && !voice) return;
+    unlockSpeech();
     let id = current;
+    setSending(true);
     try {
+      const payload = await Promise.all(pending.map(async (f) => ({ name: f.name, type: f.type, data: await readAsBase64(f.file) })));
+      if (voice) payload.push({ name: 'voz.' + (voice.type.split('/')[1] || 'webm'), type: voice.type, data: await readAsBase64(voice.blob), voice: true });
       if (!id) { const c = await bridge.newWeb({}); id = c.id; select(c.id); }
-      setText('');
-      const r = await bridge.send(id, msg);
+      setText(''); setFiles([]);
+      speakRef.current.lastVoice = Boolean(voice);
+      const r = await bridge.send(id, msg, payload, voice?.transcript);
       if (r.ahead) toast(t('chat.queued', { n: r.ahead }));
       chats.reload(true);
-    } catch (e) { toast(e.message, 'err'); setText(msg); }
+      pending.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
+    } catch (e) { toast(e.message, 'err'); setText(msg); setFiles(pending); }
+    finally { setSending(false); }
   };
+  const addFiles = (list) => {
+    const add = [];
+    for (const file of list) {
+      if (file.size > MAX_FILE) { toast(t('chat.tooBig', { n: file.name }), 'err'); continue; }
+      add.push({ key: Math.random(), file, name: file.name || 'arquivo', type: file.type || 'application/octet-stream', size: file.size, preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null });
+    }
+    setFiles((x) => [...x, ...add].slice(0, 10));
+  };
+  const startRec = async () => {
+    stopSpeaking(); unlockSpeech();
+    try { await rec.start(); } catch (e) { toast(t('chat.micDenied') + (e?.message ? ' (' + e.message + ')' : ''), 'err'); }
+  };
+  const finishRec = async () => { const v = await rec.stop(); if (v) send(v); };
+  const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => { try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); } catch (e) { toast(e.message, 'err'); } };
   const remove = async () => {
     if (!confirmAsk(t('chat.deleteConfirm'))) return;
@@ -222,6 +268,9 @@ export default function Chat({ openMore, me }) {
             </button>
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>}
+          {hasTTS() && (
+            <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
+          )}
           {info && (
             <div className="row only-desktop">
               <IconButton icon={RotateCcw} label={t('common.newSession') + ' — ' + t('chat.resetTitle')} onClick={reset} />
@@ -249,16 +298,33 @@ export default function Chat({ openMore, me }) {
           <div ref={endRef} />
         </div>
 
-        <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <textarea
+        {rec.recording ? (
+          <div className="composer recording">
+            <IconButton icon={Trash2} className="ghost rec-cancel" size={18} label={t('chat.cancelRec')} onClick={rec.cancel} />
+            <div className="rec-body">
+              <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
+              <span className="rec-text">{rec.recording.transcript || t('chat.recording')}</span>
+            </div>
+            <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} onClick={finishRec} />
+          </div>
+        ) : (
+        <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}
+          onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); }}>
+          <PendingFiles files={files} onRemove={(i) => setFiles((x) => x.filter((_, j) => j !== i))} />
+          <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
+          <IconButton icon={Paperclip} className="ghost round" size={19} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
+          <textarea onPaste={onPaste}
             ref={inputRef} rows={Math.min(8, Math.max(1, text.split('\n').length))} value={text}
             placeholder={t('chat.placeholder')} aria-label={t('chat.placeholder')} enterKeyHint="send"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) { e.preventDefault(); send(); } }}
           />
           {live && <IconButton icon={Square} className="danger" label={t('common.stop')} onClick={stop} />}
-          <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} type="submit" disabled={!text.trim()} />
+          {!text.trim() && !files.length && canRecord()
+            ? <IconButton icon={Mic} className="ghost round" size={19} label={t('chat.record')} onClick={startRec} />
+            : <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} type="submit" disabled={sending || (!text.trim() && !files.length)} />}
         </form>
+        )}
         {info && (
           <div className="chat-foot muted small">
             {t('chat.foot', { runs: info.totals.runs, time: f.dur(info.totals.ms), cost: f.usd(info.totals.cost) })}
@@ -271,6 +337,15 @@ export default function Chat({ openMore, me }) {
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
           <div className="group pad"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>
+          {hasTTS() && (
+            <div className="group">
+              <label className="group-row">
+                <span className="row-ic ic-chat"><AudioLines size={17} /></span>
+                <span className="grow"><b>{t('chat.voiceMode')}</b><small className="muted">{t('chat.voiceModeHint')}</small></span>
+                <input type="checkbox" checked={voiceMode} onChange={(e) => setVoiceMode(e.target.checked)} />
+              </label>
+            </div>
+          )}
           <div className="group">
             <button className="group-row press" onClick={() => { setShowOpts(false); reset(); }}>
               <span className="row-ic ic-providers"><RotateCcw size={17} /></span>

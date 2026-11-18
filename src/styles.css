@@ -333,6 +333,45 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 .composer { display: flex; gap: 8px; padding: 10px 18px; align-items: flex-end; max-width: 856px; width: 100%; margin: 0 auto; }
 .composer textarea { resize: none; max-height: 40vh; border-radius: 22px; padding: 10px 16px; background: var(--card); box-shadow: inset 0 0 0 .5px var(--sep); font-size: 16px; line-height: 1.35; }
 .composer button.icon { width: 40px; height: 40px; padding: 0; border-radius: 50%; flex: none; }
+/* composer extras: attachments, mic, recording */
+.composer { flex-wrap: wrap; }
+.composer textarea { flex: 1; width: auto; }
+.composer button.round { background: var(--sunken); color: var(--text); }
+.voice-toggle.on { background: var(--active) !important; color: var(--accent) !important; }
+.pending-files { flex-basis: 100%; display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+.pending-file { position: relative; display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 14px; padding: 6px 28px 6px 6px; box-shadow: inset 0 0 0 .5px var(--sep); flex: none; max-width: 220px; }
+.pending-file img, .file-ic { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; flex: none; }
+.file-ic { display: grid; place-items: center; background: var(--sunken); color: var(--accent); }
+.pf-name { display: flex; flex-direction: column; min-width: 0; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pf-name small { color: var(--muted); font-size: 11.5px; }
+.pf-x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--gray); color: #fff; }
+.composer.recording { align-items: center; flex-wrap: nowrap; }
+.rec-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 22px; padding: 10px 16px; box-shadow: inset 0 0 0 .5px var(--sep); min-height: 40px; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); flex: none; animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+.rec-time { font-variant-numeric: tabular-nums; font-weight: 600; flex: none; }
+.rec-text { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; flex: 1; min-width: 0; }
+.rec-cancel { color: var(--err) !important; }
+
+/* attachments inside messages */
+.user-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 78%; }
+.user-col .bubble { max-width: 100% !important; }
+.msg-files { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.msg-img img { display: block; max-width: min(260px, 70vw); max-height: 260px; border-radius: 18px; object-fit: cover; }
+.msg-video { max-width: min(300px, 75vw); border-radius: 18px; }
+.msg-file { display: flex; align-items: center; gap: 10px; background: var(--card); color: var(--text); border-radius: 18px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 260px; }
+.msg-file svg { color: var(--accent); }
+.msg-file span { display: flex; flex-direction: column; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.msg-file small { color: var(--muted); font-size: 12px; }
+.voice-note { background: var(--bubble); color: var(--bubble-ink); border-radius: 20px; padding: 8px 12px 8px 8px; min-width: 220px; max-width: 300px; }
+.vn-row { display: flex; align-items: center; gap: 10px; }
+.vn-play { width: 34px; height: 34px; padding: 0; border-radius: 50%; background: rgba(255,255,255,.95); color: var(--bubble); flex: none; }
+.vn-bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.35); overflow: hidden; }
+.vn-bar span { display: block; height: 100%; background: #fff; transition: width 200ms linear; }
+.vn-time { font-size: 12px; font-variant-numeric: tabular-nums; opacity: .9; }
+.vn-text { font-size: 14px; line-height: 1.35; margin: 6px 4px 0 6px; opacity: .92; font-style: italic; }
+.speak.on { color: var(--accent) !important; }
+
 .chat-foot { text-align: center; padding: 0 16px 10px; font-size: 12px; }
 .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -394,6 +433,7 @@ pre.logs { max-height: 65vh; min-height: 300px; }
   .composer { padding: 6px 12px 8px; margin-bottom: var(--dock-h); }
   .chat-foot { display: none; }
   .msg.user .bubble { max-width: 86%; }
+  .user-col { max-width: 86%; }
   .msg.bot .avatar { display: none; }
   .msg-body { font-size: 16px; }
   .chat-empty { margin-top: 4vh; }
@@ -415,4 +455,16 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass-bar, .glass-btn, .dock-capsule, .toast, .nav, .chat-head { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+
+/* Installed app (PWA): the status bar sits over the top of the page, so the header
+   content gets extra room and the glass bar extends behind the status bar. */
+@media (max-width: 820px) and (display-mode: standalone) {
+  :root { --top-safe: max(env(safe-area-inset-top), 24px); }
+  .topbar { padding-top: calc(var(--top-safe) + 16px); }
+  .chat-head { padding-top: calc(var(--top-safe) + 12px); padding-bottom: 8px; }
+  .chat-scroll { padding-top: calc(var(--top-safe) + 76px); }
+  .chat-list { padding-top: calc(var(--top-safe) + 14px); }
+  .login-tools, .toasts { top: calc(var(--top-safe) + 10px); }
+  .sheet-bg, .modal-bg { padding-top: calc(var(--top-safe) + 16px); }
 }
