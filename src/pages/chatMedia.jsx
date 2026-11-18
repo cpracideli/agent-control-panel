@@ -30,16 +30,24 @@ export function useRecorder(lang) {
   const ref = useRef({});
 
   const start = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    if (ref.current.rec || ref.current.starting) return; // double tap
+    ref.current = { starting: true };
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } finally { ref.current = {}; }
     const mime = pickMime();
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.start(250);
     const r = { stream, rec, chunks, finals: '', interim: '' };
-    // Live transcription where available (Chrome, Edge, Safari). The audio is sent either way.
+    // Live transcription only on desktop. On phones (iOS Safari, Chrome Android) SpeechRecognition fights
+    // MediaRecorder for the microphone: the recorder stops delivering data or never fires "stop", and the
+    // composer froze. The audio is sent either way and transcribed on the server.
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
+    const mobile = window.matchMedia?.('(pointer: coarse)').matches;
+    if (SR && !mobile) {
       try {
         const sr = new SR();
         sr.lang = lang; sr.continuous = true; sr.interimResults = true;
@@ -49,8 +57,15 @@ export function useRecorder(lang) {
           r.finals = fin; r.interim = inter;
           setState((s) => s && { ...s, transcript: (fin + inter).trim() });
         };
-        sr.onerror = () => {};
-        sr.onend = () => { if (r.sr && r.keep) try { sr.start(); } catch {} };
+        sr.onerror = (e) => { if (/not-allowed|service-not-allowed|audio-capture|language-not-supported/.test(e?.error)) r.keep = false; };
+        // Restart after silence timeouts, but never in a tight loop.
+        sr.onstart = () => { r.srStarted = Date.now(); };
+        sr.onend = () => {
+          if (!r.keep) return;
+          r.srFails = Date.now() - (r.srStarted || 0) < 1500 ? (r.srFails || 0) + 1 : 0;
+          if (r.srFails > 3) { r.keep = false; return; }
+          setTimeout(() => { if (r.keep) try { sr.start(); } catch {} }, 300);
+        };
         r.keep = true; r.sr = sr; sr.start();
       } catch {}
     }
@@ -58,24 +73,36 @@ export function useRecorder(lang) {
     setState({ started: Date.now(), transcript: '' });
   }, [lang]);
 
+  // Leaves the recording screen right away; waits at most 1.5 s for the recorder's "stop" event,
+  // which some browsers never fire, and builds the audio from the chunks collected so far.
   const finish = useCallback((keep) => new Promise((resolve) => {
     const r = ref.current;
+    ref.current = {};
+    setState(null);
     if (!r.rec) return resolve(null);
     r.keep = false;
-    try { r.sr?.stop(); } catch {}
+    try { r.sr?.abort(); } catch {}
+    let finished = false;
     const done = () => {
-      r.stream.getTracks().forEach((t) => t.stop());
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      try { r.stream.getTracks().forEach((t) => t.stop()); } catch {}
+      if (!keep) return resolve(null);
       const type = (r.rec.mimeType || 'audio/webm').split(';')[0];
       const blob = new Blob(r.chunks, { type });
       const transcript = (r.finals + r.interim).trim();
-      ref.current = {};
-      setState(null);
-      resolve(keep && blob.size ? { blob, type, transcript } : null);
+      resolve(blob.size ? { blob, type, transcript } : null);
     };
-    if (r.rec.state === 'inactive') done(); else { r.rec.onstop = done; r.rec.stop(); }
+    const timer = setTimeout(done, keep ? 1500 : 0);
+    if (!keep) return done();
+    if (r.rec.state === 'inactive') return done();
+    r.rec.onstop = done;
+    r.rec.onerror = done;
+    try { r.rec.stop(); } catch { done(); }
   }), []);
 
-  useEffect(() => () => { const r = ref.current; try { r.sr?.stop(); r.rec?.stop(); r.stream?.getTracks().forEach((t) => t.stop()); } catch {} }, []);
+  useEffect(() => () => { const r = ref.current; r.keep = false; try { r.sr?.abort(); } catch {} try { r.rec?.stop(); } catch {} try { r.stream?.getTracks().forEach((t) => t.stop()); } catch {} }, []);
   return { recording: state, start, stop: () => finish(true), cancel: () => finish(false) };
 }
 

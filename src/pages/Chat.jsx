@@ -225,10 +225,12 @@ export default function Chat({ openMore, me }) {
     setFiles((x) => [...x, ...add].slice(0, 10));
   };
   const startRec = async () => {
-    stopSpeaking(); unlockSpeech();
+    stopSpeaking();
     try { await rec.start(); } catch (e) { toast(t('chat.micDenied') + (e?.message ? ' (' + e.message + ')' : ''), 'err'); }
   };
-  const finishRec = async () => { const v = await rec.stop(); if (v) send(v); };
+  // The send tap is the user gesture iOS needs to allow the spoken reply later; doing it at record start
+  // put speech output and the microphone in the same audio session.
+  const finishRec = async () => { unlockSpeech(); const v = await rec.stop(); if (v) send(v); };
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => { try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); } catch (e) { toast(e.message, 'err'); } };
   const remove = async () => {
