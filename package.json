@@ -1,0 +1,12 @@
+{
+  "name": "agent-control-panel",
+  "version": "1.0.0",
+  "description": "Painel de controle estilo Hermes/OpenClaw para o agente WhatsApp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.1"
+  }
+}
