@@ -11,7 +11,7 @@ export function ThemeProvider({ children }) {
     if (theme === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', theme);
     const apply = () => {
       const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b0f17' : '#f6f7fb');
+      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.setAttribute('content', dark ? '#000000' : '#f2f2f7'); m.removeAttribute('media'); });
     };
     apply();
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -149,3 +149,27 @@ export function useFmt() {
 }
 
 export function confirmAsk(text) { return window.confirm(text); }
+
+// iOS-style page sheet: slides up from the bottom on phones, centered card on desktop.
+export function Sheet({ title, onClose, children }) {
+  const t = useT();
+  useEffect(() => {
+    const k = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = prev; };
+  }, [onClose]);
+  return (
+    <div className="sheet-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="sheet-grab" aria-hidden />
+        <header className="sheet-h">
+          <h2>{title}</h2>
+          <button type="button" className="sheet-close press" aria-label={t('common.close')} onClick={onClose}><X size={17} /></button>
+        </header>
+        <div className="sheet-body">{children}</div>
+      </div>
+    </div>
+  );
+}

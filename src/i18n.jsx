@@ -17,6 +17,10 @@ const pt = {
 
   'login.subtitle': 'Chat, MCP, providers e controle do agente.', 'login.password': 'Senha de acesso',
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',
+  'login.google': 'Continuar com Google', 'login.or': 'ou', 'login.usePassword': 'Entrar com senha',
+  'login.failed': 'Não foi possível entrar', 'login.private': 'Painel privado', 'login.privateText': 'Só as contas Google autorizadas no servidor conseguem entrar.',
+  'nav.more': 'Mais', 'nav.pages': 'Páginas', 'nav.appearance': 'Aparência', 'nav.account': 'Conta', 'nav.signedPwd': 'Entrou com senha', 'nav.settings': 'Ajustes',
+  'chat.options': 'Opções da conversa',
 
   'chat.new': 'Nova conversa', 'chat.none': 'Nenhuma conversa ainda.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversas',
   'chat.emptyTitle': 'Fale com o agente',
@@ -105,6 +109,10 @@ const en = {
 
   'login.subtitle': 'Chat, MCP, providers and agent control.', 'login.password': 'Access password',
   'login.submit': 'Sign in', 'login.busy': 'Signing in…',
+  'login.google': 'Continue with Google', 'login.or': 'or', 'login.usePassword': 'Sign in with password',
+  'login.failed': 'Could not sign in', 'login.private': 'Private panel', 'login.privateText': 'Only the Google accounts allowed on the server can sign in.',
+  'nav.more': 'More', 'nav.pages': 'Pages', 'nav.appearance': 'Appearance', 'nav.account': 'Account', 'nav.signedPwd': 'Signed in with password', 'nav.settings': 'Settings',
+  'chat.options': 'Conversation options',
 
   'chat.new': 'New chat', 'chat.none': 'No conversations yet.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversations',
   'chat.emptyTitle': 'Talk to the agent',
@@ -193,6 +201,10 @@ const es = {
 
   'login.subtitle': 'Chat, MCP, proveedores y control del agente.', 'login.password': 'Contraseña de acceso',
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',
+  'login.google': 'Continuar con Google', 'login.or': 'o', 'login.usePassword': 'Entrar con contraseña',
+  'login.failed': 'No se pudo entrar', 'login.private': 'Panel privado', 'login.privateText': 'Solo las cuentas de Google autorizadas en el servidor pueden entrar.',
+  'nav.more': 'Más', 'nav.pages': 'Páginas', 'nav.appearance': 'Apariencia', 'nav.account': 'Cuenta', 'nav.signedPwd': 'Entró con contraseña', 'nav.settings': 'Ajustes',
+  'chat.options': 'Opciones de la conversación',
 
   'chat.new': 'Nueva conversación', 'chat.none': 'Aún no hay conversaciones.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversaciones',
   'chat.emptyTitle': 'Habla con el agente',

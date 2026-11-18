@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bot, Copy, Globe, MessagesSquare, Plus, RotateCcw, SendHorizontal, Square, Trash2, Wrench } from 'lucide-react';
+import { ArrowUp, Bot, Copy, Globe, MessagesSquare, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, ErrorBox, IconButton, confirmAsk, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, ErrorBox, IconButton, Sheet, confirmAsk, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const chatFromHash = () => {
   const m = window.location.hash.match(/^#\/chat\/([a-f0-9]+)/);
@@ -107,7 +107,7 @@ function ChatSettings({ chat, providers, onChange }) {
   );
 }
 
-export default function Chat() {
+export default function Chat({ openMore, me }) {
   const t = useT();
   const f = useFmt();
   const toast = useToast();
@@ -120,6 +120,7 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
+  const [showOpts, setShowOpts] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -211,11 +212,18 @@ export default function Chat() {
 
       <section className="chat-main">
         <header className="chat-head">
-          <IconButton icon={MessagesSquare} className="ghost only-mobile" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
+          <IconButton icon={MessagesSquare} className="ghost only-mobile nav-btn" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
-          {info && <ChatSettings chat={info} providers={providers.data} onChange={change} />}
+          {info && <IconButton icon={SlidersHorizontal} className="ghost only-mobile nav-btn" label={t('chat.options')} onClick={() => setShowOpts(true)} />}
+          <IconButton icon={SquarePen} className="ghost only-mobile nav-btn" label={t('chat.new')} onClick={newChat} />
+          {openMore && (
+            <button className="avatar-btn press only-mobile" aria-label={t('nav.settings')} onClick={openMore}>
+              <span className="avatar-ring" style={{ width: 32, height: 32 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={18} />}</span>
+            </button>
+          )}
+          {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>}
           {info && (
-            <div className="row">
+            <div className="row only-desktop">
               <IconButton icon={RotateCcw} label={t('common.newSession') + ' — ' + t('chat.resetTitle')} onClick={reset} />
               <IconButton icon={Trash2} className="ghost danger-text" label={t('chat.delete')} onClick={remove} />
             </div>
@@ -249,7 +257,7 @@ export default function Chat() {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) { e.preventDefault(); send(); } }}
           />
           {live && <IconButton icon={Square} className="danger" label={t('common.stop')} onClick={stop} />}
-          <IconButton icon={SendHorizontal} className="primary" label={t('chat.send')} type="submit" disabled={!text.trim()} />
+          <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} type="submit" disabled={!text.trim()} />
         </form>
         {info && (
           <div className="chat-foot muted small">
@@ -259,6 +267,21 @@ export default function Chat() {
           </div>
         )}
       </section>
+      {showOpts && info && (
+        <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
+          <div className="group-label">{info.title}</div>
+          <div className="group pad"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>
+          <div className="group">
+            <button className="group-row press" onClick={() => { setShowOpts(false); reset(); }}>
+              <span className="row-ic ic-providers"><RotateCcw size={17} /></span>
+              <span className="grow"><b>{t('common.newSession')}</b><small className="muted">{t('chat.resetTitle')}</small></span>
+            </button>
+            <button className="group-row press danger-text" onClick={() => { setShowOpts(false); remove(); }}>
+              <span className="row-ic ic-logout"><Trash2 size={17} /></span><span className="grow">{t('chat.delete')}</span>
+            </button>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }

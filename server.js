@@ -17,22 +17,40 @@ const BRIDGE_TOKEN = env.BRIDGE_ADMIN_TOKEN || '';
 const SECRET = env.SESSION_SECRET || crypto.createHash('sha256').update('acp:' + ADMIN_PASSWORD + ':' + COOLIFY_TOKEN).digest('hex');
 const SESSION_DAYS = 14;
 
-if (!ADMIN_PASSWORD) console.warn('WARNING: ADMIN_PASSWORD is empty, login is disabled');
+if (!ADMIN_PASSWORD && !env.GOOGLE_OAUTH_CLIENT_ID) console.warn('WARNING: neither ADMIN_PASSWORD nor Google login is configured, nobody can sign in');
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '2mb' }));
 
-// ---------- session cookie: "<expiry>.<hmac>" ----------
+// ---------- Google OAuth ----------
+const GOOGLE_CLIENT_ID = env.GOOGLE_OAUTH_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = env.GOOGLE_OAUTH_CLIENT_SECRET || '';
+const ALLOWED_EMAILS = (env.ALLOWED_AUTH_EMAILS || '').split(/[,\s]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+const PUBLIC_URL = (env.PUBLIC_URL || '').replace(/\/+$/, '');
+const googleOn = () => Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && ALLOWED_EMAILS.length);
+if (GOOGLE_CLIENT_ID && !ALLOWED_EMAILS.length) console.warn('WARNING: ALLOWED_AUTH_EMAILS is empty, Google login is disabled');
+
+// ---------- session cookie: "<expiry>.<b64url email>.<hmac>" ----------
 const sign = (v) => crypto.createHmac('sha256', SECRET).update(v).digest('hex');
-const cookieOf = (req) => Object.fromEntries(String(req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter((p) => p[0]));
-function validSession(req) {
-  const v = cookieOf(req).acp_session;
-  if (!v) return false;
-  const [exp, mac] = v.split('.');
-  if (!exp || !mac || Number(exp) < Date.now()) return false;
-  const want = sign(exp);
-  return mac.length === want.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(want));
+const b64u = (s) => Buffer.from(s).toString('base64url');
+const cookieOf = (req) => Object.fromEntries(String(req.headers.cookie || '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => [c.slice(0, c.indexOf('=')), c.slice(c.indexOf('=') + 1)]));
+const safeEq = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+function session(req) {
+  const parts = String(cookieOf(req).acp_session || '').split('.');
+  if (parts.length !== 3) return null;
+  const [exp, who, mac] = parts;
+  if (Number(exp) < Date.now() || !safeEq(mac, sign(exp + '.' + who))) return null;
+  const email = Buffer.from(who, 'base64url').toString();
+  // A Google session stops working as soon as the address leaves the allow list.
+  if (email && email !== 'password' && !ALLOWED_EMAILS.includes(email)) return null;
+  return { email };
+}
+const validSession = (req) => Boolean(session(req));
+function startSession(req, res, who) {
+  const exp = String(Date.now() + SESSION_DAYS * 86400000);
+  const v = exp + '.' + b64u(who);
+  res.append('Set-Cookie', `acp_session=${v}.${sign(v)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${req.secure ? '; Secure' : ''}`);
 }
 const auth = (req, res, next) => (validSession(req) ? next() : res.status(401).json({ error: 'Sessão expirada. Entre de novo.' }));
 
@@ -41,23 +59,89 @@ app.post('/api/login', (req, res) => {
   const ip = req.ip;
   const a = attempts.get(ip) || { n: 0, until: 0 };
   if (a.until > Date.now()) return res.status(429).json({ error: 'Muitas tentativas. Aguarde um minuto.' });
-  const got = Buffer.from(String((req.body || {}).password || ''));
-  const want = Buffer.from(ADMIN_PASSWORD);
-  if (!ADMIN_PASSWORD || got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
+  const got = String((req.body || {}).password || '');
+  if (!ADMIN_PASSWORD || !safeEq(got, ADMIN_PASSWORD)) {
     a.n += 1; if (a.n >= 5) { a.until = Date.now() + 60000; a.n = 0; }
     attempts.set(ip, a);
     return res.status(401).json({ error: 'Senha incorreta' });
   }
   attempts.delete(ip);
-  const exp = String(Date.now() + SESSION_DAYS * 86400000);
-  res.setHeader('Set-Cookie', `acp_session=${exp}.${sign(exp)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${req.secure ? '; Secure' : ''}`);
+  startSession(req, res, 'password');
   res.json({ ok: true });
 });
 app.post('/api/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'acp_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  res.setHeader('Set-Cookie', 'acp_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
 });
-app.get('/api/me', (req, res) => res.json({ ok: validSession(req) }));
+app.get('/api/me', (req, res) => {
+  const s = session(req);
+  res.json({ ok: Boolean(s), email: s && s.email !== 'password' ? s.email : null, google: googleOn(), password: Boolean(ADMIN_PASSWORD) });
+});
+
+// Authorization-code flow. The callback does not set the session directly: it hands the
+// page a one-time code that the page exchanges with fetch. That way the cookie lands in
+// the context that asked for it, which matters for an installed iOS PWA, whose cookie jar
+// is separate from the in-app browser where the Google screen opens.
+const baseUrl = (req) => PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+const redirectUri = (req) => baseUrl(req) + '/api/auth/google/callback';
+const pendingStates = new Map(); // state -> expiry
+const loginCodes = new Map(); // code -> { email, exp }
+const sweep = (m) => { const now = Date.now(); for (const [k, v] of m) if ((v.exp ?? v) < now) m.delete(k); };
+
+app.get('/api/auth/google', (req, res) => {
+  if (!googleOn()) return res.redirect('/?auth_error=' + encodeURIComponent('Login com Google não configurado'));
+  sweep(pendingStates);
+  const state = crypto.randomBytes(18).toString('base64url');
+  pendingStates.set(state, Date.now() + 10 * 60000);
+  const q = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID, redirect_uri: redirectUri(req), response_type: 'code',
+    scope: 'openid email profile', state, prompt: 'select_account',
+  });
+  if (ALLOWED_EMAILS.length === 1) q.set('login_hint', ALLOWED_EMAILS[0]);
+  res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + q);
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  const fail = (msg) => res.redirect('/?auth_error=' + encodeURIComponent(msg));
+  const { code, state, error } = req.query;
+  if (error) return fail(error === 'access_denied' ? 'Login cancelado' : String(error));
+  const exp = pendingStates.get(String(state || ''));
+  pendingStates.delete(String(state || ''));
+  if (!exp || exp < Date.now()) return fail('Sessão de login expirada, tente de novo');
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: String(code || ''), client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: redirectUri(req), grant_type: 'authorization_code' }),
+    });
+    const tok = await r.json();
+    if (!r.ok || !tok.id_token) throw new Error(tok.error_description || tok.error || 'Falha ao trocar o código com o Google');
+    // The id_token came straight from Google's token endpoint over TLS, so its payload is trusted.
+    const p = JSON.parse(Buffer.from(tok.id_token.split('.')[1], 'base64url').toString());
+    const email = String(p.email || '').toLowerCase();
+    if (p.aud !== GOOGLE_CLIENT_ID || !['accounts.google.com', 'https://accounts.google.com'].includes(p.iss)) throw new Error('Token do Google inválido');
+    if (!p.email_verified || !ALLOWED_EMAILS.includes(email)) {
+      console.warn('Google login denied for', email || '(no email)');
+      return fail(`Acesso negado para ${email || 'esta conta'}`);
+    }
+    sweep(loginCodes);
+    const one = crypto.randomBytes(24).toString('base64url');
+    loginCodes.set(one, { email, name: p.name || '', picture: p.picture || '', exp: Date.now() + 2 * 60000 });
+    res.redirect('/?auth_code=' + one);
+  } catch (e) {
+    console.error('Google callback:', e.message);
+    fail(e.message);
+  }
+});
+
+app.post('/api/auth/exchange', (req, res) => {
+  const code = String((req.body || {}).code || '');
+  const c = loginCodes.get(code);
+  loginCodes.delete(code);
+  if (!c || c.exp < Date.now()) return res.status(401).json({ error: 'Código de login expirado, entre de novo' });
+  startSession(req, res, c.email);
+  res.json({ ok: true, email: c.email, name: c.name, picture: c.picture });
+});
 
 // ---------- Coolify ----------
 async function coolify(endpoint, options = {}) {
@@ -72,7 +156,8 @@ async function coolify(endpoint, options = {}) {
   return data;
 }
 const wrap = (fn) => async (req, res) => {
-  try { res.json(await fn(req)); } catch (e) { res.status(e.status && e.status < 500 ? e.status : 502).json({ error: e.message }); }
+  // A 401/403 from Coolify is not our session expiring: report it as an upstream error so the page does not log out.
+  try { res.json(await fn(req)); } catch (e) { res.status(e.status && e.status < 500 && ![401, 403].includes(e.status) ? e.status : 502).json({ error: e.message }); }
 };
 
 app.get('/api/coolify/status', auth, wrap(async () => {
@@ -109,7 +194,7 @@ app.all('/api/bridge/*', auth, async (req, res) => {
       signal: ctrl.signal,
     });
     const type = r.headers.get('content-type') || 'application/json';
-    res.status(r.status);
+    res.status(r.status === 401 ? 502 : r.status); // a bridge 401 means a bad BRIDGE_ADMIN_TOKEN, not an expired panel session
     res.setHeader('Content-Type', type);
     if (type.includes('text/event-stream')) {
       res.setHeader('Cache-Control', 'no-cache');
