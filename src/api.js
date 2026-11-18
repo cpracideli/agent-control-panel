@@ -45,7 +45,7 @@ export const bridge = {
   runSchedule: (id) => post('/bridge/schedules/' + id + '/run'),
   deleteSchedule: (id) => del('/bridge/schedules/' + id),
   mcp: () => get('/bridge/mcp'),
-  mcpStatus: () => get('/bridge/mcp/status'),
+  mcpStatus: (provider) => get('/bridge/mcp/status' + (provider ? '?provider=' + provider : '')),
   addMcp: (b) => post('/bridge/mcp', b),
   removeMcp: (provider, name, scope) => del(`/bridge/mcp/${provider}/${encodeURIComponent(name)}${scope ? '?scope=' + scope : ''}`),
   audit: (n = 200) => get('/bridge/audit?n=' + n),

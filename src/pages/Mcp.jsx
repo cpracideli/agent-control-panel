@@ -58,12 +58,12 @@ function AddMcp({ provider, onClose, onDone }) {
               <Field label={t('mcp.command')}><input required className="mono" value={f.command} onChange={set('command')} placeholder="npx" /></Field>
               <Field label={t('mcp.args')}><input className="mono" value={f.args} onChange={set('args')} placeholder="-y @scope/mcp --flag" /></Field>
             </div>
-            {!agy && <Field label={t('mcp.env')} hint={t('mcp.envHint')}><textarea rows={3} className="mono" value={f.env} onChange={set('env')} /></Field>}
+            <Field label={t('mcp.env')} hint={t('mcp.envHint')}><textarea rows={3} className="mono" value={f.env} onChange={set('env')} /></Field>
           </>
         ) : (
           <>
             <Field label="URL"><input required type="url" className="mono" value={f.url} onChange={set('url')} placeholder="https://…/mcp" /></Field>
-            {!agy && <Field label={t('mcp.headers')} hint={t('mcp.headersHint')}><textarea rows={2} className="mono" value={f.headers} onChange={set('headers')} /></Field>}
+            <Field label={t('mcp.headers')} hint={t('mcp.headersHint')}><textarea rows={2} className="mono" value={f.headers} onChange={set('headers')} /></Field>
           </>
         )}
         {agy && <p className="muted small">{t('mcp.agyNote')}</p>}
@@ -76,26 +76,17 @@ function AddMcp({ provider, onClose, onDone }) {
   );
 }
 
-function RemoveAgy({ onRemove }) {
-  const t = useT();
-  const [n, setN] = useState('');
-  return (
-    <form className="row" onSubmit={(e) => { e.preventDefault(); if (n.trim()) onRemove(n.trim()); }}>
-      <input value={n} onChange={(e) => setN(e.target.value)} placeholder={t('mcp.removeName')} />
-      <Btn icon={Trash2} className="ghost danger-text" disabled={!n.trim()}>{t('common.remove')}</Btn>
-    </form>
-  );
-}
-
 export default function Mcp() {
   const t = useT();
   const mcp = useLoad(() => bridge.mcp(), []);
   const [status, setStatus] = useState(null);
+  const [agyStatus, setAgyStatus] = useState(null);
   const [adding, setAdding] = useState(null);
   const [view, setView] = useState(null);
   const [busy, run] = useAction();
 
   const check = async () => { const r = await run('status', () => bridge.mcpStatus()); setStatus(r ? { output: r.output } : null); };
+  const checkAgy = async () => { const r = await run('agy-status', () => bridge.mcpStatus('antigravity')); setAgyStatus(r || null); };
   const remove = (provider, name, scope) => confirmAsk(t('mcp.removeConfirm', { n: name })) &&
     run('rm-' + name, () => bridge.removeMcp(provider, name, scope), t('common.removed')).then(() => mcp.reload(true));
 
@@ -108,6 +99,8 @@ export default function Mcp() {
   const c = mcp.data?.claude;
   const rows = c ? ['user', 'local', 'project'].flatMap((scope) => Object.entries(c[scope]).map(([n, cfg]) => ({ n, cfg, scope }))) : [];
   const agy = mcp.data?.antigravity;
+  const agyRows = Object.entries(agy?.servers || {});
+  const agyHealth = (n) => { const r = agyStatus?.servers?.[n]; return r && (r.disabled ? 'Disabled' : r.ok ? 'Connected' : r.status.replace(/^✗\s*/, '')); };
 
   return (
     <div className="page">
@@ -137,15 +130,31 @@ export default function Mcp() {
         {status?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{status.output}</pre></details>}
       </Card>
 
-      <Card title="Antigravity" icon={Plug} actions={agy?.installed && <Btn icon={Plus} className="small" onClick={() => setAdding('antigravity')}>{t('common.add')}</Btn>}>
+      <Card title="Antigravity" icon={Plug} actions={agy?.installed && <>
+        <Btn icon={Activity} className="ghost small" disabled={busy === 'agy-status'} onClick={checkAgy}>{busy === 'agy-status' ? t('mcp.testing') : t('mcp.test')}</Btn>
+        <Btn icon={Plus} className="small" onClick={() => setAdding('antigravity')}>{t('common.add')}</Btn>
+      </>}>
         {agy && !agy.installed && <p className="muted">{t('mcp.agyMissing')}</p>}
-        {agy?.installed && (
-          <div className="stack">
-            <pre>{agy.list || t('mcp.agyEmpty')}</pre>
-            {agy.config && <details className="tools"><summary>{t('mcp.config', { p: agy.configPath })}</summary><pre>{JSON.stringify(agy.config, null, 2)}</pre></details>}
-            <RemoveAgy onRemove={(n) => remove('antigravity', n)} />
-          </div>
-        )}
+        {agy?.installed && !agyRows.length && <pre>{agy.list || t('mcp.agyEmpty')}</pre>}
+        {agyRows.map(([n, cfg]) => {
+          const h = agyHealth(n);
+          return (
+            <div key={'agy' + n} className="list-row">
+              <div className="grow">
+                <div className="row wrap"><b className="with-ic"><Server size={14} />{n}</b><Badge>{cfg.command ? 'stdio' : 'http'}</Badge>
+                  {cfg.disabled && !h && <Badge kind="muted">disabled</Badge>}
+                  {h && <Badge kind={/connected/i.test(h) ? 'ok' : /disabled/i.test(h) ? 'muted' : 'err'}>{h}</Badge>}</div>
+                <div className="muted small mono ellipsis">{cfg.command ? [cfg.command, ...(cfg.args || [])].join(' ') : cfg.serverUrl || cfg.url}</div>
+              </div>
+              <div className="row">
+                <IconButton icon={Eye} label={t('common.view')} onClick={() => setView({ n, cfg })} />
+                <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} disabled={busy === 'rm-' + n} onClick={() => remove('antigravity', n)} />
+              </div>
+            </div>
+          );
+        })}
+        {agyStatus?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{agyStatus.output}</pre></details>}
+        {agy?.config && <details className="tools"><summary>{t('mcp.config', { p: agy.configPath })}</summary><pre>{JSON.stringify(agy.config, null, 2)}</pre></details>}
       </Card>
 
       <p className="muted small">{t('mcp.note')}</p>
