@@ -2,7 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 const pt = {
   'app.loading': 'Carregando…',
-  'nav.chat': 'Chat', 'nav.usage': 'Consumo', 'use.session': 'Sessão atual (5 h)', 'use.weekly': 'Semana (todos os modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
+  'nav.chat': 'Chat', 'nav.memory': 'Memória', 'common.delete': 'Apagar', 'mem.local': 'Memória interna', 'mem.localSource': 'memória interna do Claude Code (~/.claude/projects/-home-node-workspace/memory)',
+  'mem.g.fact': 'Fatos', 'mem.g.session': 'Sessões', 'mem.g.other': 'Outros', 'mem.g.all': 'Tudo', 'mem.search': 'Buscar', 'mem.new': 'Nova', 'mem.edit': 'Editar', 'mem.project': 'Projeto',
+  'mem.empty': 'Nada por aqui.', 'mem.updated': 'Atualizada em {d}', 'mem.saved': 'Memória salva', 'mem.deleted': 'Página apagada (dá para restaurar pelo ai-memory)', 'mem.deletedLocal': 'Memória apagada (cópia guardada na lixeira da ponte)',
+  'mem.deleteConfirm': 'Apagar "{n}"?', 'mem.notIndexed': 'fora do MEMORY.md', 'mem.slug': 'Nome do arquivo', 'mem.slugHint': 'kebab-case, sem .md', 'mem.title': 'Título', 'mem.desc': 'Descrição (uma linha)',
+  'mem.type': 'Tipo', 'mem.body': 'Conteúdo (Markdown)', 'mem.rawFile': 'Arquivo {f}', 'mem.path': 'Caminho', 'mem.pathHint': 'ex.: notes/assunto.md', 'mem.kind': 'Tipo (kind)', 'mem.tags': 'Tags',
+  'mem.suggest': 'Sugerir mudança', 'mem.suggestHint': 'Abre uma conversa nova com a IA, já com "{n}" como contexto.', 'mem.suggestPh': 'Ex.: isso está desatualizado, o número mudou para…', 'mem.suggestSend': 'Abrir conversa',
+  'mem.suggestTitle': 'Memória: {n}', 'mem.suggestPrompt': 'Sugestão sobre uma memória ({source}: {ref}). Avalie e, se fizer sentido, aplique a mudança (atualizar, remover ou criar memórias relacionadas). Antes de apagar algo, confirme comigo.',
+  'nav.usage': 'Consumo', 'use.session': 'Sessão atual (5 h)', 'use.weekly': 'Semana (todos os modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
   'use.resetsIn': 'renova em {t}', 'use.resetsAt': 'renova {t}', 'use.resetNow': 'renovando agora', 'use.high': 'alto', 'use.almostOut': 'quase no limite',
   'use.stale': 'Dados do último minuto bom. ', 'use.models': '{n} modelos', 'use.today': 'hoje', 'use.last7': '7 dias', 'use.msgs': '{n} respostas', 'use.runs': '{n} execuções',
   'use.history': 'Histórico de tokens', 'use.days': '14 dias', 'use.weeks': '8 semanas', 'use.weekOf': 'semana de {d}',
@@ -104,7 +111,14 @@ const pt = {
 
 const en = {
   'app.loading': 'Loading…',
-  'nav.chat': 'Chat', 'nav.usage': 'Usage', 'use.session': 'Current session (5 h)', 'use.weekly': 'Week (all models)', 'use.weeklyOpus': 'Week (Opus)', 'use.weeklySonnet': 'Week (Sonnet)',
+  'nav.chat': 'Chat', 'nav.memory': 'Memory', 'common.delete': 'Delete', 'mem.local': 'Internal memory', 'mem.localSource': "Claude Code's internal memory (~/.claude/projects/-home-node-workspace/memory)",
+  'mem.g.fact': 'Facts', 'mem.g.session': 'Sessions', 'mem.g.other': 'Other', 'mem.g.all': 'All', 'mem.search': 'Search', 'mem.new': 'New', 'mem.edit': 'Edit', 'mem.project': 'Project',
+  'mem.empty': 'Nothing here.', 'mem.updated': 'Updated {d}', 'mem.saved': 'Memory saved', 'mem.deleted': 'Page deleted (ai-memory can restore it)', 'mem.deletedLocal': 'Memory deleted (a copy is kept in the bridge trash)',
+  'mem.deleteConfirm': 'Delete "{n}"?', 'mem.notIndexed': 'not in MEMORY.md', 'mem.slug': 'File name', 'mem.slugHint': 'kebab-case, no .md', 'mem.title': 'Title', 'mem.desc': 'Description (one line)',
+  'mem.type': 'Type', 'mem.body': 'Content (Markdown)', 'mem.rawFile': 'File {f}', 'mem.path': 'Path', 'mem.pathHint': 'e.g. notes/topic.md', 'mem.kind': 'Kind', 'mem.tags': 'Tags',
+  'mem.suggest': 'Suggest a change', 'mem.suggestHint': 'Opens a new chat with the agent, with "{n}" as context.', 'mem.suggestPh': 'E.g. this is outdated, the number changed to…', 'mem.suggestSend': 'Open chat',
+  'mem.suggestTitle': 'Memory: {n}', 'mem.suggestPrompt': 'Suggestion about a memory ({source}: {ref}). Evaluate it and, if it makes sense, apply the change (update, remove or create related memories). Ask me before deleting anything.',
+  'nav.usage': 'Usage', 'use.session': 'Current session (5 h)', 'use.weekly': 'Week (all models)', 'use.weeklyOpus': 'Week (Opus)', 'use.weeklySonnet': 'Week (Sonnet)',
   'use.resetsIn': 'resets in {t}', 'use.resetsAt': 'resets {t}', 'use.resetNow': 'resetting now', 'use.high': 'high', 'use.almostOut': 'almost at the limit',
   'use.stale': 'Last good reading. ', 'use.models': '{n} models', 'use.today': 'today', 'use.last7': '7 days', 'use.msgs': '{n} replies', 'use.runs': '{n} runs',
   'use.history': 'Token history', 'use.days': '14 days', 'use.weeks': '8 weeks', 'use.weekOf': 'week of {d}',
@@ -206,7 +220,14 @@ const en = {
 
 const es = {
   'app.loading': 'Cargando…',
-  'nav.chat': 'Chat', 'nav.usage': 'Consumo', 'use.session': 'Sesión actual (5 h)', 'use.weekly': 'Semana (todos los modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
+  'nav.chat': 'Chat', 'nav.memory': 'Memoria', 'common.delete': 'Eliminar', 'mem.local': 'Memoria interna', 'mem.localSource': 'memoria interna de Claude Code (~/.claude/projects/-home-node-workspace/memory)',
+  'mem.g.fact': 'Hechos', 'mem.g.session': 'Sesiones', 'mem.g.other': 'Otros', 'mem.g.all': 'Todo', 'mem.search': 'Buscar', 'mem.new': 'Nueva', 'mem.edit': 'Editar', 'mem.project': 'Proyecto',
+  'mem.empty': 'Nada por aquí.', 'mem.updated': 'Actualizada {d}', 'mem.saved': 'Memoria guardada', 'mem.deleted': 'Página eliminada (ai-memory puede restaurarla)', 'mem.deletedLocal': 'Memoria eliminada (copia en la papelera del puente)',
+  'mem.deleteConfirm': '¿Eliminar "{n}"?', 'mem.notIndexed': 'fuera de MEMORY.md', 'mem.slug': 'Nombre del archivo', 'mem.slugHint': 'kebab-case, sin .md', 'mem.title': 'Título', 'mem.desc': 'Descripción (una línea)',
+  'mem.type': 'Tipo', 'mem.body': 'Contenido (Markdown)', 'mem.rawFile': 'Archivo {f}', 'mem.path': 'Ruta', 'mem.pathHint': 'ej.: notes/tema.md', 'mem.kind': 'Tipo (kind)', 'mem.tags': 'Etiquetas',
+  'mem.suggest': 'Sugerir cambio', 'mem.suggestHint': 'Abre una conversación nueva con la IA, con "{n}" como contexto.', 'mem.suggestPh': 'Ej.: esto está desactualizado, el número cambió a…', 'mem.suggestSend': 'Abrir conversación',
+  'mem.suggestTitle': 'Memoria: {n}', 'mem.suggestPrompt': 'Sugerencia sobre una memoria ({source}: {ref}). Evalúala y, si tiene sentido, aplica el cambio (actualizar, eliminar o crear memorias relacionadas). Pregúntame antes de eliminar algo.',
+  'nav.usage': 'Consumo', 'use.session': 'Sesión actual (5 h)', 'use.weekly': 'Semana (todos los modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
   'use.resetsIn': 'se renueva en {t}', 'use.resetsAt': 'se renueva {t}', 'use.resetNow': 'renovando ahora', 'use.high': 'alto', 'use.almostOut': 'casi en el límite',
   'use.stale': 'Última lectura válida. ', 'use.models': '{n} modelos', 'use.today': 'hoy', 'use.last7': '7 días', 'use.msgs': '{n} respuestas', 'use.runs': '{n} ejecuciones',
   'use.history': 'Historial de tokens', 'use.days': '14 días', 'use.weeks': '8 semanas', 'use.weekOf': 'semana del {d}',

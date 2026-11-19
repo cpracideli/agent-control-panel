@@ -176,6 +176,7 @@ label.glass-btn { padding: 0 6px 0 12px; }
 .ic-chat { background: var(--ok); }
 .ic-overview { background: var(--accent); }
 .ic-usage { background: #5856d6; }
+.ic-memory { background: #af52de; }
 .ic-providers { background: var(--purple); }
 .ic-mcp { background: var(--indigo); }
 .ic-schedules { background: var(--warn); }
@@ -514,3 +515,19 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 .bar { width: 100%; max-width: 26px; border-radius: 4px 4px 0 0; transition: height .3s ease; }
 .bar-x { font-size: 10.5px; color: var(--muted); height: 14px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bars-empty { padding: 20px 0; text-align: center; }
+
+/* memory explorer */
+.mem-tabs { align-self: flex-start; }
+.mem-tabs button { display: inline-flex; align-items: center; gap: 6px; }
+.mem-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mem-toolbar select { width: auto; }
+.mem-search { display: inline-flex; align-items: center; gap: 6px; background: var(--sunken); border-radius: 10px; padding: 0 10px; color: var(--muted); flex: 1; min-width: 140px; }
+.mem-search input { background: transparent; padding: 7px 0; box-shadow: none !important; }
+button.mem-row { white-space: normal; width: 100%; background: transparent; color: var(--text); text-align: left; border-radius: 0; font-weight: 400; cursor: pointer; }
+button.mem-row:hover { background: var(--sunken); }
+.mem-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mem-meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.mem-meta code { font-size: 12px; word-break: break-all; }
+.mem-actions { margin-bottom: 14px; gap: 8px; }
+.mem-meta { align-items: flex-start; }
+.mem-badges { display: flex; flex-wrap: wrap; gap: 6px; }
