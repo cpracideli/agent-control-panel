@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, AudioLines, Bot, Copy, Globe, Mic, MessagesSquare, Paperclip, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
+import { ArrowUp, AudioLines, Bot, Copy, ChevronLeft, Globe, Lock, Mic, MessagesSquare, Paperclip, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -231,6 +231,53 @@ export default function Chat({ openMore, me }) {
   // The send tap is the user gesture iOS needs to allow the spoken reply later; doing it at record start
   // put speech output and the microphone in the same audio session.
   const finishRec = async () => { unlockSpeech(); const v = await rec.stop(); if (v) send(v); };
+  // WhatsApp-style mic: press and hold to record, release to send, slide left to discard, slide up to lock
+  // (keep recording hands-free). A quick tap also locks, so tap-to-record keeps working on desktop.
+  // Listeners live on window because the composer re-renders under the finger while recording.
+  const [hold, setHold] = useState(null); // { dx, dy } while the finger is down
+  const buzz = (ms) => { try { navigator.vibrate?.(ms); } catch {} };
+  const onMicDown = (e) => {
+    if (e.button > 0 || rec.recording) return;
+    e.preventDefault();
+    const h = { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId };
+    const apply = (how) => {
+      if (how === 'send') { buzz(10); finishRec(); }
+      else if (how === 'cancel') { buzz([15, 40, 15]); rec.cancel(); }
+    };
+    const end = (how) => {
+      if (h.done) return;
+      h.done = true; h.how = how;
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', lost);
+      if (h.ready) apply(how); // before clearing hold, so "send" never flashes the locked screen
+      setHold(null);
+    };
+    const move = (ev) => {
+      if (ev.pointerId !== h.id || h.done) return;
+      const dx = Math.min(0, ev.clientX - h.x), dy = Math.min(0, ev.clientY - h.y);
+      if (dx < -110) return end('cancel');
+      if (dy < -80) { buzz(10); return end('lock'); }
+      setHold({ dx, dy });
+    };
+    const up = (ev) => { if (ev.pointerId === h.id) end(Date.now() - h.t < 350 ? 'lock' : 'send'); };
+    // The system took the touch (notification, permission prompt): keep the recording instead of losing it.
+    const lost = (ev) => { if (ev.pointerId === h.id) end('lock'); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', lost);
+    setHold({ dx: 0, dy: 0 });
+    stopSpeaking();
+    rec.start().then(() => {
+      h.ready = true; buzz(15);
+      // Released before the microphone opened (e.g. first permission prompt): nothing was recorded yet, so lock.
+      if (h.done) apply(h.how === 'cancel' ? 'cancel' : 'lock');
+    }, (err) => { end('fail'); toast(t('chat.micDenied') + (err?.message ? ' (' + err.message + ')' : ''), 'err'); });
+  };
+  const micButton = (
+    <button key="mic" type="button" className={'icon ghost round mic-hold' + (hold ? ' holding' : '')} aria-label={t('chat.record')} title={t('chat.holdHint')}
+      onPointerDown={onMicDown} onContextMenu={(e) => e.preventDefault()}
+      onClick={(e) => { if (e.detail === 0) startRec(); /* keyboard */ }}
+      style={hold ? { transform: `translate(${hold.dx}px, ${hold.dy}px) scale(1.6)` } : undefined}>
+      <Mic size={19} />
+    </button>
+  );
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => { try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); } catch (e) { toast(e.message, 'err'); } };
   const remove = async () => {
@@ -300,7 +347,7 @@ export default function Chat({ openMore, me }) {
           <div ref={endRef} />
         </div>
 
-        {rec.recording ? (
+        {rec.recording && !hold ? (
           <div className="composer recording">
             <IconButton icon={Trash2} className="ghost rec-cancel" size={18} label={t('chat.cancelRec')} onClick={rec.cancel} />
             <div className="rec-body">
@@ -310,8 +357,16 @@ export default function Chat({ openMore, me }) {
             <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} onClick={finishRec} />
           </div>
         ) : (
-        <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}
+        <form className={'composer' + (hold && rec.recording ? ' recording holding' : '')} onSubmit={(e) => { e.preventDefault(); send(); }}
           onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); }}>
+          {hold && rec.recording ? (
+            <div className="rec-body">
+              <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
+              <span className="rec-slide" style={{ transform: `translateX(${hold.dx / 2}px)`, opacity: Math.max(0.2, 1 + hold.dx / 110) }}>
+                <ChevronLeft size={16} />{t('chat.slideCancel')}
+              </span>
+            </div>
+          ) : <>
           <PendingFiles files={files} onRemove={(i) => setFiles((x) => x.filter((_, j) => j !== i))} />
           <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
           <IconButton icon={Paperclip} className="ghost round" size={19} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
@@ -321,9 +376,13 @@ export default function Chat({ openMore, me }) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) { e.preventDefault(); send(); } }}
           />
-          {live && <IconButton icon={Square} className="danger" label={t('common.stop')} onClick={stop} />}
+          </>}
+          {live && !hold && <IconButton icon={Square} className="danger" label={t('common.stop')} onClick={stop} />}
           {!text.trim() && !files.length && canRecord()
-            ? <IconButton icon={Mic} className="ghost round" size={19} label={t('chat.record')} onClick={startRec} />
+            ? <div className="mic-slot" key="mic-slot">
+                {hold && rec.recording && <span className="rec-lock" style={{ opacity: Math.min(1, 0.45 - hold.dy / 80) }}><Lock size={15} /></span>}
+                {micButton}
+              </div>
             : <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} type="submit" disabled={sending || (!text.trim() && !files.length)} />}
         </form>
         )}
