@@ -1163,3 +1163,26 @@ button.link, a { color: var(--accent); }
 .chat.term .mention-item { color: var(--t-fg); font-family: var(--mono); font-size: 12.5px; border-radius: 4px; }
 .chat.term .mention-item:hover { background: #2a2927; }
 
+/* ---------- Pages (HTML dashboards) and Prompt/Approval cards ---------- */
+.ic-dashboards { background: var(--teal); }
+.page-frame-wrap { border-radius: 14px; overflow: hidden; border: .5px solid var(--sep); background: #fff; min-height: 440px; height: 62vh; }
+.page-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; padding: 9px 16px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+a.btn.ghost { background: var(--sunken); color: var(--accent); }
+a.btn.small { padding: 5px 12px; font-size: 13px; }
+
+.prompt-cards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.prompt-card { background: var(--card); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--sep)); display: flex; flex-direction: column; gap: 8px; }
+.prompt-card.answered { border-color: var(--sep); opacity: .92; }
+.prompt-h { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.prompt-h svg { color: var(--warn); }
+.prompt-card.answered .prompt-h svg { color: var(--ok); }
+.prompt-q { font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; }
+.prompt-ans { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ok-ink); }
+.prompt-card.term-card { background: var(--t-bg2); border-color: var(--t-line); border-radius: 6px; font-family: var(--mono); color: var(--t-fg); }
+.prompt-card.term-card.pending { border-color: var(--t-accent); }
+.prompt-card.term-card input { background: var(--t-bg); color: var(--t-fg); border: 1px solid var(--t-line); border-radius: 4px; font-family: var(--mono); font-size: 12.5px; }
+.prompt-card.term-card button { border-radius: 4px; font-family: var(--mono); font-size: 12.5px; }
+.chat-item-row.unread .chat-title { font-weight: 700; }
+
+

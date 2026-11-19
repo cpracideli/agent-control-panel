@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowRight, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wrench, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -152,6 +152,62 @@ function DelegationList({ delegations, botsById, term }) {
   );
 }
 
+function PromptList({ prompts, term, onAnswered }) {
+  const t = useT();
+  const toast = useToast();
+  const [notes, setNotes] = useState({});
+  const [busy, setBusy] = useState(null);
+  if (!prompts || !prompts.length) return null;
+  const reply = async (p, ans) => {
+    const val = String(ans || '').trim();
+    if (!val || busy) return;
+    setBusy(p.id);
+    try {
+      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '');
+      onAnswered?.(updated);
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setBusy(null); }
+  };
+  return (
+    <div className="prompt-cards">
+      {prompts.map((p) => {
+        const pending = p.status === 'pending';
+        return (
+          <div key={p.id} className={'prompt-card' + (pending ? ' pending' : ' answered') + (term ? ' term-card' : '')}>
+            <div className="prompt-h">
+              <HelpCircle size={15} />
+              <b>{p.title || t('logs.a.prompt-ask')}</b>
+              <Badge kind={pending ? 'warn' : 'ok'}>{pending ? t('prp.pending') : t('prp.answered')}</Badge>
+            </div>
+            <div className="prompt-q">{p.question}</div>
+            {pending ? (
+              <div className="prompt-actions stack">
+                <div className="row wrap">
+                  {(p.options || []).map((opt) => (
+                    <button key={opt} type="button" className="small" disabled={busy === p.id} onClick={() => reply(p, opt)}>{opt}</button>
+                  ))}
+                </div>
+                <div className="row">
+                  <input value={notes[p.id] || ''} onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
+                    placeholder={t('prp.customPh')}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (notes[p.id] || '').trim()) { e.preventDefault(); reply(p, notes[p.id]); } }} />
+                  {(notes[p.id] || '').trim() && (
+                    <button type="button" className="ghost small" disabled={busy === p.id} onClick={() => reply(p, notes[p.id])}>{t('prp.send')}</button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="prompt-ans">
+                <Check size={14} /> <b>{p.answer}</b>{p.note && p.note !== p.answer ? <span className="muted"> — {p.note}</span> : null}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
@@ -178,6 +234,7 @@ function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <DelegationList delegations={m.delegations} botsById={botsById} term={term} />
+        <PromptList prompts={m.prompts} term={term} />
         <ToolList tools={m.tools} term={term} />
         <Md text={m.text} />
         <div className="msg-meta">
@@ -200,7 +257,7 @@ function useTicker() {
   useEffect(() => { const x = setInterval(() => set((n) => n + 1), 1000); return () => clearInterval(x); }, []);
 }
 
-function LiveRun({ live, bot, botsById, term }) {
+function LiveRun({ live, bot, botsById, term, onPromptAnswered }) {
   const t = useT();
   useTicker();
   const secs = Math.round((Date.now() - live.started) / 1000);
@@ -209,6 +266,7 @@ function LiveRun({ live, bot, botsById, term }) {
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <DelegationList delegations={live.delegations} botsById={botsById} term={term} />
+        <PromptList prompts={live.prompts} term={term} onAnswered={onPromptAnswered} />
         <ToolList tools={live.tools} term={term} />
         {live.texts.length > 0 && <Md text={live.texts.join('\n\n')} />}
         <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {bot && bot.id !== 'default' ? (bot.emoji ? bot.emoji + ' ' : '') + bot.name + ' · ' : ''}{t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
@@ -303,6 +361,26 @@ export default function Chat({ openMore, me }) {
   // Chat style: 'bubbles' (default) or 'terminal' (looks like Claude Code in a terminal). Visual only, per browser.
   const [term, setTermState] = useState(() => store.get('acp_chat_style') === 'terminal');
   const setTerm = (on) => { store.set('acp_chat_style', on ? 'terminal' : 'bubbles'); setTermState(on); };
+  const [pushOn, setPushState] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0');
+  const togglePush = async () => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') return;
+      store.set('acp_push', '1'); setPushState(true); toast(t('chat.pushOn'));
+    } else {
+      const next = !pushOn;
+      store.set('acp_push', next ? '1' : '0'); setPushState(next);
+      if (next) toast(t('chat.pushOn'));
+    }
+  };
+  const notifyBrowser = (title, body) => {
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0' && document.hidden) {
+        new Notification(title, { body: String(body || '').slice(0, 180), icon: '/pwa-192.png' });
+      }
+    } catch {}
+  };
   const setVoiceMode = (on) => { store.set('acp_voice', on ? '1' : '0'); setVoiceModeState(on); if (!on) stopSpeaking(); else unlockSpeech(); };
   const rec = useRecorder(lang);
   const fileRef = useRef(null);
@@ -349,19 +427,27 @@ export default function Chat({ openMore, me }) {
     const es = new EventSource(bridge.eventsUrl(current));
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
-      if (ev.type === 'hello') { load(); setLive(ev.running ? { started: ev.running.started, texts: [], tools: [], delegations: [] } : null); }
+      if (ev.type === 'hello') { load(); setLive(ev.running ? { started: ev.running.started, texts: [], tools: [], delegations: [], prompts: ev.prompt ? [ev.prompt] : [] } : null); }
       else if (ev.type === 'message') {
         setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
         const sp = speakRef.current;
-        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
+        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped) {
+          if (sp.voiceMode || sp.lastVoice) speak(ev.message.id, ev.message.text, sp.lang, current);
+          notifyBrowser('Agent Control', ev.message.text);
+        }
       }
       else if (ev.type === 'update') setMessages((ms) => ms.map((m) => (m.id === ev.id ? { ...m, ...ev.patch } : m)));
-      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); }
+      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], prompts: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); }
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
       else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input }] });
       else if (ev.type === 'tool_result') setLive((l) => l && { ...l, tools: l.tools.map((x) => (x.id === ev.id ? { ...x, result: ev.text, isError: ev.isError } : x)) });
       else if (ev.type === 'delegation') setLive((l) => l && { ...l, delegations: (l.delegations || []).some((d) => d.id === ev.ask.id) ? l.delegations.map((d) => (d.id === ev.ask.id ? ev.ask : d)) : [...(l.delegations || []), ev.ask] });
+      else if (ev.type === 'prompt') {
+        setLive((l) => l && { ...l, prompts: (l.prompts || []).some((p) => p.id === ev.prompt.id) ? l.prompts.map((p) => (p.id === ev.prompt.id ? ev.prompt : p)) : [...(l.prompts || []), ev.prompt] });
+        if (ev.prompt.status === 'pending') notifyBrowser(ev.prompt.title || 'Aprovação pendente', ev.prompt.question);
+        chats.reload(true);
+      }
       else if (ev.type === 'idle') { setLive(null); setQueuedAhead(0); chats.reload(true); }
     };
     return () => { closed = true; es.close(); };
@@ -583,9 +669,14 @@ export default function Chat({ openMore, me }) {
         <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
         <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
         {filteredChats.map((c) => (
-          <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '')}>
+          <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}>
             <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
-              <span className="chat-title">{c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}<span className="ellipsis">{c.title}</span></span>
+              <span className="chat-title">
+                {c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}
+                <span className="ellipsis">{c.title}</span>
+                {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
+                {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
+              </span>
               <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
             </button>
             <div className="chat-item-actions">
@@ -618,6 +709,9 @@ export default function Chat({ openMore, me }) {
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           <IconButton icon={SquareTerminal} className={'ghost voice-toggle only-desktop' + (term ? ' on' : '')} label={t('chat.style') + ': ' + (term ? t('chat.styleTerminal') : t('chat.styleBubbles'))} onClick={() => setTerm(!term)} />
+          {typeof Notification !== 'undefined' && (
+            <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
+          )}
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
           )}
@@ -659,7 +753,8 @@ export default function Chat({ openMore, me }) {
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
-          {live && <LiveRun live={live} bot={botsById[live.bot || (info && info.bot) || 'default']} botsById={botsById} term={term} />}
+          {live && <LiveRun live={live} bot={botsById[live.bot || (info && info.bot) || 'default']} botsById={botsById} term={term}
+            onPromptAnswered={(upd) => setLive((l) => l && { ...l, prompts: (l.prompts || []).map((p) => (p.id === upd.id ? upd : p)) })} />}
         </div>
 
         <div className="composer-dock" ref={composerRef}>
@@ -792,6 +887,15 @@ export default function Chat({ openMore, me }) {
                 <span className="row-ic ic-chat"><AudioLines size={17} /></span>
                 <span className="grow"><b>{t('chat.voiceMode')}</b><small className="muted">{t('chat.voiceModeHint')}</small></span>
                 <input type="checkbox" checked={voiceMode} onChange={(e) => setVoiceMode(e.target.checked)} />
+              </label>
+            </div>
+          )}
+          {typeof Notification !== 'undefined' && (
+            <div className="group">
+              <label className="group-row">
+                <span className="row-ic ic-schedules"><Bell size={17} /></span>
+                <span className="grow"><b>{t('chat.pushOff')}</b></span>
+                <input type="checkbox" checked={pushOn} onChange={togglePush} />
               </label>
             </div>
           )}

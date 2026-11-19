@@ -37,6 +37,16 @@ app.all('/hooks/:id/:token', express.raw({ type: () => true, limit: '1mb' }), as
   }
 });
 
+// ---------- public shared pages: GET /p/<id>/<token> serves the HTML page from the bridge ----------
+app.get('/p/:id/:token', async (req, res) => {
+  try {
+    const r = await fetch(BRIDGE_URL + '/p/' + encodeURIComponent(req.params.id) + '/' + encodeURIComponent(req.params.token));
+    res.status(r.status).type(r.headers.get('content-type') || 'text/html; charset=utf-8').send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    res.status(502).type('text/plain; charset=utf-8').send('Bridge inacessível');
+  }
+});
+
 app.use(express.json({ limit: '40mb' })); // web chat attachments travel as base64 (25 MB per file)
 
 // ---------- Google OAuth ----------

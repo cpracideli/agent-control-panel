@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BarChart3, Bot, Brain, CalendarClock, ChevronRight, Download, FileCode2, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
@@ -7,6 +7,7 @@ import { IconButton, Sheet, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
+import Dashboards from './pages/Dashboards.jsx';
 import Overview from './pages/Overview.jsx';
 import Usage from './pages/Usage.jsx';
 import Memory from './pages/Memory.jsx';
@@ -19,6 +20,7 @@ import Logs from './pages/Logs.jsx';
 const PAGES = [
   { id: 'chat', icon: MessageSquare, el: Chat },
   { id: 'bots', icon: Bot, el: Bots },
+  { id: 'dashboards', icon: FileCode2, el: Dashboards },
   { id: 'overview', icon: Gauge, el: Overview },
   { id: 'usage', icon: BarChart3, el: Usage },
   { id: 'memory', icon: Brain, el: Memory },
@@ -151,7 +153,7 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [page, setPage] = useState(pageFromHash);
   const [more, setMore] = useState(false);
-  const [navStatus, setNavStatus] = useState({ running: 0, offline: false });
+  const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
@@ -162,7 +164,7 @@ export default function App() {
     const poll = () => {
       if (document.hidden || stop) return;
       bridge.overview()
-        .then((o) => !stop && setNavStatus({ running: o.running?.length || 0, offline: false }))
+        .then((o) => !stop && setNavStatus({ running: o.running?.length || 0, unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0, offline: false }))
         .catch(() => !stop && setNavStatus((s) => ({ ...s, offline: true })));
     };
     poll();
@@ -224,7 +226,9 @@ export default function App() {
             <button key={id} className={'nav-item' + (id === page ? ' active' : '')} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
               <span className={'row-ic ic-' + id}><Icon size={15} /></span>
               <span className="grow">{t('nav.' + id)}</span>
-              {id === 'chat' && navStatus.running > 0 && <span className="nav-dot warn" aria-label={t('common.running')} />}
+              {id === 'chat' && (navStatus.pendingPrompts > 0
+                ? <span className="nav-dot err" aria-label={t('prp.pending')} />
+                : (navStatus.running > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
               {id === 'overview' && navStatus.offline && <span className="nav-dot err" aria-label={t('ov.offline')} />}
             </button>
           ))}
@@ -254,7 +258,7 @@ export default function App() {
           <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>
           {DOCK.map((id) => {
             const { icon: Icon } = PAGES.find((p) => p.id === id);
-            const dot = (id === 'chat' && navStatus.running > 0 && 'warn') || (id === 'overview' && navStatus.offline && 'err');
+            const dot = (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn')) || (id === 'overview' && navStatus.offline && 'err');
             return (
               <button key={id} className={id === page ? 'active' : ''} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
                 <span className="dock-ic"><Icon size={21} strokeWidth={id === page ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
