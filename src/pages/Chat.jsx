@@ -6,6 +6,7 @@ import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { BotAvatar } from './Bots.jsx';
 
 const chatFromHash = () => {
   const m = window.location.hash.match(/^#\/chat\/([a-f0-9]+)/);
@@ -65,7 +66,7 @@ function ToolList({ tools }) {
   );
 }
 
-function Message({ m, chatId, onResend, onRetry }) {
+function Message({ m, chatId, onResend, onRetry, bot }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -87,11 +88,12 @@ function Message({ m, chatId, onResend, onRetry }) {
   }
   return (
     <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
-      <div className="avatar" aria-hidden><Bot size={16} /></div>
+      {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <ToolList tools={m.tools} />
         <Md text={m.text} />
         <div className="msg-meta">
+          {bot && bot.id !== 'default' && <span>{bot.name}</span>}
           {m.provider && <span>{provName(m.provider)}</span>}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
@@ -110,13 +112,13 @@ function useTicker() {
   useEffect(() => { const x = setInterval(() => set((n) => n + 1), 1000); return () => clearInterval(x); }, []);
 }
 
-function LiveRun({ live }) {
+function LiveRun({ live, bot }) {
   const t = useT();
   useTicker();
   const secs = Math.round((Date.now() - live.started) / 1000);
   return (
     <div className="msg bot live">
-      <div className="avatar" aria-hidden><Bot size={16} /></div>
+      {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <ToolList tools={live.tools} />
         {live.texts.length > 0 && <Md text={live.texts.join('\n\n')} />}
@@ -128,7 +130,7 @@ function LiveRun({ live }) {
   );
 }
 
-function ChatSettings({ chat, providers, onChange }) {
+function ChatSettings({ chat, providers, bots, onChange }) {
   const t = useT();
   if (!chat || !providers) return null;
   const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
@@ -137,11 +139,16 @@ function ChatSettings({ chat, providers, onChange }) {
   const efforts = agy ? (agyModel ? agyModel.efforts : []) : prov.efforts;
   return (
     <div className="chat-settings">
+      {bots?.length > 1 && (
+        <select value={chat.bot || 'default'} onChange={(e) => onChange({ bot: e.target.value })} aria-label={t('bots.label')} title={t('bots.switchHint')}>
+          {bots.map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
+        </select>
+      )}
       <select value={chat.provider} onChange={(e) => onChange({ provider: e.target.value })} aria-label={t('chat.provider')}>
         {providers.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.installed}>{p.name}{p.installed ? '' : ' (' + t('common.notInstalled') + ')'}</option>)}
       </select>
       <select value={agy ? chat.agyModel : chat.model} onChange={(e) => onChange(agy ? { agyModel: e.target.value, agyEffort: '' } : { model: e.target.value })} aria-label={t('chat.model')}>
-        <option value="">{agy ? t('common.defaultModel') : t('chat.accountDefault', { m: prov.defaultModel || '—' })}</option>
+        <option value="">{agy ? t('common.defaultModel') : t('chat.accountDefault', { m: (!chat.model && chat.effModel) || prov.defaultModel || '—' })}</option>
         {prov.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
       </select>
       {efforts?.length > 0 && (
@@ -160,10 +167,10 @@ function modelLabel(chat, providers) {
   const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
   if (!prov) return null;
   const agy = chat.provider === 'antigravity';
-  const id = agy ? chat.agyModel : (chat.model || prov.defaultModel);
+  const id = agy ? chat.agyModel : (chat.model || chat.effModel || prov.defaultModel);
   const m = prov.models.find((x) => x.id === id);
   const name = m ? m.label : (id || provName(chat.provider));
-  return { name, effort: (agy ? chat.agyEffort : chat.effort) || '' };
+  return { name, effort: (agy ? chat.agyEffort : (chat.effort || chat.effEffort)) || '' };
 }
 
 export default function Chat({ openMore, me }) {
@@ -173,6 +180,8 @@ export default function Chat({ openMore, me }) {
   const confirm = useConfirm();
   const chats = useLoad(() => bridge.chats(), [], { interval: 15000 });
   const providers = useLoad(() => bridge.providers(), []);
+  const botsL = useLoad(() => bridge.bots(), [], { interval: 60000 });
+  const botsById = useMemo(() => Object.fromEntries((botsL.data || []).map((b) => [b.id, b])), [botsL.data]);
   const [current, setCurrent] = useState(chatFromHash);
   const [messages, setMessages] = useState([]);
   const [chatInfo, setChatInfo] = useState(null);
@@ -465,7 +474,7 @@ export default function Chat({ openMore, me }) {
           <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '')}>
             <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
               <span className="chat-title">{c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}<span className="ellipsis">{c.title}</span></span>
-              <small>{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+              <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
             </button>
             <div className="chat-item-actions">
               <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
@@ -495,7 +504,7 @@ export default function Chat({ openMore, me }) {
               <span className="avatar-ring" style={{ width: 34, height: 34 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={19} />}</span>
             </button>
           )}
-          {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>}
+          {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
           )}
@@ -532,12 +541,12 @@ export default function Chat({ openMore, me }) {
           {shownMessages.map((m, idx) => {
             const prevUser = m.role === 'assistant' ? [...shownMessages.slice(0, idx)].reverse().find((x) => x.role === 'user' && x.text) : null;
             return (
-              <Message key={m.id} m={m} chatId={current}
+              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]}
                 onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
-          {live && <LiveRun live={live} />}
+          {live && <LiveRun live={live} bot={botsById[(info && info.bot) || 'default']} />}
         </div>
 
         <div className="composer-dock" ref={composerRef}>
@@ -613,7 +622,7 @@ export default function Chat({ openMore, me }) {
       {showOpts && info && (
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
-          <div className="group pad"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>
+          <div className="group pad"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
           {hasTTS() && (
             <div className="group">
               <label className="group-row">

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Brain, CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BarChart3, Bot, Brain, CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
+import Bots from './pages/Bots.jsx';
 import Overview from './pages/Overview.jsx';
 import Usage from './pages/Usage.jsx';
 import Memory from './pages/Memory.jsx';
@@ -17,6 +18,7 @@ import Logs from './pages/Logs.jsx';
 
 const PAGES = [
   { id: 'chat', icon: MessageSquare, el: Chat },
+  { id: 'bots', icon: Bot, el: Bots },
   { id: 'overview', icon: Gauge, el: Overview },
   { id: 'usage', icon: BarChart3, el: Usage },
   { id: 'memory', icon: Brain, el: Memory },

@@ -1,0 +1,206 @@
+import { useState } from 'react';
+import { Bot, Brain, History, MessageSquare, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { bridge } from '../api.js';
+import { useT } from '../i18n.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+
+const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
+const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
+
+export function BotAvatar({ bot, size = 40 }) {
+  return (
+    <span className="bot-avatar" style={{ width: size, height: size, fontSize: size * 0.5, background: (bot?.color || '#8e8e93') + '33', borderColor: (bot?.color || '#8e8e93') + '66' }} aria-hidden>
+      {bot?.emoji || <Bot size={size * 0.5} />}
+    </span>
+  );
+}
+
+function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
+  const t = useT();
+  const editing = Boolean(initial?.id);
+  const [f, setF] = useState({ name: '', emoji: '✨', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', mcp: null, ...initial });
+  const [busy, run] = useAction();
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const provs = providers?.providers || [];
+  const agy = f.provider === 'antigravity';
+  const prov = provs.find((p) => p.id === (f.provider || providers?.defaultProvider || 'claude')) || provs[0];
+  const agyModel = agy && prov?.models.find((m) => m.id === f.agyModel);
+  const efforts = agy ? (agyModel ? agyModel.efforts : []) : (prov?.efforts || []);
+  const limited = Array.isArray(f.mcp);
+  const toggleMcp = (n) => setF({ ...f, mcp: f.mcp.includes(n) ? f.mcp.filter((x) => x !== n) : [...f.mcp, n] });
+  const submit = async (e) => {
+    e.preventDefault();
+    const body = { name: f.name.trim(), emoji: f.emoji, color: f.color, description: f.description, instructions: f.instructions,
+      provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory, mcp: f.mcp };
+    const r = editing ? await run('save', () => bridge.patchBot(f.id, body), t('bots.saved')) : await run('save', () => bridge.addBot(body), t('bots.created'));
+    if (r) { onSaved(r); onClose(); }
+  };
+  return (
+    <Modal title={editing ? t('bots.editTitle', { n: initial.name }) : t('bots.newTitle')} onClose={onClose} wide>
+      <form className="stack" onSubmit={submit}>
+        <div className="form-grid">
+          <Field label={t('bots.name')}><input required autoFocus={!editing} value={f.name} onChange={set('name')} placeholder={t('bots.namePh')} maxLength={40} /></Field>
+          <Field label={t('bots.emoji')}>
+            <div className="row wrap emoji-pick">
+              <input className="emoji-input" value={f.emoji} onChange={set('emoji')} maxLength={8} aria-label={t('bots.emoji')} />
+              {EMOJIS.map((x) => <button type="button" key={x} className={'ghost small' + (f.emoji === x ? ' on' : '')} onClick={() => setF({ ...f, emoji: x })}>{x}</button>)}
+            </div>
+          </Field>
+          <Field label={t('bots.color')}>
+            <div className="row wrap">{COLORS.map((c) => <button type="button" key={c} className={'color-dot' + (f.color === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => setF({ ...f, color: c })} />)}</div>
+          </Field>
+        </div>
+        <Field label={t('bots.description')} hint={t('bots.descriptionHint')}><input value={f.description} onChange={set('description')} maxLength={300} placeholder={t('bots.descriptionPh')} /></Field>
+        <Field label={t('bots.instructions')} hint={t('bots.instructionsHint')}>
+          <textarea rows={9} value={f.instructions} onChange={set('instructions')} placeholder={t('bots.instructionsPh')} />
+        </Field>
+        <div className="form-grid">
+          <Field label={t('chat.provider')}>
+            <select value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value, model: '', effort: '', agyModel: '', agyEffort: '' })}>
+              <option value="">{t('bots.inherit')}</option>
+              {provs.map((p) => <option key={p.id} value={p.id} disabled={!p.installed}>{p.name}</option>)}
+            </select>
+          </Field>
+          <Field label={t('chat.model')}>
+            <select value={agy ? f.agyModel : f.model} onChange={(e) => setF(agy ? { ...f, agyModel: e.target.value, agyEffort: '' } : { ...f, model: e.target.value })}>
+              <option value="">{t('bots.inherit')}</option>
+              {(prov?.models || []).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </Field>
+          {efforts.length > 0 && (
+            <Field label={t('chat.effort')}>
+              <select value={agy ? f.agyEffort : f.effort} onChange={(e) => setF(agy ? { ...f, agyEffort: e.target.value } : { ...f, effort: e.target.value })}>
+                <option value="">{t('bots.inherit')}</option>
+                {efforts.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label={t('bots.memory')} hint={t('bots.memoryHint')}>
+            <select value={f.memory} onChange={set('memory')}><option value="own">{t('bots.memOwn')}</option><option value="shared">{t('bots.memShared')}</option></select>
+          </Field>
+        </div>
+        <Field label={t('bots.mcp')} hint={agy ? t('bots.mcpAgy') : t('bots.mcpHint')}>
+          <div className="stack">
+            <div className="seg">
+              <button type="button" className={!limited ? 'on' : ''} onClick={() => setF({ ...f, mcp: null })}>{t('bots.mcpAll')}</button>
+              <button type="button" className={limited ? 'on' : ''} onClick={() => setF({ ...f, mcp: limited ? f.mcp : [] })}>{t('bots.mcpSome')}</button>
+            </div>
+            {limited && (
+              <div className="row wrap">
+                {!mcpNames.length && <span className="muted small">{t('bots.mcpNone')}</span>}
+                {mcpNames.map((n) => (
+                  <label key={n} className="check chip-check"><input type="checkbox" checked={f.mcp.includes(n)} onChange={() => toggleMcp(n)} />{n}</label>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
+        <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button><button disabled={busy === 'save'}>{t('common.save')}</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function MemoryModal({ bot, onClose }) {
+  const t = useT();
+  const mem = useLoad(() => bridge.botMemory(bot.id), [bot.id]);
+  const [text, setText] = useState(null);
+  const [busy, run] = useAction();
+  const value = text ?? mem.data?.content ?? '';
+  const save = async () => { if (await run('save', () => bridge.saveBotMemory(bot.id, value), t('mem.saved'))) onClose(); };
+  return (
+    <Modal title={t('bots.memoryTitle', { n: bot.name })} onClose={onClose} wide>
+      <div className="stack">
+        <ErrorBox error={mem.error} onRetry={() => mem.reload()} />
+        <p className="muted small">{t('bots.memoryHelp')}{mem.data?.file && <> <span className="mono">{mem.data.file}</span></>}</p>
+        <textarea rows={14} className="mono" value={value} onChange={(e) => setText(e.target.value)} placeholder={t('bots.memoryPh')} />
+        <div className="row between"><span className="muted small">{t('bots.bytes', { n: new Blob([value]).size })}</span>
+          <div className="row"><button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button><button disabled={busy === 'save' || mem.loading} onClick={save}>{t('common.save')}</button></div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function HistoryModal({ bot, onClose, onRestored }) {
+  const t = useT();
+  const f = useFmt();
+  const [busy, run] = useAction();
+  const list = (bot.history || []).slice().reverse();
+  return (
+    <Modal title={t('bots.historyTitle', { n: bot.name })} onClose={onClose} wide>
+      {!list.length && <p className="muted">{t('bots.historyNone')}</p>}
+      {list.map((h) => (
+        <div key={h.at} className="list-row wrap">
+          <div className="grow">
+            <div className="row wrap"><b>{f.date(h.at)}</b><Badge>{t('bots.via.' + (h.via || 'panel'))}</Badge></div>
+            <pre className="history-preview">{h.instructions || t('common.empty')}</pre>
+          </div>
+          <Btn icon={RotateCcw} className="ghost small" disabled={busy === h.at} onClick={async () => { const r = await run(h.at, () => bridge.restoreBot(bot.id, h.at), t('bots.restored')); if (r) { onRestored(); onClose(); } }}>{t('bots.restore')}</Btn>
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+export default function Bots() {
+  const t = useT();
+  const confirm = useConfirm();
+  const bots = useLoad(() => bridge.bots(), [], { interval: 30000 });
+  const providers = useLoad(() => bridge.providers(), []);
+  const mcp = useLoad(() => bridge.mcp(), []);
+  const [form, setForm] = useState(null);
+  const [memory, setMemory] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [busy, run] = useAction();
+  const mcpNames = mcp.data ? [...new Set(['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})))].sort() : [];
+  const provLabel = (b) => {
+    const p = (providers.data?.providers || []).find((x) => x.id === b.provider);
+    const model = b.provider === 'antigravity' ? b.agyModel : b.model;
+    return [p ? p.name : '', model, b.provider === 'antigravity' ? b.agyEffort : b.effort].filter(Boolean).join(' · ');
+  };
+  const chatWith = async (b) => {
+    const c = await run('chat' + b.id, () => bridge.newWeb({ bot: b.id, title: t('bots.chatTitle', { n: b.name }) }));
+    if (c) window.location.hash = '#/chat/' + c.id.slice(4);
+  };
+  return (
+    <div className="page">
+      <ErrorBox error={bots.error} onRetry={() => bots.reload()} />
+      <p className="muted page-intro">{t('bots.intro')}</p>
+      <Card title={t('bots.title', { n: bots.data?.length || 0 })} icon={Bot} actions={<Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('bots.new')}</Btn>}>
+        <div className="bot-grid">
+          {(bots.data || []).map((b) => (
+            <div key={b.id} className="bot-card">
+              <div className="row">
+                <BotAvatar bot={b} size={44} />
+                <div className="grow">
+                  <div className="row wrap"><b>{b.name}</b>{b.isDefault && <Badge>{t('bots.default')}</Badge>}</div>
+                  <div className="muted small ellipsis-2">{b.description || t('bots.noDescription')}</div>
+                </div>
+              </div>
+              <div className="row wrap bot-badges">
+                {provLabel(b) ? <span className="chip">{provLabel(b)}</span> : <span className="chip">{t('bots.inheritModel')}</span>}
+                <span className="chip">{b.memory === 'own' ? t('bots.memOwnShort', { n: b.memorySize }) : t('bots.memSharedShort')}</span>
+                {Array.isArray(b.mcp) && <span className="chip">{t('bots.mcpCount', { n: b.mcp.length })}</span>}
+                {b.instructions ? <span className="chip">{t('bots.hasInstructions')}</span> : null}
+                <span className="chip">{t('bots.stats', { c: b.chats, r: b.routines })}</span>
+              </div>
+              <div className="row bot-actions">
+                <Btn icon={MessageSquare} className="small" disabled={busy === 'chat' + b.id} onClick={() => chatWith(b)}>{t('bots.chat')}</Btn>
+                <span className="grow" />
+                <IconButton icon={Pencil} label={t('common.edit')} onClick={() => setForm(b)} />
+                {b.memory === 'own' && <IconButton icon={Brain} label={t('bots.memory')} onClick={() => setMemory(b)} />}
+                <IconButton icon={History} label={t('bots.history')} disabled={!b.history?.length} onClick={() => setHistory(b)} />
+                {!b.isDefault && <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')}
+                  onClick={async () => (await confirm(t('bots.removeConfirm', { n: b.name }))) && run('d' + b.id, () => bridge.deleteBot(b.id), t('common.removed')).then(() => bots.reload(true))} />}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      {form && <BotForm initial={form} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
+      {memory && <MemoryModal bot={memory} onClose={() => { setMemory(null); bots.reload(true); }} />}
+      {history && <HistoryModal bot={history} onClose={() => setHistory(null)} onRestored={() => bots.reload(true)} />}
+    </div>
+  );
+}

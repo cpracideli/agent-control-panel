@@ -21,6 +21,22 @@ if (!ADMIN_PASSWORD && !env.GOOGLE_OAUTH_CLIENT_ID) console.warn('WARNING: neith
 
 const app = express();
 app.set('trust proxy', 1);
+// ---------- public routine webhooks: POST /hooks/<id>/<token> goes to the bridge as is (the token is the auth) ----------
+// Registered before the JSON parser so the body reaches the bridge untouched.
+app.all('/hooks/:id/:token', express.raw({ type: () => true, limit: '1mb' }), async (req, res) => {
+  const q = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  try {
+    const r = await fetch(BRIDGE_URL + '/hooks/' + encodeURIComponent(req.params.id) + '/' + encodeURIComponent(req.params.token) + q, {
+      method: req.method,
+      headers: { 'Content-Type': req.get('content-type') || 'application/octet-stream' },
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : (Buffer.isBuffer(req.body) ? req.body : undefined),
+    });
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    res.status(502).json({ error: 'Bridge inacessível' });
+  }
+});
+
 app.use(express.json({ limit: '40mb' })); // web chat attachments travel as base64 (25 MB per file)
 
 // ---------- Google OAuth ----------
@@ -216,7 +232,8 @@ app.all('/api/bridge/*', auth, async (req, res) => {
   try {
     const r = await fetch(target, {
       method: req.method,
-      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+      // X-Panel-Url lets the bridge tell the agent the public address of routine webhooks.
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json', 'X-Panel-Url': PUBLIC_URL || `${req.protocol}://${req.get('host')}` },
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body || {}),
       signal: ctrl.signal,
     });

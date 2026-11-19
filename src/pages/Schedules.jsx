@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { CalendarClock, Globe, Pause, Pencil, Play, Plus, Smartphone, Trash2, Zap } from 'lucide-react';
+import { CalendarClock, Eye, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, Smartphone, Trash2, Webhook, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+
+const hookUrl = (s) => window.location.origin + '/hooks/' + s.id + '/' + s.hookToken;
+const STATUS_KIND = { ok: 'ok', quiet: 'muted', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
 
 const CRON_HELP = [['0 8 * * *', 'daily'], ['0 9 * * 1-5', 'weekdays'], ['*/30 * * * *', '30'], ['0 18 * * 5', 'fri']];
 const ChatIc = ({ id }) => (id.startsWith('web:') ? <Globe size={13} /> : <Smartphone size={13} />);
@@ -47,19 +50,29 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function ScheduleForm({ initial, chats, onClose, onSaved }) {
+function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
   const t = useT();
   const fmt = useFmt();
+  const toast = useToast();
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState({ chatId: chats[0]?.id || '', kind: 'cron', cron: '0 8 * * *', at: '', description: '', prompt: '', ...initial, ...(initial?.at ? { kind: 'at', at: toLocalInput(initial.at) } : {}) });
+  const [f, setF] = useState(() => ({ chatId: chats[0]?.id || '', kind: 'cron', cron: '0 8 * * *', at: '', description: '', prompt: '', bot: '', webhook: false, quiet: false,
+    watchOn: false, watchCommand: '', watchEvery: 30, ...initial,
+    ...(initial?.id ? { kind: initial.cron ? 'cron' : initial.at ? 'at' : 'none', at: toLocalInput(initial.at), cron: initial.cron || '0 8 * * *', bot: initial.bot || '',
+      webhook: Boolean(initial.webhook), quiet: Boolean(initial.quiet), watchOn: Boolean(initial.watch), watchCommand: initial.watch?.command || '', watchEvery: initial.watch?.every || 30 } : {}) }));
   const [busy, run] = useAction();
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const nextAt = f.kind === 'cron' ? nextCronRun(f.cron) : null;
+  const chatBot = (chats.find((c) => c.id === f.chatId) || {}).bot;
+  const botName = (id) => { const b = bots.find((x) => x.id === id); return b ? (b.emoji ? b.emoji + ' ' : '') + b.name : id; };
   const submit = async (e) => {
     e.preventDefault();
+    if (f.kind === 'none' && !f.webhook && !f.watchOn) return toast(t('sch.needTrigger'), 'err');
+    const body = { description: f.description, prompt: f.prompt, bot: f.bot || '', webhook: f.webhook, quiet: f.quiet,
+      watch: f.watchOn ? { command: f.watchCommand, every: Number(f.watchEvery) } : null,
+      ...(f.kind === 'cron' ? { cron: f.cron } : f.kind === 'at' ? { at: new Date(f.at).toISOString() } : editing ? { cron: '', at: '' } : {}) };
     const r = editing
-      ? await run('save', () => bridge.patchSchedule(f.id, { description: f.description, prompt: f.prompt, ...(f.kind === 'cron' ? { cron: f.cron } : {}) }), t('sch.saved'))
-      : await run('save', () => bridge.addSchedule({ chatId: f.chatId, description: f.description, prompt: f.prompt, ...(f.kind === 'cron' ? { cron: f.cron } : { at: new Date(f.at).toISOString() }) }), t('sch.created'));
+      ? await run('save', () => bridge.patchSchedule(f.id, body), t('sch.saved'))
+      : await run('save', () => bridge.addSchedule({ chatId: f.chatId, ...body }), t('sch.created'));
     if (r) { onSaved(); onClose(); }
   };
   return (
@@ -71,18 +84,64 @@ function ScheduleForm({ initial, chats, onClose, onSaved }) {
               {chats.map((c) => <option key={c.id} value={c.id}>{c.kind === 'web' ? 'Web · ' : 'WhatsApp · '}{c.title}</option>)}
             </select>
           </Field>
-          <Field label={t('sch.when')}>
-            <select value={f.kind} onChange={set('kind')} disabled={editing}><option value="cron">{t('sch.cron')}</option><option value="at">{t('sch.onceOpt')}</option></select>
+          <Field label={t('sch.bot')} hint={t('sch.botHint')}>
+            <select value={f.bot} onChange={set('bot')}>
+              <option value="">{t('sch.chatBot', { n: botName(chatBot || 'default') })}</option>
+              {bots.map((b) => <option key={b.id} value={b.id}>{botName(b.id)}</option>)}
+            </select>
           </Field>
-          {f.kind === 'cron'
-            ? <Field label="Cron" hint={nextAt ? t('sch.nextRun', { d: fmt.date(nextAt) }) : t('sch.cronInvalid')}><input className="mono" required value={f.cron} onChange={set('cron')} /></Field>
-            : <Field label={t('sch.datetime')}><input type="datetime-local" required value={f.at} onChange={set('at')} disabled={editing} /></Field>}
+          <Field label={t('sch.when')}>
+            <select value={f.kind} onChange={set('kind')}><option value="cron">{t('sch.cron')}</option><option value="at">{t('sch.onceOpt')}</option><option value="none">{t('sch.noTime')}</option></select>
+          </Field>
+          {f.kind === 'cron' && <Field label="Cron" hint={nextAt ? t('sch.nextRun', { d: fmt.date(nextAt) }) : t('sch.cronInvalid')}><input className="mono" required value={f.cron} onChange={set('cron')} /></Field>}
+          {f.kind === 'at' && <Field label={t('sch.datetime')}><input type="datetime-local" required value={f.at} onChange={set('at')} /></Field>}
         </div>
         {f.kind === 'cron' && <div className="presets">{CRON_HELP.map(([c, k]) => <button type="button" key={c} className="ghost small" onClick={() => setF({ ...f, cron: c })}>{t('sch.c.' + k)}</button>)}</div>}
+        <div className="trigger-box stack">
+          <label className="check"><input type="checkbox" checked={f.webhook} onChange={set('webhook')} /><Webhook size={15} /><span><b>{t('sch.webhook')}</b> · {t('sch.webhookHint')}</span></label>
+          {editing && f.webhook && initial.hookToken && (
+            <div className="row wrap hook-url">
+              <code className="mono grow ellipsis">{hookUrl(initial)}</code>
+              <Btn icon={Link2} type="button" className="ghost small" onClick={() => { navigator.clipboard.writeText(hookUrl(initial)); toast(t('common.copied')); }}>{t('common.copy')}</Btn>
+              <Btn icon={RefreshCw} type="button" className="ghost small" onClick={async () => { const r = await run('tok', () => bridge.patchSchedule(f.id, { newToken: true }), t('sch.newToken')); if (r) { onSaved(); onClose(); } }}>{t('sch.newTokenBtn')}</Btn>
+            </div>
+          )}
+          <label className="check"><input type="checkbox" checked={f.watchOn} onChange={set('watchOn')} /><Eye size={15} /><span><b>{t('sch.watch')}</b> · {t('sch.watchHint')}</span></label>
+          {f.watchOn && (
+            <div className="form-grid">
+              <Field label={t('sch.watchCommand')} hint={t('sch.watchCommandHint')}><input className="mono" required value={f.watchCommand} onChange={set('watchCommand')} placeholder="curl -s https://exemplo.com/status | jq .versao" /></Field>
+              <Field label={t('sch.watchEvery')}><input type="number" min={5} max={1440} required value={f.watchEvery} onChange={set('watchEvery')} /></Field>
+            </div>
+          )}
+          {editing && initial.watchError && <p className="err small">{t('sch.watchError', { e: initial.watchError })}</p>}
+          <label className="check"><input type="checkbox" checked={f.quiet} onChange={set('quiet')} /><span><b>{t('sch.quiet')}</b> · {t('sch.quietHint')}</span></label>
+        </div>
         <Field label={t('sch.description')}><input required value={f.description} onChange={set('description')} placeholder={t('sch.descPh')} /></Field>
         <Field label={t('sch.prompt')} hint={t('sch.promptHint')}><textarea required rows={5} value={f.prompt} onChange={set('prompt')} /></Field>
         <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button><button disabled={busy === 'save'}>{t('common.save')}</button></div>
       </form>
+    </Modal>
+  );
+}
+
+function RunsModal({ sch, onClose }) {
+  const t = useT();
+  const f = useFmt();
+  const runs = useLoad(() => bridge.scheduleRuns(sch.id), [sch.id], { interval: 5000 });
+  return (
+    <Modal title={t('sch.runsTitle', { id: sch.id, d: sch.description })} onClose={onClose} wide>
+      <ErrorBox error={runs.error} onRetry={() => runs.reload()} />
+      {runs.data && !runs.data.length && <p className="muted">{t('sch.runsNone')}</p>}
+      {(runs.data || []).map((r) => (
+        <details key={r.id} className="run-row">
+          <summary className="row wrap">
+            <Badge kind={STATUS_KIND[r.status] || 'muted'}>{t('sch.st.' + r.status)}</Badge>
+            <b>{f.date(r.at)}</b>
+            <span className="muted small">{t('sch.tr.' + r.trigger)}{r.ms ? ' · ' + f.dur(r.ms) : ''}{r.cost ? ' · ' + f.usd(r.cost) : ''}</span>
+          </summary>
+          {r.text ? <pre className="history-preview">{r.text}</pre> : <p className="muted small">{t('common.empty')}</p>}
+        </details>
+      ))}
     </Modal>
   );
 }
@@ -93,7 +152,10 @@ export default function Schedules() {
   const confirm = useConfirm();
   const sch = useLoad(() => bridge.schedules(), [], { interval: 30000 });
   const chats = useLoad(() => bridge.chats(), []);
+  const bots = useLoad(() => bridge.bots(), []);
+  const toast = useToast();
   const [form, setForm] = useState(null);
+  const [runsOf, setRunsOf] = useState(null);
   const [filter, setFilter] = useState('all');
   const [busy, run] = useAction();
   const list = (sch.data || []).filter((s) => filter === 'all' || (filter === 'paused' ? s.paused : !s.paused));
@@ -114,14 +176,19 @@ export default function Schedules() {
           return (
             <div key={s.id} className="list-row wrap">
               <div className="grow">
-                <div className="row wrap"><b>#{s.id} · {s.description}</b>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}</div>
+                <div className="row wrap"><b>#{s.id} · {s.description}</b>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}
+                  {s.webhook && <Badge kind="muted">webhook</Badge>}{s.watch && <Badge kind="muted">{t('sch.watchBadge', { n: s.watch.every })}</Badge>}
+                  {s.quiet && <Badge kind="muted">{t('sch.quietBadge')}</Badge>}
+                  {s.lastRunInfo && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status)}</Badge>}</div>
                 <div className="muted small with-ic">
-                  <span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span> · <ChatIc id={s.chatId} />{s.chatTitle}
+                  {(s.cron || s.at) && <><span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span> · </>}<ChatIc id={s.chatId} />{s.chatTitle}{s.botName && ' · ' + s.botName}
                   {nextAt && ' · ' + t('sch.nextRun', { d: f.date(nextAt) })}
                   {s.lastRun && ' · ' + t('sch.last', { d: f.date(s.lastRun) })}
                 </div>
               </div>
               <div className="row">
+                {s.webhook && <IconButton icon={Link2} label={t('sch.copyHook')} onClick={() => { navigator.clipboard.writeText(hookUrl(s)); toast(t('common.copied')); }} />}
+                <IconButton icon={History} label={t('sch.runs')} onClick={() => setRunsOf(s)} />
                 <IconButton icon={Zap} label={t('sch.runNow')} disabled={busy === 'run' + s.id} onClick={() => run('run' + s.id, () => bridge.runSchedule(s.id), t('sch.running'))} />
                 <IconButton icon={s.paused ? Play : Pause} label={s.paused ? t('sch.resume') : t('sch.pause')} onClick={() => run('p' + s.id, () => bridge.patchSchedule(s.id, { paused: !s.paused })).then(() => sch.reload(true))} />
                 <IconButton icon={Pencil} label={t('common.edit')} onClick={() => setForm(s)} />
@@ -131,7 +198,8 @@ export default function Schedules() {
           );
         })}
       </Card>
-      {form && <ScheduleForm initial={form} chats={chats.data || []} onClose={() => setForm(null)} onSaved={() => sch.reload(true)} />}
+      {form && <ScheduleForm initial={form} chats={chats.data || []} bots={bots.data || []} onClose={() => setForm(null)} onSaved={() => sch.reload(true)} />}
+      {runsOf && <RunsModal sch={runsOf} onClose={() => { setRunsOf(null); sch.reload(true); }} />}
     </div>
   );
 }
