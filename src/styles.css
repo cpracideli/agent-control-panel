@@ -956,3 +956,34 @@ button.link, a { color: var(--accent); }
   .chat.dragging .chat-main, .chat.dragging .chat-list { transition: none !important; }
   .chat.dragging .chat-list { pointer-events: none; }
 }
+
+/* v3.3 Liquid Glass as a lens: clear centre, light frost only. Chromium adds real refraction
+   (glass.js, html.lg-refract); Safari keeps this clear glass with a bright bevel. */
+.dock-capsule, .composer, .head-capsule, .glass-btn, .chat-head .nav-btn {
+  -webkit-backdrop-filter: blur(5px) saturate(175%) brightness(1.06) !important;
+  backdrop-filter: blur(5px) saturate(175%) brightness(1.06) !important;
+}
+:root {
+  --lg-tint: linear-gradient(180deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .1) 100%);
+  --lg-tint-strong: linear-gradient(180deg, rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .2) 100%);
+  --lg-bevel: inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, .9), inset -1px -1px 1px -0.5px rgba(255, 255, 255, .55), inset 0 0 14px rgba(255, 255, 255, .28), inset 0 -8px 16px -10px rgba(0, 0, 0, .12);
+}
+:root[data-theme="dark"] {
+  --lg-tint: linear-gradient(180deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, .02) 100%);
+  --lg-tint-strong: linear-gradient(180deg, rgba(40, 40, 38, .22) 0%, rgba(24, 24, 22, .2) 100%);
+  --lg-bevel: inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, .55), inset -1px -1px 1px -0.5px rgba(255, 255, 255, .25), inset 0 0 16px rgba(255, 255, 255, .07), inset 0 -10px 18px -12px rgba(0, 0, 0, .5);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lg-tint: linear-gradient(180deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, .02) 100%);
+    --lg-tint-strong: linear-gradient(180deg, rgba(40, 40, 38, .22) 0%, rgba(24, 24, 22, .2) 100%);
+    --lg-bevel: inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, .55), inset -1px -1px 1px -0.5px rgba(255, 255, 255, .25), inset 0 0 16px rgba(255, 255, 255, .07), inset 0 -10px 18px -12px rgba(0, 0, 0, .5);
+  }
+}
+.dock-capsule, .composer, .head-capsule, .glass-btn, .chat-head .nav-btn {
+  box-shadow: var(--lg-bevel), 0 0 0 .5px var(--lg-edge), 0 12px 30px -12px rgba(0, 0, 0, .45) !important;
+}
+.composer { background: var(--lg-tint-strong) !important; }
+/* with less frost, text on glass needs a soft halo to stay readable */
+.dock button, .composer textarea, .model-pill, .head-capsule button { text-shadow: 0 0 8px color-mix(in srgb, var(--bg) 85%, transparent), 0 1px 2px color-mix(in srgb, var(--bg) 60%, transparent); }
+.composer button.cbtn, .model-pill { background: color-mix(in srgb, var(--text) 9%, transparent); }
