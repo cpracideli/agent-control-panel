@@ -144,6 +144,9 @@ export default function Chat({ openMore, me }) {
   const [text, setText] = useState('');
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
+  const rootRef = useRef(null);
+  const openRef = useRef(false);
+  openRef.current = showList;
   const [showOpts, setShowOpts] = useState(false);
   const [files, setFiles] = useState([]);
   const [sending, setSending] = useState(false);
@@ -164,7 +167,7 @@ export default function Chat({ openMore, me }) {
 
   const select = (id, replace) => {
     const h = '#/chat/' + id.slice(4);
-    if (replace) window.history.replaceState(null, '', h); else window.location.hash = h;
+    window.history.replaceState(null, '', h); // never push: a swipe from the left edge must open the drawer, not go back
     setCurrent(id); setShowList(false);
   };
   useEffect(() => { if (!current && webChats.length) select(webChats[0].id, true); }, [webChats.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -210,6 +213,62 @@ export default function Chat({ openMore, me }) {
     const ro = new ResizeObserver(() => host.style.setProperty('--composer-h', el.offsetHeight + 'px'));
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+  // Claude-style drawer gesture: drag right anywhere on the conversation to open, left to close; the page
+  // follows the finger. A touch that starts at the very left edge is claimed so iOS doesn't treat it as "back".
+  useEffect(() => {
+    const root = rootRef.current, main = mainRef.current;
+    if (!root || !main) return undefined;
+    const list = root.querySelector('.chat-list');
+    const mobile = () => window.matchMedia('(max-width: 820px)').matches;
+    const W = () => Math.min(window.innerWidth * 0.8, 340);
+    let s = null;
+    const paint = (x) => {
+      const w = W();
+      main.style.transform = x ? `translateX(${x}px)` : 'translateX(0)';
+      main.style.borderRadius = Math.round(Math.min(1, x / w) * 44) + 'px';
+      list.style.opacity = String(Math.min(1, x / w));
+    };
+    const clear = () => { root.classList.remove('dragging'); main.style.transform = ''; main.style.borderRadius = ''; list.style.opacity = ''; };
+    const start = (e) => {
+      if (!mobile() || e.touches.length !== 1) { s = null; return; }
+      const p = e.touches[0];
+      if (p.clientX < 24 && !openRef.current) e.preventDefault();
+      // horizontal scrollers and the text box keep their own sideways gestures
+      if (p.clientX >= 24 && e.target.closest?.('.table-wrap, .pending-files, textarea, pre, .rec-body, .mic-hold')) { s = null; return; }
+      s = { x: p.clientX, y: p.clientY, open: openRef.current, drag: false, pos: openRef.current ? W() : 0 };
+    };
+    const move = (e) => {
+      if (!s) return;
+      const p = e.touches[0];
+      const dx = p.clientX - s.x, dy = p.clientY - s.y;
+      if (!s.drag) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
+        if (Math.abs(dx) < 10) return;
+        if ((!s.open && dx < 0) || (s.open && dx > 0)) { s = null; return; }
+        s.drag = true; s.x = p.clientX; root.classList.add('dragging');
+      }
+      e.preventDefault();
+      const w = W();
+      s.pos = Math.max(0, Math.min(w, (s.open ? w : 0) + (p.clientX - s.x)));
+      paint(s.pos);
+    };
+    const end = () => {
+      if (!s) return;
+      const { drag, pos, open } = s; s = null;
+      if (!drag) return;
+      const w = W();
+      const next = open ? pos > w * 0.7 : pos > w * 0.25;
+      requestAnimationFrame(() => { clear(); setShowList(next); });
+    };
+    root.addEventListener('touchstart', start, { passive: false });
+    root.addEventListener('touchmove', move, { passive: false });
+    root.addEventListener('touchend', end);
+    root.addEventListener('touchcancel', end);
+    return () => {
+      root.removeEventListener('touchstart', start); root.removeEventListener('touchmove', move);
+      root.removeEventListener('touchend', end); root.removeEventListener('touchcancel', end);
+    };
   }, []);
   const toBottom = (smooth) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
   useEffect(() => { if (atBottom) toBottom(); }, [messages, live]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -322,7 +381,7 @@ export default function Chat({ openMore, me }) {
   const empty = !text.trim() && !files.length;
 
   return (
-    <div className={'chat' + (showList ? ' list-open' : '')}>
+    <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '')}>
       <aside className="chat-list" aria-hidden={undefined}>
         <div className="drawer-head only-mobile">
           <h1 className="serif-title">{t('chat.conversations')}</h1>

@@ -193,7 +193,8 @@ export default function App() {
   }
 
   const Page = PAGES.find((p) => p.id === page).el;
-  const go = (id) => { window.location.hash = '#/' + id; };
+  // Replace instead of push: in the installed app an edge swipe is "back", and the history would fight the drawer gesture.
+  const go = (id) => { window.history.replaceState(null, '', '#/' + id); setPage(id); };
   const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setAuthed(false); };
   const dockIndex = DOCK.includes(page) ? DOCK.indexOf(page) : 4;
 
