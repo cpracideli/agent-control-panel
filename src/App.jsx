@@ -20,9 +20,9 @@ import Logs from './pages/Logs.jsx';
 const PAGES = [
   { id: 'chat', icon: MessageSquare, el: Chat },
   { id: 'bots', icon: Bot, el: Bots },
-  { id: 'dashboards', icon: FileCode2, el: Dashboards },
-  { id: 'overview', icon: Gauge, el: Overview },
   { id: 'usage', icon: BarChart3, el: Usage },
+  { id: 'overview', icon: Gauge, el: Overview },
+  { id: 'dashboards', icon: FileCode2, el: Dashboards },
   { id: 'memory', icon: Brain, el: Memory },
   { id: 'providers', icon: Sparkles, el: Providers },
   { id: 'mcp', icon: Plug, el: Mcp },
@@ -101,7 +101,7 @@ function takeAuthParams() {
   return { code, error };
 }
 
-const DOCK = ['chat', 'overview', 'providers', 'mcp'];
+const DOCK = ['chat', 'bots', 'usage', 'overview'];
 const MORE = PAGES.filter((p) => !DOCK.includes(p.id));
 
 function Avatar({ me, size = 34 }) {
