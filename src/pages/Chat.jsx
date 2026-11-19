@@ -36,7 +36,7 @@ function ToolList({ tools }) {
   );
 }
 
-function Message({ m }) {
+function Message({ m, chatId }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -44,7 +44,8 @@ function Message({ m }) {
     return (
       <div className="msg user">
         <div className="user-col">
-          <MessageFiles files={m.files} transcript={m.transcript} />
+          <MessageFiles files={m.files} transcript={m.transcript} engine={m.transcriptEngine} pendingLabel={t('chat.transcribing')}
+            pending={!m.transcript && !m.transcriptFailed && Date.now() - new Date(m.at).getTime() < 180000} />
           {m.text && <div className="bubble">{m.text}</div>}
         </div>
       </div>
@@ -61,7 +62,7 @@ function Message({ m }) {
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{f.usd(m.usage.cost)}</span> : null}
-          {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
+          {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} chatId={chatId} file={m.tts} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
           <IconButton icon={Copy} size={13} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(m.text); toast(t('common.copied')); }} />
         </div>
       </div>
@@ -174,8 +175,9 @@ export default function Chat({ openMore, me }) {
       else if (ev.type === 'message') {
         setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
         const sp = speakRef.current;
-        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang);
+        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
       }
+      else if (ev.type === 'update') setMessages((ms) => ms.map((m) => (m.id === ev.id ? { ...m, ...ev.patch } : m)));
       else if (ev.type === 'start') setLive({ started: Date.now(), texts: [], tools: [], provider: ev.provider });
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
@@ -342,7 +344,7 @@ export default function Chat({ openMore, me }) {
               </div>
             </div>
           )}
-          {messages.map((m) => <Message key={m.id} m={m} />)}
+          {messages.map((m) => <Message key={m.id} m={m} chatId={current} />)}
           {live && <LiveRun live={live} />}
           <div ref={endRef} />
         </div>

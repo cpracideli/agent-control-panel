@@ -1,7 +1,8 @@
 // Attachments, voice recording (with on-device transcription when the browser offers it)
-// and spoken replies (speechSynthesis) for the web chat. No API keys involved.
+// and audio playback for the web chat: one clip at a time, a shared speed (1x/1.5x/2x, remembered), and spoken
+// replies generated on the bridge (~/bin/falar) with the browser's speechSynthesis only as a fallback.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileText, Pause, Play, X } from 'lucide-react';
+import { FileText, Loader2, Pause, Play, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store } from '../i18n.jsx';
 
@@ -142,48 +143,119 @@ function bestVoice(lang) {
   return pool.sort((a, b) => score(b) - score(a))[0] || null;
 }
 
-let speakingId = null;
-const subs = new Set();
-const notify = () => subs.forEach((fn) => fn(speakingId));
+// ---------- playback: one audio at a time, shared speed ----------
+const RATES = [1, 1.5, 2];
+let rate = RATES.includes(Number(store.get('acp_rate'))) ? Number(store.get('acp_rate')) : 1;
+const rateSubs = new Set();
+let activeAudio = null;
+export function useRate() {
+  const [r, setR] = useState(rate);
+  useEffect(() => { rateSubs.add(setR); return () => rateSubs.delete(setR); }, []);
+  return r;
+}
+function cycleRate() {
+  rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+  store.set('acp_rate', String(rate));
+  rateSubs.forEach((fn) => fn(rate));
+  if (activeAudio) activeAudio.playbackRate = rate;
+}
+// Called on every "play": pauses whatever else is playing and applies the saved speed
+// (Safari resets playbackRate when the source loads, so it is set again here).
+function claim(a) {
+  if (activeAudio && activeAudio !== a) { try { activeAudio.pause(); } catch {} }
+  activeAudio = a;
+  a.defaultPlaybackRate = rate; a.playbackRate = rate;
+  if (a !== ttsAudio && speakState) stopSpeaking();
+}
+export function RateButton() {
+  const r = useRate();
+  return <button type="button" className="vn-rate" onClick={cycleRate} aria-label="speed">{String(r).replace('.', ',')}×</button>;
+}
 
-export function speak(id, text, lang) {
-  if (!hasTTS()) return;
+// ---------- spoken replies ----------
+// One shared <audio> for replies. iOS lets an element play later without a tap only if it already played during
+// one, so unlockSpeech() (called on the send tap) plays a silent clip through it.
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+let ttsAudio = null;
+let speakState = null; // { id, loading, browser }
+const subs = new Set();
+const notify = () => subs.forEach((fn) => fn(speakState));
+function ttsEl() {
+  if (ttsAudio || typeof Audio === 'undefined') return ttsAudio;
+  ttsAudio = new Audio();
+  ttsAudio.preload = 'auto';
+  ttsAudio.onplay = () => { if (ttsAudio.src !== SILENT) claim(ttsAudio); };
+  const done = () => { if (speakState && !speakState.loading && !speakState.browser) { speakState = null; notify(); } };
+  ttsAudio.onpause = done; ttsAudio.onended = done;
+  return ttsAudio;
+}
+
+function speakBrowser(id, text, lang) {
+  if (!hasTTS()) { speakState = null; notify(); return; }
   const synth = window.speechSynthesis;
   synth.cancel();
   const clean = speakable(text);
-  if (!clean) return;
+  if (!clean) { speakState = null; notify(); return; }
   // Long answers are split by sentence: some engines stop after ~15 s on a single utterance.
   const parts = clean.match(/[^.!?…]+[.!?…]*\s*/g) || [clean];
   const voice = bestVoice(lang);
-  speakingId = id; notify();
+  speakState = { id, browser: true }; notify();
   parts.forEach((p, i) => {
     const u = new SpeechSynthesisUtterance(p.trim());
     u.lang = voice?.lang || lang; if (voice) u.voice = voice;
-    u.rate = Number(store.get('acp_tts_rate')) || 1.05;
-    if (i === parts.length - 1) u.onend = () => { if (speakingId === id) { speakingId = null; notify(); } };
-    u.onerror = () => { speakingId = null; notify(); };
+    u.rate = rate;
+    if (i === parts.length - 1) u.onend = () => { if (speakState?.id === id) { speakState = null; notify(); } };
+    u.onerror = () => { speakState = null; notify(); };
     synth.speak(u);
   });
 }
-export function stopSpeaking() { if (hasTTS()) window.speechSynthesis.cancel(); speakingId = null; notify(); }
-// iOS only lets speech start from a user gesture: an empty utterance during the tap unlocks it for later.
-export function unlockSpeech() { if (hasTTS()) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } catch {} } }
 
-export function useSpeaking() {
-  const [id, setId] = useState(speakingId);
-  useEffect(() => { subs.add(setId); return () => subs.delete(setId); }, []);
-  return id;
+// Plays the reply's audio, generating it on the bridge the first time (a few seconds).
+export async function speak(id, text, lang, chatId, file) {
+  stopSpeaking();
+  if (!chatId) return speakBrowser(id, text, lang);
+  speakState = { id, loading: !file }; notify();
+  try {
+    const f = file || (await bridge.tts(chatId, id)).file;
+    if (speakState?.id !== id) return; // stopped while it was being generated
+    const a = ttsEl();
+    a.src = bridge.fileUrl(f);
+    speakState = { id, loading: false }; notify();
+    await a.play();
+  } catch {
+    if (speakState?.id === id) speakBrowser(id, text, lang);
+  }
+}
+export function stopSpeaking() {
+  const was = speakState;
+  speakState = null; notify();
+  if (was?.browser && hasTTS()) window.speechSynthesis.cancel();
+  if (ttsAudio && !ttsAudio.paused) try { ttsAudio.pause(); } catch {}
+}
+export function unlockSpeech() {
+  const a = ttsEl();
+  if (a && a.paused && !speakState) { try { a.src = SILENT; a.play().catch(() => {}); } catch {} }
+  if (hasTTS()) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } catch {} }
 }
 
-export function SpeakButton({ id, text, lang, label, stopLabel }) {
+export function useSpeaking() {
+  const [st, setSt] = useState(speakState);
+  useEffect(() => { subs.add(setSt); return () => subs.delete(setSt); }, []);
+  return st;
+}
+
+export function SpeakButton({ id, text, lang, chatId, file, label, stopLabel }) {
   const now = useSpeaking();
-  if (!hasTTS() || !text) return null;
-  const on = now === id;
+  if (!text) return null;
+  const on = now?.id === id;
   return (
-    <button type="button" className={'ghost bare icon speak' + (on ? ' on' : '')} title={on ? stopLabel : label} aria-label={on ? stopLabel : label}
-      onClick={() => (on ? stopSpeaking() : speak(id, text, lang))}>
-      {on ? <Pause size={14} /> : <Play size={14} />}
-    </button>
+    <>
+      <button type="button" className={'ghost bare icon speak' + (on ? ' on' : '')} title={on ? stopLabel : label} aria-label={on ? stopLabel : label}
+        onClick={() => (on ? stopSpeaking() : speak(id, text, lang, chatId, file))}>
+        {on && now.loading ? <Loader2 size={14} className="spin-ic" /> : on ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      {on && !now.loading && <RateButton />}
+    </>
   );
 }
 
@@ -203,14 +275,14 @@ export function PendingFiles({ files, onRemove }) {
   );
 }
 
-export function MessageFiles({ files, transcript }) {
+export function MessageFiles({ files, transcript, engine, pending, pendingLabel }) {
   if (!files?.length) return null;
   return (
     <div className="msg-files">
       {files.map((f) => {
         const url = bridge.fileUrl(f.file);
         if (f.type.startsWith('image/')) return <a key={f.file} href={url} target="_blank" rel="noreferrer" className="msg-img"><img src={url} alt={f.name} loading="lazy" /></a>;
-        if (f.type.startsWith('audio/') || f.voice) return <VoiceNote key={f.file} url={url} transcript={transcript} />;
+        if (f.type.startsWith('audio/') || f.voice) return <VoiceNote key={f.file} url={url} transcript={transcript} engine={engine} pending={pending} pendingLabel={pendingLabel} />;
         if (f.type.startsWith('video/')) return <video key={f.file} src={url} controls playsInline className="msg-video" />;
         return <a key={f.file} href={url} target="_blank" rel="noreferrer" className="msg-file"><FileText size={18} /><span>{f.name}<small>{fmtSize(f.size)}</small></span></a>;
       })}
@@ -218,7 +290,7 @@ export function MessageFiles({ files, transcript }) {
   );
 }
 
-function VoiceNote({ url, transcript }) {
+function VoiceNote({ url, transcript, engine, pending, pendingLabel }) {
   const ref = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
@@ -227,6 +299,7 @@ function VoiceNote({ url, transcript }) {
   const toggle = () => {
     const a = ref.current;
     if (playing) return a.pause();
+    claim(a);
     a.play().catch(() => setFailed(true));
   };
   return (
@@ -237,9 +310,11 @@ function VoiceNote({ url, transcript }) {
         </button>
         <div className="vn-bar"><span style={{ width: dur ? (pos / dur) * 100 + '%' : 0 }} /></div>
         <span className="vn-time">{fmtClock(playing || pos ? pos : dur)}</span>
+        {(playing || pos > 0) && <RateButton />}
       </div>
       {failed && <a className="vn-text" href={url} target="_blank" rel="noreferrer">Este navegador não tocou o áudio: abrir o arquivo</a>}
-      {transcript && <div className="vn-text">{transcript}</div>}
+      {transcript ? <div className="vn-text">{transcript}{engine && <small className="vn-engine"> · {engine}</small>}</div>
+        : pending ? <div className="vn-text vn-pending"><Loader2 size={12} className="spin-ic" /> {pendingLabel}</div> : null}
       <audio ref={ref} src={url} preload="metadata"
         onError={() => setFailed(true)}
         onLoadedMetadata={(e) => {
@@ -251,7 +326,7 @@ function VoiceNote({ url, transcript }) {
           a.currentTime = 1e7;
         }}
         onDurationChange={(e) => Number.isFinite(e.target.duration) && setDur(e.target.duration)}
-        onTimeUpdate={(e) => setPos(e.target.currentTime)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onTimeUpdate={(e) => setPos(e.target.currentTime)} onPlay={(e) => { claim(e.target); setPlaying(true); }} onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setPos(0); }} />
     </div>
   );

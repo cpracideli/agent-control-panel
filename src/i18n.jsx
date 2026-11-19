@@ -35,7 +35,7 @@ const pt = {
   'nav.more': 'Mais', 'nav.pages': 'Páginas', 'nav.appearance': 'Aparência', 'nav.account': 'Conta', 'nav.signedPwd': 'Entrou com senha', 'nav.settings': 'Ajustes',
   'chat.options': 'Opções da conversa', 'chat.attach': 'Anexar arquivo', 'chat.record': 'Gravar áudio', 'chat.cancelRec': 'Descartar áudio', 'chat.slideCancel': 'Deslize para cancelar', 'chat.holdHint': 'Segure para gravar, solte para enviar',
   'chat.recording': 'Gravando… fale à vontade', 'chat.micDenied': 'Não consegui usar o microfone', 'chat.tooBig': '{n} passa de 25 MB',
-  'chat.listen': 'Ouvir resposta', 'chat.stopListen': 'Parar áudio', 'chat.voiceMode': 'Responder em voz',
+  'chat.listen': 'Ouvir resposta', 'chat.transcribing': 'Transcrevendo…', 'chat.stopListen': 'Parar áudio', 'chat.voiceMode': 'Responder em voz',
   'chat.voiceModeHint': 'Lê as respostas em voz alta. Quando você manda áudio, a resposta é falada mesmo com isso desligado.',
   'common.on': 'ligado', 'common.off': 'desligado',
 
@@ -144,7 +144,7 @@ const en = {
   'nav.more': 'More', 'nav.pages': 'Pages', 'nav.appearance': 'Appearance', 'nav.account': 'Account', 'nav.signedPwd': 'Signed in with password', 'nav.settings': 'Settings',
   'chat.options': 'Conversation options', 'chat.attach': 'Attach file', 'chat.record': 'Record audio', 'chat.cancelRec': 'Discard audio', 'chat.slideCancel': 'Slide to cancel', 'chat.holdHint': 'Hold to record, release to send',
   'chat.recording': 'Recording… go ahead', 'chat.micDenied': 'Could not use the microphone', 'chat.tooBig': '{n} is over 25 MB',
-  'chat.listen': 'Listen', 'chat.stopListen': 'Stop audio', 'chat.voiceMode': 'Answer by voice',
+  'chat.listen': 'Listen', 'chat.transcribing': 'Transcribing…', 'chat.stopListen': 'Stop audio', 'chat.voiceMode': 'Answer by voice',
   'chat.voiceModeHint': 'Reads answers aloud. When you send audio, the answer is spoken even with this off.',
   'common.on': 'on', 'common.off': 'off',
 
@@ -253,7 +253,7 @@ const es = {
   'nav.more': 'Más', 'nav.pages': 'Páginas', 'nav.appearance': 'Apariencia', 'nav.account': 'Cuenta', 'nav.signedPwd': 'Entró con contraseña', 'nav.settings': 'Ajustes',
   'chat.options': 'Opciones de la conversación', 'chat.attach': 'Adjuntar archivo', 'chat.record': 'Grabar audio', 'chat.cancelRec': 'Descartar audio', 'chat.slideCancel': 'Desliza para cancelar', 'chat.holdHint': 'Mantén para grabar, suelta para enviar',
   'chat.recording': 'Grabando… habla tranquilo', 'chat.micDenied': 'No pude usar el micrófono', 'chat.tooBig': '{n} supera 25 MB',
-  'chat.listen': 'Escuchar', 'chat.stopListen': 'Detener audio', 'chat.voiceMode': 'Responder con voz',
+  'chat.listen': 'Escuchar', 'chat.transcribing': 'Transcribiendo…', 'chat.stopListen': 'Detener audio', 'chat.voiceMode': 'Responder con voz',
   'chat.voiceModeHint': 'Lee las respuestas en voz alta. Si envías audio, la respuesta se habla aunque esto esté apagado.',
   'common.on': 'activado', 'common.off': 'desactivado',
 

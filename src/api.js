@@ -38,6 +38,7 @@ export const bridge = {
   newWeb: (b) => post('/bridge/web', b),
   messages: (id) => get('/bridge/web/' + id.replace(/^web:/, '') + '/messages'),
   send: (id, text, files, transcript) => post('/bridge/web/' + id.replace(/^web:/, '') + '/messages', { text, files: files || [], transcript: transcript || '' }),
+  tts: (id, msgId) => post('/bridge/web/' + id.replace(/^web:/, '') + '/tts', { id: msgId }),
   fileUrl: (file) => '/api/bridge/web/files/' + encodeURIComponent(file),
   eventsUrl: (id) => '/api/bridge/web/' + id.replace(/^web:/, '') + '/events',
   schedules: () => get('/bridge/schedules'),
