@@ -15,7 +15,7 @@ const provName = (p) => (p === 'antigravity' ? 'Antigravity' : 'Claude');
 
 const Md = ({ text }) => (
   <div className="md">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" /> }}>{text || ''}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" />, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div> }}>{text || ''}</ReactMarkdown>
   </div>
 );
 
