@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Bot, Brain, History, MessageSquare, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
@@ -41,7 +41,7 @@ function resizeAvatar(file) {
 function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
   const t = useT();
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', mcp: null, ...initial });
+  const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', approvalMode: 'auto', allowRules: '', blockRules: '', mcp: null, ...initial });
   const [busy, run] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const pickAvatar = async (e) => {
@@ -61,7 +61,8 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
   const submit = async (e) => {
     e.preventDefault();
     const body = { name: f.name.trim(), emoji: f.emoji, avatar: f.avatar || '', color: f.color, description: f.description, instructions: f.instructions,
-      provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory, mcp: f.mcp };
+      provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory,
+      approvalMode: f.approvalMode || 'auto', allowRules: f.allowRules || '', blockRules: f.blockRules || '', mcp: f.mcp };
     const r = editing ? await run('save', () => bridge.patchBot(f.id, body), t('bots.saved')) : await run('save', () => bridge.addBot(body), t('bots.created'));
     if (r) { onSaved(r); onClose(); }
   };
@@ -118,7 +119,21 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
           <Field label={t('bots.memory')} hint={t('bots.memoryHint')}>
             <select value={f.memory} onChange={set('memory')}><option value="own">{t('bots.memOwn')}</option><option value="shared">{t('bots.memShared')}</option></select>
           </Field>
+          <Field label={t('bots.approval')} hint={t('bots.approvalHint')}>
+            <select value={f.approvalMode || 'auto'} onChange={set('approvalMode')}>
+              <option value="auto">{t('bots.appAuto')}</option>
+              <option value="ask">{t('bots.appAsk')}</option>
+              <option value="never">{t('bots.appNever')}</option>
+            </select>
+          </Field>
         </div>
+        <details className="trigger-box">
+          <summary className="small"><b><ShieldCheck size={14} style={{ verticalAlign: -2 }} /> {t('bots.rulesTitle')}</b></summary>
+          <div className="form-grid" style={{ marginTop: 10 }}>
+            <Field label={t('bots.allowRules')}><textarea rows={3} value={f.allowRules || ''} onChange={set('allowRules')} placeholder={t('bots.allowPh')} /></Field>
+            <Field label={t('bots.blockRules')}><textarea rows={3} value={f.blockRules || ''} onChange={set('blockRules')} placeholder={t('bots.blockPh')} /></Field>
+          </div>
+        </details>
         <Field label={t('bots.mcp')} hint={agy ? t('bots.mcpAgy') : t('bots.mcpHint')}>
           <div className="stack">
             <div className="seg">
@@ -183,8 +198,113 @@ function HistoryModal({ bot, onClose, onRestored }) {
   );
 }
 
+const GROK_EXPORT_PROMPT = `Export your complete configuration as a single JSON object (format "grok-bot-export") without any passwords, API keys, or private personal data. Include:
+{
+  "format": "grok-bot-export",
+  "name": "...",
+  "description": "...",
+  "instructions": "...",
+  "rules": ["..."],
+  "skills": [{ "name": "...", "description": "...", "steps": "..." }],
+  "routines": [{ "name": "...", "cron": "...", "trigger": "...", "prompt": "..." }]
+}
+Reply with only the JSON block.`;
+
+function TemplatesModal({ onClose, onCreated }) {
+  const t = useT();
+  const tpls = useLoad(() => bridge.botTemplates(), []);
+  const [busy, run] = useAction();
+  const useTpl = async (tpl) => {
+    const r = await run(tpl.id, () => bridge.botFromTemplate(tpl.id), t('bots.tplCreated'));
+    if (r) { onCreated(r); onClose(); }
+  };
+  return (
+    <Modal title={t('bots.tplTitle')} onClose={onClose} wide>
+      <ErrorBox error={tpls.error} onRetry={() => tpls.reload()} />
+      <p className="muted small" style={{ marginTop: 0 }}>{t('bots.tplIntro')}</p>
+      <div className="bot-grid">
+        {(tpls.data || []).map((tpl) => (
+          <div key={tpl.id} className="bot-card">
+            <div className="row">
+              <BotAvatar bot={tpl} size={40} />
+              <div className="grow">
+                <b>{tpl.name}</b>
+                <div className="muted small ellipsis-2">{tpl.description}</div>
+              </div>
+            </div>
+            {tpl.example && <pre className="history-preview" style={{ maxHeight: 82 }}>{tpl.example}</pre>}
+            <div className="row wrap bot-badges">
+              {tpl.skill && <span className="chip">+ 1 skill</span>}
+              {tpl.routine && <span className="chip">+ 1 rotina pausada</span>}
+              {tpl.approvalMode && <span className="chip">{t('bots.app.' + tpl.approvalMode)}</span>}
+            </div>
+            <Btn icon={Plus} className="small block" disabled={busy === tpl.id} onClick={() => useTpl(tpl)}>{t('bots.tplUse')}</Btn>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function ImportBotModal({ onClose, onImported }) {
+  const t = useT();
+  const toast = useToast();
+  const [tab, setTab] = useState('grok');
+  const [text, setText] = useState('');
+  const [busy, run] = useAction();
+  const onFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ''));
+    reader.readAsText(f);
+    e.target.value = '';
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    const r = await run('imp', () => bridge.botImport(text), t('bots.imported'));
+    if (r) { onImported(r); onClose(); }
+  };
+  return (
+    <Modal title={t('bots.importTitle')} onClose={onClose} wide>
+      <form className="stack" onSubmit={submit}>
+        <div className="seg">
+          <button type="button" className={tab === 'grok' ? 'on' : ''} onClick={() => setTab('grok')}>{t('bots.importGrok')}</button>
+          <button type="button" className={tab === 'json' ? 'on' : ''} onClick={() => setTab('json')}>{t('bots.importJson')}</button>
+        </div>
+        {tab === 'grok' && (
+          <div className="trigger-box stack">
+            <div className="row between wrap">
+              <b className="small">{t('bots.importGrokStep1')}</b>
+              <Btn icon={Copy} type="button" className="ghost small" onClick={() => { navigator.clipboard.writeText(GROK_EXPORT_PROMPT); toast(t('common.copied')); }}>
+                {t('bots.copyExportPrompt')}
+              </Btn>
+            </div>
+            <pre className="history-preview" style={{ maxHeight: 110 }}>{GROK_EXPORT_PROMPT}</pre>
+          </div>
+        )}
+        <div className="row wrap">
+          <label className="btn ghost small" style={{ cursor: 'pointer' }}>
+            <Upload size={14} /> {t('bots.importFile')}
+            <input type="file" accept=".json,.txt" hidden onChange={onFile} />
+          </label>
+          <span className="muted small">{t('bots.importHint')}</span>
+        </div>
+        <Field label="JSON">
+          <textarea required rows={9} className="mono" value={text} onChange={(e) => setText(e.target.value)} placeholder='{"format":"grok-bot-export","name":"..."}' />
+        </Field>
+        <div className="row end">
+          <button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button>
+          <button disabled={busy === 'imp' || !text.trim()}>{t('bots.importBtn')}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function Bots() {
   const t = useT();
+  const toast = useToast();
   const confirm = useConfirm();
   const bots = useLoad(() => bridge.bots(), [], { interval: 30000 });
   const providers = useLoad(() => bridge.providers(), []);
@@ -192,6 +312,8 @@ export default function Bots() {
   const [form, setForm] = useState(null);
   const [memory, setMemory] = useState(null);
   const [history, setHistory] = useState(null);
+  const [tplOpen, setTplOpen] = useState(false);
+  const [impOpen, setImpOpen] = useState(false);
   const [busy, run] = useAction();
   const mcpNames = mcp.data ? [...new Set(['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})))].sort() : [];
   const provLabel = (b) => {
@@ -203,11 +325,28 @@ export default function Bots() {
     const c = await run('chat' + b.id, () => bridge.newWeb({ bot: b.id, title: t('bots.chatTitle', { n: b.name }) }));
     if (c) window.location.hash = '#/chat/' + c.id.slice(4);
   };
+  const exportBot = async (b) => {
+    const data = await run('exp' + b.id, () => bridge.botExport(b.id));
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = b.id + '-bot-recipe.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(t('bots.exported'));
+  };
   return (
     <div className="page">
       <ErrorBox error={bots.error} onRetry={() => bots.reload()} />
       <p className="muted page-intro">{t('bots.intro')}</p>
-      <Card title={t('bots.title', { n: bots.data?.length || 0 })} icon={Bot} actions={<Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('bots.new')}</Btn>}>
+      <Card title={t('bots.title', { n: bots.data?.length || 0 })} icon={Bot} actions={
+        <div className="row wrap">
+          <Btn icon={Sparkles} className="ghost small" onClick={() => setTplOpen(true)}>{t('bots.templates')}</Btn>
+          <Btn icon={Upload} className="ghost small" onClick={() => setImpOpen(true)}>{t('bots.import')}</Btn>
+          <Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('bots.new')}</Btn>
+        </div>
+      }>
         <div className="bot-grid">
           {(bots.data || []).map((b) => (
             <div key={b.id} className="bot-card">
@@ -221,6 +360,7 @@ export default function Bots() {
               <div className="row wrap bot-badges">
                 {provLabel(b) ? <span className="chip">{provLabel(b)}</span> : <span className="chip">{t('bots.inheritModel')}</span>}
                 <span className="chip">{b.memory === 'own' ? t('bots.memOwnShort', { n: b.memorySize }) : t('bots.memSharedShort')}</span>
+                {b.approvalMode && b.approvalMode !== 'auto' && <span className="chip">{t('bots.app.' + b.approvalMode)}</span>}
                 {Array.isArray(b.mcp) && <span className="chip">{t('bots.mcpCount', { n: b.mcp.length })}</span>}
                 {b.instructions ? <span className="chip">{t('bots.hasInstructions')}</span> : null}
                 <span className="chip">{t('bots.stats', { c: b.chats, r: b.routines })}</span>
@@ -228,6 +368,7 @@ export default function Bots() {
               <div className="row bot-actions">
                 <Btn icon={MessageSquare} className="small" disabled={busy === 'chat' + b.id} onClick={() => chatWith(b)}>{t('bots.chat')}</Btn>
                 <span className="grow" />
+                <IconButton icon={Download} label={t('bots.export')} disabled={busy === 'exp' + b.id} onClick={() => exportBot(b)} />
                 <IconButton icon={Pencil} label={t('common.edit')} onClick={() => setForm(b)} />
                 {b.memory === 'own' && <IconButton icon={Brain} label={t('bots.memory')} onClick={() => setMemory(b)} />}
                 <IconButton icon={History} label={t('bots.history')} disabled={!b.history?.length} onClick={() => setHistory(b)} />
@@ -241,6 +382,8 @@ export default function Bots() {
       {form && <BotForm initial={form} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
       {memory && <MemoryModal bot={memory} onClose={() => { setMemory(null); bots.reload(true); }} />}
       {history && <HistoryModal bot={history} onClose={() => setHistory(null)} onRestored={() => bots.reload(true)} />}
+      {tplOpen && <TemplatesModal onClose={() => setTplOpen(false)} onCreated={() => bots.reload(true)} />}
+      {impOpen && <ImportBotModal onClose={() => setImpOpen(false)} onImported={() => bots.reload(true)} />}
     </div>
   );
 }

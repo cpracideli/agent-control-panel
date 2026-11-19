@@ -108,9 +108,15 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
           )}
           <label className="check"><input type="checkbox" checked={f.watchOn} onChange={set('watchOn')} /><Eye size={15} /><span><b>{t('sch.watch')}</b> · {t('sch.watchHint')}</span></label>
           {f.watchOn && (
-            <div className="form-grid">
-              <Field label={t('sch.watchCommand')} hint={t('sch.watchCommandHint')}><input className="mono" required value={f.watchCommand} onChange={set('watchCommand')} placeholder="curl -s https://exemplo.com/status | jq .versao" /></Field>
-              <Field label={t('sch.watchEvery')}><input type="number" min={5} max={1440} required value={f.watchEvery} onChange={set('watchEvery')} /></Field>
+            <div className="stack">
+              <div className="presets">
+                <button type="button" className="ghost small" onClick={() => setF({ ...f, watchCommand: '~/bin/gmail.py list --unread --limit 5', watchEvery: 15, quiet: true })}>{t('sch.presetEmail')}</button>
+                <button type="button" className="ghost small" onClick={() => setF({ ...f, watchCommand: 'ls -lt /home/node/workspace/inbox | head -n 10', watchEvery: 10, quiet: true })}>{t('sch.presetFolder')}</button>
+              </div>
+              <div className="form-grid">
+                <Field label={t('sch.watchCommand')} hint={t('sch.watchCommandHint')}><input className="mono" required value={f.watchCommand} onChange={set('watchCommand')} placeholder="curl -s https://exemplo.com/status | jq .versao" /></Field>
+                <Field label={t('sch.watchEvery')}><input type="number" min={5} max={1440} required value={f.watchEvery} onChange={set('watchEvery')} /></Field>
+              </div>
             </div>
           )}
           {editing && initial.watchError && <p className="err small">{t('sch.watchError', { e: initial.watchError })}</p>}

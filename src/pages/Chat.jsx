@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wrench, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wand2, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -156,14 +156,16 @@ function PromptList({ prompts, term, onAnswered }) {
   const t = useT();
   const toast = useToast();
   const [notes, setNotes] = useState({});
+  const [secretsVal, setSecretsVal] = useState({});
   const [busy, setBusy] = useState(null);
   if (!prompts || !prompts.length) return null;
-  const reply = async (p, ans) => {
+  const reply = async (p, ans, secretVal = '') => {
     const val = String(ans || '').trim();
-    if (!val || busy) return;
+    if ((!val && !secretVal) || busy) return;
     setBusy(p.id);
     try {
-      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '');
+      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '', secretVal);
+      if (secretVal) setSecretsVal((s) => ({ ...s, [p.id]: '' }));
       onAnswered?.(updated);
     } catch (e) { toast(e.message, 'err'); }
     finally { setBusy(null); }
@@ -172,29 +174,46 @@ function PromptList({ prompts, term, onAnswered }) {
     <div className="prompt-cards">
       {prompts.map((p) => {
         const pending = p.status === 'pending';
+        const isSecret = p.kind === 'secret';
         return (
           <div key={p.id} className={'prompt-card' + (pending ? ' pending' : ' answered') + (term ? ' term-card' : '')}>
             <div className="prompt-h">
-              <HelpCircle size={15} />
+              {isSecret ? <Lock size={15} /> : <HelpCircle size={15} />}
               <b>{p.title || t('logs.a.prompt-ask')}</b>
+              {isSecret && p.secretName && <Badge kind="muted">{p.secretName}</Badge>}
               <Badge kind={pending ? 'warn' : 'ok'}>{pending ? t('prp.pending') : t('prp.answered')}</Badge>
             </div>
             <div className="prompt-q">{p.question}</div>
             {pending ? (
               <div className="prompt-actions stack">
-                <div className="row wrap">
-                  {(p.options || []).map((opt) => (
-                    <button key={opt} type="button" className="small" disabled={busy === p.id} onClick={() => reply(p, opt)}>{opt}</button>
-                  ))}
-                </div>
-                <div className="row">
-                  <input value={notes[p.id] || ''} onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
-                    placeholder={t('prp.customPh')}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && (notes[p.id] || '').trim()) { e.preventDefault(); reply(p, notes[p.id]); } }} />
-                  {(notes[p.id] || '').trim() && (
-                    <button type="button" className="ghost small" disabled={busy === p.id} onClick={() => reply(p, notes[p.id])}>{t('prp.send')}</button>
-                  )}
-                </div>
+                {isSecret ? (
+                  <div className="row wrap">
+                    <input className="grow" type="password" value={secretsVal[p.id] || ''}
+                      onChange={(e) => setSecretsVal({ ...secretsVal, [p.id]: e.target.value })}
+                      placeholder={t('vlt.cardPh')}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (secretsVal[p.id] || '').trim()) { e.preventDefault(); reply(p, '', secretsVal[p.id]); } }} />
+                    <button type="button" className="small" disabled={busy === p.id || !(secretsVal[p.id] || '').trim()}
+                      onClick={() => reply(p, '', secretsVal[p.id])}>{t('vlt.saveBtn')}</button>
+                    <button type="button" className="ghost small" disabled={busy === p.id}
+                      onClick={() => reply(p, 'Cancelado')}>{t('common.cancel')}</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="row wrap">
+                      {(p.options || []).map((opt) => (
+                        <button key={opt} type="button" className="small" disabled={busy === p.id} onClick={() => reply(p, opt)}>{opt}</button>
+                      ))}
+                    </div>
+                    <div className="row">
+                      <input value={notes[p.id] || ''} onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
+                        placeholder={t('prp.customPh')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && (notes[p.id] || '').trim()) { e.preventDefault(); reply(p, notes[p.id]); } }} />
+                      {(notes[p.id] || '').trim() && (
+                        <button type="button" className="ghost small" disabled={busy === p.id} onClick={() => reply(p, notes[p.id])}>{t('prp.send')}</button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="prompt-ans">
@@ -208,7 +227,7 @@ function PromptList({ prompts, term, onAnswered }) {
   );
 }
 
-function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
+function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -245,6 +264,7 @@ function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
           {m.usage?.cost ? <span>{f.usd(m.usage.cost)}</span> : null}
           {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} chatId={chatId} file={m.tts} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
           {(m.error || m.stopped) && onRetry && <Btn icon={RotateCcw} className="ghost small" onClick={onRetry}>{t('chat.retry')}</Btn>}
+          {onQuote && m.text && <IconButton icon={Reply} size={13} className="ghost bare" label={t('chat.quote')} onClick={() => onQuote(m.text)} />}
           <IconButton icon={Copy} size={13} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(m.text); toast(t('common.copied')); }} />
         </div>
       </div>
@@ -328,12 +348,21 @@ export default function Chat({ openMore, me }) {
   const chats = useLoad(() => bridge.chats(), [], { interval: 15000 });
   const providers = useLoad(() => bridge.providers(), []);
   const botsL = useLoad(() => bridge.bots(), [], { interval: 60000 });
+  const skillsL = useLoad(() => bridge.skills(), [], { interval: 60000 });
+  const activityL = useLoad(() => bridge.activity(), [], { interval: 15000 });
+  const compSt = useLoad(() => bridge.computerStatus(), [], { interval: 15000 });
   const botsById = useMemo(() => Object.fromEntries((botsL.data || []).map((b) => [b.id, b])), [botsL.data]);
+  const [listTab, setListTab] = useState('chats');
+  const [showArchived, setShowArchived] = useState(false);
   const [current, setCurrent] = useState(chatFromHash);
   const [messages, setMessages] = useState([]);
   const [chatInfo, setChatInfo] = useState(null);
   const [live, setLive] = useState(null);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => {
+    const pf = sessionStorage.getItem('acp_prefill') || '';
+    if (pf) sessionStorage.removeItem('acp_prefill');
+    return pf;
+  });
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
   // desktop: the conversations column can be collapsed; remembered per browser
@@ -394,10 +423,14 @@ export default function Chat({ openMore, me }) {
   const [atBottom, setAtBottom] = useState(true);
 
   const webChats = useMemo(() => (chats.data || []).filter((c) => c.kind === 'web'), [chats.data]);
+  const archivedCount = useMemo(() => webChats.filter((c) => c.archived).length, [webChats]);
   const filteredChats = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
-    return q ? webChats.filter((c) => c.title.toLowerCase().includes(q)) : webChats;
-  }, [webChats, chatSearch]);
+    return webChats
+      .filter((c) => (showArchived ? Boolean(c.archived) : !c.archived))
+      .filter((c) => !q || c.title.toLowerCase().includes(q))
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+  }, [webChats, chatSearch, showArchived]);
   const shownMessages = useMemo(() => {
     const q = msgSearch.trim().toLowerCase();
     return q ? messages.filter((m) => (m.text || m.transcript || '').toLowerCase().includes(q)) : messages;
@@ -658,6 +691,26 @@ export default function Chat({ openMore, me }) {
     setText((prev) => prev.replace(/@[\p{L}\p{N}_-]*$/u, tag));
     inputRef.current?.focus();
   };
+  const skillQuery = useMemo(() => {
+    const m = text.match(/^\/([a-zA-Z0-9_-]*)$/);
+    return m ? m[1].toLowerCase() : null;
+  }, [text]);
+  const skillItems = useMemo(() => {
+    if (skillQuery === null) return [];
+    return (skillsL.data || [])
+      .filter((s) => !skillQuery || s.slug.toLowerCase().includes(skillQuery) || s.name.toLowerCase().includes(skillQuery))
+      .slice(0, 6);
+  }, [skillQuery, skillsL.data]);
+  const pickSkill = (sk) => {
+    setText('/' + sk.slug + ' ');
+    inputRef.current?.focus();
+  };
+  const togglePin = async (c) => {
+    try { await bridge.patchChat(c.id, { pinned: !c.pinned }); chats.reload(true); } catch (e) { toast(e.message, 'err'); }
+  };
+  const toggleArchive = async (c) => {
+    try { await bridge.patchChat(c.id, { archived: !c.archived }); chats.reload(true); } catch (e) { toast(e.message, 'err'); }
+  };
 
   return (
     <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '') + (term ? ' term' : '')}>
@@ -666,26 +719,59 @@ export default function Chat({ openMore, me }) {
           <h1 className="serif-title">{t('chat.conversations')}</h1>
         </div>
         <Btn icon={Plus} className="block only-desktop" onClick={newChat}>{t('chat.new')}</Btn>
-        <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
-        <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
-        {filteredChats.map((c) => (
-          <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}>
-            <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
-              <span className="chat-title">
-                {c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}
-                <span className="ellipsis">{c.title}</span>
-                {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
-                {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
-              </span>
-              <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
-            </button>
-            <div className="chat-item-actions">
-              <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
-              <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
-            </div>
+        <div className="seg chat-list-tabs">
+          <button type="button" className={listTab === 'chats' ? 'on' : ''} onClick={() => setListTab('chats')}>{t('chat.conversations')}</button>
+          <button type="button" className={listTab === 'activity' ? 'on' : ''} onClick={() => { setListTab('activity'); activityL.reload(true); }}>{t('chat.activity')}</button>
+        </div>
+        {listTab === 'chats' ? (
+          <>
+            <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
+            <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
+            {filteredChats.map((c) => (
+              <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}>
+                <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
+                  <span className="chat-title">
+                    {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
+                    <span className="ellipsis">{c.title}</span>
+                    {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
+                    {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
+                  </span>
+                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                </button>
+                <div className="chat-item-actions">
+                  <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
+                  <IconButton icon={Archive} size={13} className="ghost bare" label={c.archived ? t('chat.unarchive') : t('chat.archive')} onClick={(e) => { e.stopPropagation(); toggleArchive(c); }} />
+                  <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
+                  <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
+                </div>
+              </div>
+            ))}
+            {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
+            {(archivedCount > 0 || showArchived) && (
+              <button type="button" className="ghost small block" style={{ marginTop: 6 }} onClick={() => setShowArchived((x) => !x)}>
+                <Archive size={13} /> {showArchived ? t('chat.backToChats') : t('chat.showArchived', { n: archivedCount })}
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+            {(activityL.data || []).map((ev) => (
+              <button key={ev.id} type="button" className="chat-item activity-item" onClick={() => {
+                if (ev.kind === 'computer') window.location.hash = '#/computer';
+                else if (ev.kind === 'ticket') window.location.hash = '#/board';
+                else if (ev.chatId?.startsWith('web:')) { setListTab('chats'); select(ev.chatId); }
+              }}>
+                <span className="chat-title">
+                  <Activity size={14} />
+                  <span className="ellipsis">{ev.title}</span>
+                  <Badge kind={ev.status === 'pending' || ev.status === 'running' ? 'warn' : ev.status === 'error' ? 'err' : 'muted'}>{ev.kind}</Badge>
+                </span>
+                <small className="ellipsis">{ev.text || ev.status} · {f.ago(ev.at)}</small>
+              </button>
+            ))}
+            {activityL.data && !activityL.data.length && <p className="muted small">{t('chat.noActivity')}</p>}
           </div>
-        ))}
-        {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
+        )}
         <div className="drawer-foot only-mobile">
           <button type="button" className="new-pill press" onClick={newChat}><Plus size={20} />{t('chat.new')}</button>
         </div>
@@ -708,6 +794,7 @@ export default function Chat({ openMore, me }) {
             </button>
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
+          <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           <IconButton icon={SquareTerminal} className={'ghost voice-toggle only-desktop' + (term ? ' on' : '')} label={t('chat.style') + ': ' + (term ? t('chat.styleTerminal') : t('chat.styleBubbles'))} onClick={() => setTerm(!term)} />
           {typeof Notification !== 'undefined' && (
             <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
@@ -750,6 +837,7 @@ export default function Chat({ openMore, me }) {
             return (
               <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} botsById={botsById} term={term}
                 onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
+                onQuote={(txt) => { const snip = txt.trim().split('\n').slice(0, 3).map((l) => '> ' + l).join('\n'); setText((prev) => (prev ? prev + '\n' : '') + snip + '\n\n'); inputRef.current?.focus(); }}
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
@@ -791,6 +879,18 @@ export default function Chat({ openMore, me }) {
                     <b>{it.id === 'todos' ? '@todos' : it.name}</b>
                     {it.id !== 'todos' && <small className="muted">@{it.id}</small>}
                     {it.description && <span className="muted small ellipsis">{it.description}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {skillItems.length > 0 && (
+              <div className="mention-pop" role="listbox">
+                {skillItems.map((sk) => (
+                  <button key={sk.slug} type="button" className="mention-item press" onClick={() => pickSkill(sk)}>
+                    <span className="mention-ic"><Wand2 size={15} /></span>
+                    <b>/{sk.slug}</b>
+                    <small className="muted">{sk.name}</small>
+                    {sk.description && <span className="muted small ellipsis">{sk.description}</span>}
                   </button>
                 ))}
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, ChevronRight, Download, FileCode2, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
@@ -7,6 +7,10 @@ import { IconButton, Sheet, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
+import Computer from './pages/Computer.jsx';
+import Skills from './pages/Skills.jsx';
+import Board from './pages/Board.jsx';
+import Artifacts from './pages/Artifacts.jsx';
 import Dashboards from './pages/Dashboards.jsx';
 import Overview from './pages/Overview.jsx';
 import Usage from './pages/Usage.jsx';
@@ -20,13 +24,17 @@ import Logs from './pages/Logs.jsx';
 const PAGES = [
   { id: 'chat', icon: MessageSquare, el: Chat },
   { id: 'bots', icon: Bot, el: Bots },
+  { id: 'computer', icon: Monitor, el: Computer },
+  { id: 'skills', icon: Wand2, el: Skills },
+  { id: 'board', icon: CheckSquare, el: Board },
+  { id: 'dashboards', icon: FileCode2, el: Dashboards },
+  { id: 'schedules', icon: CalendarClock, el: Schedules },
+  { id: 'artifacts', icon: FolderArchive, el: Artifacts },
+  { id: 'memory', icon: Brain, el: Memory },
   { id: 'usage', icon: BarChart3, el: Usage },
   { id: 'overview', icon: Gauge, el: Overview },
-  { id: 'dashboards', icon: FileCode2, el: Dashboards },
-  { id: 'memory', icon: Brain, el: Memory },
   { id: 'providers', icon: Sparkles, el: Providers },
   { id: 'mcp', icon: Plug, el: Mcp },
-  { id: 'schedules', icon: CalendarClock, el: Schedules },
   { id: 'envs', icon: KeyRound, el: Envs },
   { id: 'logs', icon: ScrollText, el: Logs },
 ];
@@ -153,7 +161,7 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [page, setPage] = useState(pageFromHash);
   const [more, setMore] = useState(false);
-  const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, offline: false });
+  const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
@@ -164,7 +172,11 @@ export default function App() {
     const poll = () => {
       if (document.hidden || stop) return;
       bridge.overview()
-        .then((o) => !stop && setNavStatus({ running: o.running?.length || 0, unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0, offline: false }))
+        .then((o) => !stop && setNavStatus({
+          running: o.running?.length || 0, unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0,
+          computerNeedsHuman: Boolean(o.computer?.needsHuman), computerRunning: o.computer?.status === 'running',
+          openTickets: o.openTickets || 0, offline: false,
+        }))
         .catch(() => !stop && setNavStatus((s) => ({ ...s, offline: true })));
     };
     poll();
@@ -229,6 +241,9 @@ export default function App() {
               {id === 'chat' && (navStatus.pendingPrompts > 0
                 ? <span className="nav-dot err" aria-label={t('prp.pending')} />
                 : (navStatus.running > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
+              {id === 'computer' && (navStatus.computerNeedsHuman
+                ? <span className="nav-dot err" aria-label={t('comp.needsYou')} />
+                : navStatus.computerRunning && <span className="nav-dot ok" aria-label={t('comp.running')} />)}
               {id === 'overview' && navStatus.offline && <span className="nav-dot err" aria-label={t('ov.offline')} />}
             </button>
           ))}

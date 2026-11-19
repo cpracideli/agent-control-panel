@@ -1,5 +1,7 @@
 // Agent Control backend: login, Coolify API (envs, logs, restart, deploy) and a proxy to the bridge's /admin API.
 import express from 'express';
+import http from 'node:http';
+import net from 'node:net';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -273,4 +275,37 @@ app.use(express.static(dist, {
 }));
 app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(dist, 'index.html')); });
 
-app.listen(PORT, () => console.log(`Agent Control on :${PORT} | bridge ${BRIDGE_URL} | app ${APP_UUID}`));
+const httpServer = http.createServer(app);
+
+// WebSocket proxy for live agent computer (noVNC): verifies session cookie before tunneling to the bridge.
+httpServer.on('upgrade', (req, socket, head) => {
+  const pathname = (req.url || '').split('?')[0];
+  if (pathname !== '/api/bridge/computer/ws' || !BRIDGE_TOKEN || !validSession(req)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    return socket.destroy();
+  }
+  let target;
+  try { target = new URL(BRIDGE_URL); } catch { return socket.destroy(); }
+  const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
+  const upstream = net.connect(port, target.hostname, () => {
+    const hdrs = [
+      'GET /admin/computer/ws HTTP/1.1',
+      `Host: ${target.host}`,
+      `Authorization: Bearer ${BRIDGE_TOKEN}`,
+    ];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const k = req.rawHeaders[i], v = req.rawHeaders[i + 1];
+      if (/^(host|authorization|cookie)$/i.test(k)) continue;
+      hdrs.push(`${k}: ${v}`);
+    }
+    upstream.write(hdrs.join('\r\n') + '\r\n\r\n');
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  const close = () => { try { socket.destroy(); } catch {} try { upstream.destroy(); } catch {} };
+  upstream.on('error', close);
+  socket.on('error', close);
+});
+
+httpServer.listen(PORT, () => console.log(`Agent Control on :${PORT} | bridge ${BRIDGE_URL} | app ${APP_UUID}`));
