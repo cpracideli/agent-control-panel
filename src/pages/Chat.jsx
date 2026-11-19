@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, UserRound, Wrench, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -96,7 +96,63 @@ function ToolList({ tools, term }) {
   );
 }
 
-function Message({ m, chatId, onResend, onRetry, bot, term }) {
+function DelegationList({ delegations, botsById, term }) {
+  const t = useT();
+  const f = useFmt();
+  const toast = useToast();
+  if (!delegations || !delegations.length) return null;
+  if (term) {
+    return (
+      <div className="term-tools">
+        {delegations.map((d, i) => {
+          const lines = String(d.error || d.answer || '').split('\n').filter((l) => l.trim());
+          return (
+            <div key={d.id || i} className={'term-tool' + (d.status === 'error' ? ' bad' : '') + (d.status === 'running' ? ' run' : '')}>
+              <div className="term-tool-h"><b>Bot</b><span className="term-arg">({d.botName || d.bot}: {termArg(d.question)})</span></div>
+              {d.status === 'running'
+                ? <div className="term-out"><span className="term-elbow">⎿</span> <span className="term-dim">{t('chat.delegAsking', { n: d.botName || d.bot })}</span></div>
+                : lines.length > 1
+                  ? <details className="term-out"><summary><span className="term-elbow">⎿</span> {lines[0].slice(0, 160)} <span className="term-dim">{t('chat.termMore', { n: lines.length - 1 })}</span></summary><pre>{d.error || d.answer}</pre></details>
+                  : <div className="term-out"><span className="term-elbow">⎿</span> {(lines[0] || t('common.empty')).slice(0, 300)}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  const errCount = delegations.filter((x) => x.status === 'error').length;
+  const runningOne = delegations.find((x) => x.status === 'running');
+  return (
+    <details className="tools delegs" open={Boolean(runningOne)}>
+      <summary>
+        <Bot size={13} /> {runningOne ? t('chat.delegAsking', { n: runningOne.botName || runningOne.bot }) : (delegations.length === 1 ? t('chat.delegOne') : t('chat.delegMany', { n: delegations.length }))}: {[...new Set(delegations.map((x) => x.botName || x.bot))].join(', ')}
+        {runningOne && <span className="spin" />}
+        {errCount > 0 && <> <Badge kind="err">{t('chat.toolsErrors', { n: errCount })}</Badge></>}
+      </summary>
+      {delegations.map((d, i) => {
+        const caller = (botsById && botsById[d.byBot]) || null;
+        const target = (botsById && botsById[d.bot]) || null;
+        const callerLabel = caller ? (caller.emoji ? caller.emoji + ' ' : '') + caller.name : (d.byBot || 'Claude');
+        const targetLabel = target ? (target.emoji ? target.emoji + ' ' : '') + target.name : (d.botName || d.bot);
+        const out = d.error || d.answer || '';
+        return (
+          <div key={d.id || i} className={'tool deleg-card' + (d.status === 'error' ? ' bad' : '')}>
+            <div className="tool-h">
+              <b className="row" style={{ gap: 6 }}>{callerLabel} <ArrowRight size={12} /> {targetLabel}</b>
+              {d.ms ? <small className="muted">{f.dur(d.ms)}</small> : null}
+              {d.status === 'running' && <span className="spin" />}
+              {d.status !== 'running' && out && <IconButton icon={Copy} size={12} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(out); toast(t('common.copied')); }} />}
+            </div>
+            <pre>{d.question}</pre>
+            {d.status !== 'running' && <pre className="tool-out">{out || t('common.empty')}</pre>}
+          </div>
+        );
+      })}
+    </details>
+  );
+}
+
+function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -107,9 +163,10 @@ function Message({ m, chatId, onResend, onRetry, bot, term }) {
           <MessageFiles files={m.files} transcript={m.transcript} engine={m.transcriptEngine} pendingLabel={t('chat.transcribing')}
             pending={!m.transcript && !m.transcriptFailed && Date.now() - new Date(m.at).getTime() < 180000} />
           {m.text && <div className="bubble">{m.text}</div>}
-          {m.text && onResend && (
+          {(m.injected || (m.text && onResend)) && (
             <div className="msg-actions-user">
-              <IconButton icon={RotateCcw} size={12} className="ghost bare" label={t('chat.resend')} onClick={() => onResend(m.text)} />
+              {m.injected && <span className="injected-tag">📨 {t('chat.injected')}</span>}
+              {m.text && onResend && <IconButton icon={RotateCcw} size={12} className="ghost bare" label={t('chat.resend')} onClick={() => onResend(m.text)} />}
             </div>
           )}
         </div>
@@ -120,10 +177,11 @@ function Message({ m, chatId, onResend, onRetry, bot, term }) {
     <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
+        <DelegationList delegations={m.delegations} botsById={botsById} term={term} />
         <ToolList tools={m.tools} term={term} />
         <Md text={m.text} />
         <div className="msg-meta">
-          {bot && bot.id !== 'default' && <span>{bot.name}</span>}
+          {bot && bot.id !== 'default' && <span>{(bot.emoji ? bot.emoji + ' ' : '') + bot.name}</span>}
           {m.provider && <span>{provName(m.provider)}</span>}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
@@ -142,7 +200,7 @@ function useTicker() {
   useEffect(() => { const x = setInterval(() => set((n) => n + 1), 1000); return () => clearInterval(x); }, []);
 }
 
-function LiveRun({ live, bot, term }) {
+function LiveRun({ live, bot, botsById, term }) {
   const t = useT();
   useTicker();
   const secs = Math.round((Date.now() - live.started) / 1000);
@@ -150,9 +208,10 @@ function LiveRun({ live, bot, term }) {
     <div className="msg bot live">
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
+        <DelegationList delegations={live.delegations} botsById={botsById} term={term} />
         <ToolList tools={live.tools} term={term} />
         {live.texts.length > 0 && <Md text={live.texts.join('\n\n')} />}
-        <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
+        <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {bot && bot.id !== 'default' ? (bot.emoji ? bot.emoji + ' ' : '') + bot.name + ' · ' : ''}{t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
           {live.mcp?.length > 0 && <span> · MCP: {live.mcp.map((s) => s.name + (s.status === 'connected' ? '' : ' (' + s.status + ')')).join(', ')}</span>}
         </div>
       </div>
@@ -290,18 +349,19 @@ export default function Chat({ openMore, me }) {
     const es = new EventSource(bridge.eventsUrl(current));
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
-      if (ev.type === 'hello') { load(); setLive(ev.running ? { started: ev.running.started, texts: [], tools: [] } : null); }
+      if (ev.type === 'hello') { load(); setLive(ev.running ? { started: ev.running.started, texts: [], tools: [], delegations: [] } : null); }
       else if (ev.type === 'message') {
         setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
         const sp = speakRef.current;
         if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
       }
       else if (ev.type === 'update') setMessages((ms) => ms.map((m) => (m.id === ev.id ? { ...m, ...ev.patch } : m)));
-      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], provider: ev.provider }); setQueuedAhead((q) => Math.max(0, q - 1)); }
+      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); }
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
       else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input }] });
       else if (ev.type === 'tool_result') setLive((l) => l && { ...l, tools: l.tools.map((x) => (x.id === ev.id ? { ...x, result: ev.text, isError: ev.isError } : x)) });
+      else if (ev.type === 'delegation') setLive((l) => l && { ...l, delegations: (l.delegations || []).some((d) => d.id === ev.ask.id) ? l.delegations.map((d) => (d.id === ev.ask.id ? ev.ask : d)) : [...(l.delegations || []), ev.ask] });
       else if (ev.type === 'idle') { setLive(null); setQueuedAhead(0); chats.reload(true); }
     };
     return () => { closed = true; es.close(); };
@@ -398,7 +458,8 @@ export default function Chat({ openMore, me }) {
       if (overrideText === undefined) { setText(''); setFiles([]); }
       speakRef.current.lastVoice = Boolean(voice);
       const r = await bridge.send(id, msg, payload, voice?.transcript);
-      if (r.ahead) { setQueuedAhead(r.ahead); toast(t('chat.queued', { n: r.ahead })); }
+      if (r.injected) toast('📨 ' + t('chat.injectedToast'));
+      else if (r.ahead) { setQueuedAhead(r.ahead); toast(t('chat.queued', { n: r.ahead })); }
       chats.reload(true);
       pending.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
     } catch (e) { toast(e.message, 'err'); if (overrideText === undefined) { setText(msg); setFiles(pending); } }
@@ -493,6 +554,24 @@ export default function Chat({ openMore, me }) {
 
   const ml = modelLabel(info, providers.data);
   const empty = !text.trim() && !files.length;
+  const mentionQuery = useMemo(() => {
+    if ((botsL.data || []).length <= 1) return null;
+    const m = text.match(/(?:^|\s)@([\p{L}\p{N}_-]*)$/u);
+    return m ? m[1].toLowerCase() : null;
+  }, [text, botsL.data]);
+  const mentionItems = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const all = [
+      { id: 'todos', name: '@todos', emoji: '👥', description: t('chat.mentionAll') },
+      ...(botsL.data || []).map((b) => ({ id: b.id, name: b.name, emoji: b.emoji || '🤖', description: b.description || '' })),
+    ];
+    return all.filter((x) => !mentionQuery || x.id.toLowerCase().includes(mentionQuery) || x.name.toLowerCase().includes(mentionQuery)).slice(0, 6);
+  }, [mentionQuery, botsL.data, t]);
+  const pickMention = (item) => {
+    const tag = item.id === 'todos' ? '@todos ' : '@' + item.id + ' ';
+    setText((prev) => prev.replace(/@[\p{L}\p{N}_-]*$/u, tag));
+    inputRef.current?.focus();
+  };
 
   return (
     <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '') + (term ? ' term' : '')}>
@@ -575,12 +654,12 @@ export default function Chat({ openMore, me }) {
           {shownMessages.map((m, idx) => {
             const prevUser = m.role === 'assistant' ? [...shownMessages.slice(0, idx)].reverse().find((x) => x.role === 'user' && x.text) : null;
             return (
-              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} term={term}
+              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} botsById={botsById} term={term}
                 onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
-          {live && <LiveRun live={live} bot={botsById[(info && info.bot) || 'default']} term={term} />}
+          {live && <LiveRun live={live} bot={botsById[live.bot || (info && info.bot) || 'default']} botsById={botsById} term={term} />}
         </div>
 
         <div className="composer-dock" ref={composerRef}>
@@ -609,6 +688,18 @@ export default function Chat({ openMore, me }) {
                 </span>
               </div>
             ) : <>
+            {mentionItems.length > 0 && (
+              <div className="mention-pop" role="listbox">
+                {mentionItems.map((it) => (
+                  <button key={it.id} type="button" className="mention-item press" onClick={() => pickMention(it)}>
+                    <span className="mention-ic">{it.emoji}</span>
+                    <b>{it.id === 'todos' ? '@todos' : it.name}</b>
+                    {it.id !== 'todos' && <small className="muted">@{it.id}</small>}
+                    {it.description && <span className="muted small ellipsis">{it.description}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
             <PendingFiles files={files} onRemove={(i) => setFiles((x) => x.filter((_, j) => j !== i))} />
             <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
             <textarea onPaste={onPaste}
@@ -657,6 +748,34 @@ export default function Chat({ openMore, me }) {
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
           <div className="group pad"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
+          {(botsL.data || []).length > 1 && (
+            <div className="group pad stack">
+              <div className="row spread">
+                <span className="row" style={{ gap: 8 }}><span className="row-ic ic-bots"><Users size={16} /></span><b>{t('chat.groupMembers')}</b></span>
+                <div className="seg seg-ios" role="radiogroup">
+                  <button type="button" className={!(info.members && info.members.length) ? 'on' : ''} onClick={() => change({ members: [] })}>{t('chat.groupAll')}</button>
+                  <button type="button" className={(info.members && info.members.length) ? 'on' : ''} onClick={() => !(info.members && info.members.length) && change({ members: (botsL.data || []).map((b) => b.id) })}>{t('chat.groupSome')}</button>
+                </div>
+              </div>
+              <small className="muted">{t('chat.groupHint')}</small>
+              {info.members && info.members.length > 0 && (
+                <div className="row wrap" style={{ gap: 6 }}>
+                  {(botsL.data || []).map((b) => {
+                    const on = info.members.includes(b.id);
+                    return (
+                      <label key={b.id} className="check chip-check">
+                        <input type="checkbox" checked={on} onChange={(e) => {
+                          const next = e.target.checked ? [...info.members, b.id] : info.members.filter((x) => x !== b.id);
+                          change({ members: next });
+                        }} />
+                        {(b.emoji ? b.emoji + ' ' : '') + b.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <div className="group">
             <div className="group-row">
               <span className="row-ic ic-chat"><SquareTerminal size={17} /></span>

@@ -1149,3 +1149,17 @@ button.link, a { color: var(--accent); }
 .chat.term .chat-foot .badge { border-radius: 4px; }
 .chat.term .to-bottom { border-radius: 6px !important; }
 .chat.term .md td, .chat.term .md th { font-family: var(--mono); }
+
+/* ---------- mid-run steering, @mentions, bot delegation ---------- */
+.injected-tag { font-size: 11px; color: var(--muted); padding: 1px 6px; border-radius: 999px; background: var(--sunken); display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; }
+.msg.user .msg-actions-user:has(.injected-tag) { opacity: 1; }
+.chat.term .injected-tag { background: var(--t-bg2); color: var(--t-dim); border: 1px solid var(--t-line); border-radius: 4px; font-family: var(--mono); }
+
+.mention-pop { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: .5px solid var(--sep); border-radius: 12px; padding: 4px; margin-bottom: 6px; max-height: 220px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.14); }
+.mention-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font-size: 13px; border: 0; width: 100%; cursor: pointer; }
+.mention-item:hover, .mention-item:focus { background: var(--hover); }
+.mention-ic { font-size: 15px; line-height: 1; flex: none; }
+.chat.term .mention-pop { background: var(--t-bg2); border-color: var(--t-line); border-radius: 6px; }
+.chat.term .mention-item { color: var(--t-fg); font-family: var(--mono); font-size: 12.5px; border-radius: 4px; }
+.chat.term .mention-item:hover { background: #2a2927; }
+

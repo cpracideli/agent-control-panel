@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarMinus, CalendarPlus, Circle, Copy, Download, FileText, Plug, Search, Send, ShieldCheck, Terminal, Unplug } from 'lucide-react';
+import { Bot, CalendarMinus, CalendarPlus, Circle, Copy, Download, FileText, Plug, Search, Send, ShieldCheck, Terminal, Unplug } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Card, ErrorBox, IconButton, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -45,7 +45,7 @@ function ContainerLogs() {
   );
 }
 
-const ICONS = { send: Send, 'send-file': FileText, 'schedule-add': CalendarPlus, 'schedule-delete': CalendarMinus, 'mcp-add': Plug, 'mcp-remove': Unplug };
+const ICONS = { send: Send, 'send-file': FileText, 'schedule-add': CalendarPlus, 'schedule-delete': CalendarMinus, 'mcp-add': Plug, 'mcp-remove': Unplug, 'bot-ask': Bot };
 
 function Audit() {
   const t = useT();
