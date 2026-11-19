@@ -10,17 +10,47 @@ const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅',
 export function BotAvatar({ bot, size = 40 }) {
   return (
     <span className="bot-avatar" style={{ width: size, height: size, fontSize: size * 0.5, background: (bot?.color || '#8e8e93') + '33', borderColor: (bot?.color || '#8e8e93') + '66' }} aria-hidden>
-      {bot?.emoji || <Bot size={size * 0.5} />}
+      {bot?.avatar ? <img src={bot.avatar} alt="" /> : (bot?.emoji || <Bot size={size * 0.5} />)}
     </span>
   );
+}
+
+function resizeAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2, sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
   const t = useT();
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState({ name: '', emoji: '✨', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', mcp: null, ...initial });
+  const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', mcp: null, ...initial });
   const [busy, run] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const pickAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await resizeAvatar(file);
+    setF((cur) => ({ ...cur, avatar: dataUrl }));
+    e.target.value = '';
+  };
   const provs = providers?.providers || [];
   const agy = f.provider === 'antigravity';
   const prov = provs.find((p) => p.id === (f.provider || providers?.defaultProvider || 'claude')) || provs[0];
@@ -30,7 +60,7 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
   const toggleMcp = (n) => setF({ ...f, mcp: f.mcp.includes(n) ? f.mcp.filter((x) => x !== n) : [...f.mcp, n] });
   const submit = async (e) => {
     e.preventDefault();
-    const body = { name: f.name.trim(), emoji: f.emoji, color: f.color, description: f.description, instructions: f.instructions,
+    const body = { name: f.name.trim(), emoji: f.emoji, avatar: f.avatar || '', color: f.color, description: f.description, instructions: f.instructions,
       provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory, mcp: f.mcp };
     const r = editing ? await run('save', () => bridge.patchBot(f.id, body), t('bots.saved')) : await run('save', () => bridge.addBot(body), t('bots.created'));
     if (r) { onSaved(r); onClose(); }
@@ -41,9 +71,19 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
         <div className="form-grid">
           <Field label={t('bots.name')}><input required autoFocus={!editing} value={f.name} onChange={set('name')} placeholder={t('bots.namePh')} maxLength={40} /></Field>
           <Field label={t('bots.emoji')}>
-            <div className="row wrap emoji-pick">
-              <input className="emoji-input" value={f.emoji} onChange={set('emoji')} maxLength={8} aria-label={t('bots.emoji')} />
-              {EMOJIS.map((x) => <button type="button" key={x} className={'ghost small' + (f.emoji === x ? ' on' : '')} onClick={() => setF({ ...f, emoji: x })}>{x}</button>)}
+            <div className="stack">
+              <div className="row wrap">
+                <BotAvatar bot={f} size={36} />
+                <label className="btn ghost small" style={{ cursor: 'pointer' }}>
+                  Imagem
+                  <input type="file" accept="image/*" hidden onChange={pickAvatar} />
+                </label>
+                {f.avatar && <button type="button" className="ghost small" onClick={() => setF({ ...f, avatar: '' })}>Remover imagem</button>}
+              </div>
+              <div className="row wrap emoji-pick">
+                <input className="emoji-input" value={f.emoji} onChange={set('emoji')} maxLength={8} aria-label={t('bots.emoji')} />
+                {EMOJIS.map((x) => <button type="button" key={x} className={'ghost small' + (f.emoji === x ? ' on' : '')} onClick={() => setF({ ...f, emoji: x, avatar: '' })}>{x}</button>)}
+              </div>
             </div>
           </Field>
           <Field label={t('bots.color')}>

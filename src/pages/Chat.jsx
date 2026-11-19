@@ -231,7 +231,7 @@ function Message({ m, chatId, onResend, onRetry, bot, botsById, term }) {
   }
   return (
     <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
-      {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
+      {bot && (bot.id !== 'default' || bot.avatar) ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <DelegationList delegations={m.delegations} botsById={botsById} term={term} />
         <PromptList prompts={m.prompts} term={term} />
@@ -263,7 +263,7 @@ function LiveRun({ live, bot, botsById, term, onPromptAnswered }) {
   const secs = Math.round((Date.now() - live.started) / 1000);
   return (
     <div className="msg bot live">
-      {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
+      {bot && (bot.id !== 'default' || bot.avatar) ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <DelegationList delegations={live.delegations} botsById={botsById} term={term} />
         <PromptList prompts={live.prompts} term={term} onAnswered={onPromptAnswered} />
@@ -649,7 +649,7 @@ export default function Chat({ openMore, me }) {
     if (mentionQuery === null) return [];
     const all = [
       { id: 'todos', name: '@todos', emoji: '👥', description: t('chat.mentionAll') },
-      ...(botsL.data || []).map((b) => ({ id: b.id, name: b.name, emoji: b.emoji || '🤖', description: b.description || '' })),
+      ...(botsL.data || []).map((b) => ({ id: b.id, name: b.name, emoji: b.emoji || '🤖', avatar: b.avatar || '', color: b.color || '', description: b.description || '' })),
     ];
     return all.filter((x) => !mentionQuery || x.id.toLowerCase().includes(mentionQuery) || x.name.toLowerCase().includes(mentionQuery)).slice(0, 6);
   }, [mentionQuery, botsL.data, t]);
@@ -787,7 +787,7 @@ export default function Chat({ openMore, me }) {
               <div className="mention-pop" role="listbox">
                 {mentionItems.map((it) => (
                   <button key={it.id} type="button" className="mention-item press" onClick={() => pickMention(it)}>
-                    <span className="mention-ic">{it.emoji}</span>
+                    <span className="mention-ic">{it.avatar ? <BotAvatar bot={it} size={20} /> : it.emoji}</span>
                     <b>{it.id === 'todos' ? '@todos' : it.name}</b>
                     {it.id !== 'todos' && <small className="muted">@{it.id}</small>}
                     {it.description && <span className="muted small ellipsis">{it.description}</span>}
