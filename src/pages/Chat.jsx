@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, Trash2, UserRound, Wrench, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, UserRound, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -40,7 +40,37 @@ const Md = ({ text }) => (
   </div>
 );
 
-function ToolList({ tools }) {
+// Terminal style: tool calls as in Claude Code ("⏺ Bash(ls)" then "⎿ output"), output folded after the first line.
+function termArg(input) {
+  let v = input;
+  try { const o = JSON.parse(input); v = o.command || o.file_path || o.path || o.pattern || o.url || o.query || o.prompt || o.description || input; } catch {}
+  v = String(v || '').replace(/\s+/g, ' ').trim();
+  return v.length > 90 ? v.slice(0, 90) + '…' : v;
+}
+function TermTools({ tools }) {
+  const t = useT();
+  if (!tools || !tools.length) return null;
+  return (
+    <div className="term-tools">
+      {tools.map((x, i) => {
+        const lines = String(x.result || '').split('\n').filter((l) => l.trim());
+        return (
+          <div key={x.id || i} className={'term-tool' + (x.isError ? ' bad' : '') + (x.result === undefined ? ' run' : '')}>
+            <div className="term-tool-h"><b>{x.name}</b><span className="term-arg">({termArg(x.input)})</span></div>
+            {x.result === undefined
+              ? <div className="term-out"><span className="term-elbow">⎿</span> <span className="term-dim">{t('chat.working')}…</span></div>
+              : lines.length > 1
+                ? <details className="term-out"><summary><span className="term-elbow">⎿</span> {lines[0].slice(0, 160)} <span className="term-dim">{t('chat.termMore', { n: lines.length - 1 })}</span></summary><pre>{x.result}</pre></details>
+                : <div className="term-out"><span className="term-elbow">⎿</span> {(lines[0] || t('common.empty')).slice(0, 300)}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ToolList({ tools, term }) {
+  if (term) return <TermTools tools={tools} />;
   const t = useT();
   const toast = useToast();
   if (!tools || !tools.length) return null;
@@ -66,7 +96,7 @@ function ToolList({ tools }) {
   );
 }
 
-function Message({ m, chatId, onResend, onRetry, bot }) {
+function Message({ m, chatId, onResend, onRetry, bot, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -90,7 +120,7 @@ function Message({ m, chatId, onResend, onRetry, bot }) {
     <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
-        <ToolList tools={m.tools} />
+        <ToolList tools={m.tools} term={term} />
         <Md text={m.text} />
         <div className="msg-meta">
           {bot && bot.id !== 'default' && <span>{bot.name}</span>}
@@ -112,7 +142,7 @@ function useTicker() {
   useEffect(() => { const x = setInterval(() => set((n) => n + 1), 1000); return () => clearInterval(x); }, []);
 }
 
-function LiveRun({ live, bot }) {
+function LiveRun({ live, bot, term }) {
   const t = useT();
   useTicker();
   const secs = Math.round((Date.now() - live.started) / 1000);
@@ -120,9 +150,9 @@ function LiveRun({ live, bot }) {
     <div className="msg bot live">
       {bot && bot.id !== 'default' ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
-        <ToolList tools={live.tools} />
+        <ToolList tools={live.tools} term={term} />
         {live.texts.length > 0 && <Md text={live.texts.join('\n\n')} />}
-        <div className="msg-meta"><span className="spin" /> {t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
+        <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
           {live.mcp?.length > 0 && <span> · MCP: {live.mcp.map((s) => s.name + (s.status === 'connected' ? '' : ' (' + s.status + ')')).join(', ')}</span>}
         </div>
       </div>
@@ -211,6 +241,9 @@ export default function Chat({ openMore, me }) {
   const [files, setFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [voiceMode, setVoiceModeState] = useState(() => store.get('acp_voice') === '1');
+  // Chat style: 'bubbles' (default) or 'terminal' (looks like Claude Code in a terminal). Visual only, per browser.
+  const [term, setTermState] = useState(() => store.get('acp_chat_style') === 'terminal');
+  const setTerm = (on) => { store.set('acp_chat_style', on ? 'terminal' : 'bubbles'); setTermState(on); };
   const setVoiceMode = (on) => { store.set('acp_voice', on ? '1' : '0'); setVoiceModeState(on); if (!on) stopSpeaking(); else unlockSpeech(); };
   const rec = useRecorder(lang);
   const fileRef = useRef(null);
@@ -462,7 +495,7 @@ export default function Chat({ openMore, me }) {
   const empty = !text.trim() && !files.length;
 
   return (
-    <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '')}>
+    <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '') + (term ? ' term' : '')}>
       <aside className="chat-list" id="chat-list">
         <div className="drawer-head only-mobile">
           <h1 className="serif-title">{t('chat.conversations')}</h1>
@@ -505,6 +538,7 @@ export default function Chat({ openMore, me }) {
             </button>
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
+          <IconButton icon={SquareTerminal} className={'ghost voice-toggle only-desktop' + (term ? ' on' : '')} label={t('chat.style') + ': ' + (term ? t('chat.styleTerminal') : t('chat.styleBubbles'))} onClick={() => setTerm(!term)} />
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
           )}
@@ -541,12 +575,12 @@ export default function Chat({ openMore, me }) {
           {shownMessages.map((m, idx) => {
             const prevUser = m.role === 'assistant' ? [...shownMessages.slice(0, idx)].reverse().find((x) => x.role === 'user' && x.text) : null;
             return (
-              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]}
+              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} term={term}
                 onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
-          {live && <LiveRun live={live} bot={botsById[(info && info.bot) || 'default']} />}
+          {live && <LiveRun live={live} bot={botsById[(info && info.bot) || 'default']} term={term} />}
         </div>
 
         <div className="composer-dock" ref={composerRef}>
@@ -623,6 +657,16 @@ export default function Chat({ openMore, me }) {
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
           <div className="group pad"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
+          <div className="group">
+            <div className="group-row">
+              <span className="row-ic ic-chat"><SquareTerminal size={17} /></span>
+              <span className="grow"><b>{t('chat.style')}</b><small className="muted">{t('chat.styleHint')}</small></span>
+              <div className="seg seg-ios" role="radiogroup" aria-label={t('chat.style')}>
+                <button type="button" role="radio" aria-checked={!term} className={!term ? 'on' : ''} onClick={() => setTerm(false)}>{t('chat.styleBubbles')}</button>
+                <button type="button" role="radio" aria-checked={term} className={term ? 'on' : ''} onClick={() => setTerm(true)}>{t('chat.styleTerminal')}</button>
+              </div>
+            </div>
+          </div>
           {hasTTS() && (
             <div className="group">
               <label className="group-row">
