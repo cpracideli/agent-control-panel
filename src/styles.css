@@ -1028,3 +1028,15 @@ button.link, a { color: var(--accent); }
   .sheet.dragging, .modal.dragging { user-select: none; -webkit-user-select: none; }
   .sheet-grab { touch-action: none; }
 }
+
+/* desktop: collapsible conversations column (toggle in the chat header, ⌘/Ctrl+B) */
+.list-toggle { color: var(--muted) !important; padding: 6px !important; border-radius: 10px !important; }
+.list-toggle:hover { background: var(--hover) !important; color: var(--text) !important; }
+@media (min-width: 821px) {
+  .chat { transition: grid-template-columns 280ms cubic-bezier(.22, 1, .36, 1); }
+  .chat-list { transition: opacity 200ms ease, visibility 0s; }
+  .chat.list-hidden { grid-template-columns: 0 1fr; }
+  .chat.list-hidden .chat-list { opacity: 0; visibility: hidden; overflow: hidden; padding-left: 0; padding-right: 0; transition: opacity 160ms ease, visibility 0s 280ms; }
+  .chat-head .list-toggle + .chat-head-title, .chat-head .list-toggle + .list-toggle + .chat-head-title { margin-left: 2px; }
+}
+@media (prefers-reduced-motion: reduce) { .chat, .chat-list { transition: none !important; } }

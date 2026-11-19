@@ -39,7 +39,7 @@ const pt = {
   'chat.voiceModeHint': 'Lê as respostas em voz alta. Quando você manda áudio, a resposta é falada mesmo com isso desligado.',
   'common.on': 'ligado', 'common.off': 'desligado',
 
-  'chat.new': 'Nova conversa', 'chat.none': 'Nenhuma conversa ainda.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversas',
+  'chat.new': 'Nova conversa', 'chat.none': 'Nenhuma conversa ainda.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversas', 'chat.hideList': 'Ocultar conversas', 'chat.showList': 'Mostrar conversas',
   'chat.emptyTitle': 'Fale com o agente',
   'chat.emptyText': 'Mesmo agente do WhatsApp, com as mesmas ferramentas, MCPs e memória. As respostas aparecem aqui ao vivo.',
   'chat.s1': 'Quais MCPs você tem disponíveis agora?', 'chat.s2': 'Liste meus agendamentos', 'chat.s3': 'Quanto espaço em disco o container está usando?',
@@ -159,7 +159,7 @@ const en = {
   'chat.voiceModeHint': 'Reads answers aloud. When you send audio, the answer is spoken even with this off.',
   'common.on': 'on', 'common.off': 'off',
 
-  'chat.new': 'New chat', 'chat.none': 'No conversations yet.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversations',
+  'chat.new': 'New chat', 'chat.none': 'No conversations yet.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversations', 'chat.hideList': 'Hide conversations', 'chat.showList': 'Show conversations',
   'chat.emptyTitle': 'Talk to the agent',
   'chat.emptyText': 'Same agent as on WhatsApp, with the same tools, MCPs and memory. Answers stream here live.',
   'chat.s1': 'Which MCPs do you have available right now?', 'chat.s2': 'List my schedules', 'chat.s3': 'How much disk space is the container using?',
@@ -279,7 +279,7 @@ const es = {
   'chat.voiceModeHint': 'Lee las respuestas en voz alta. Si envías audio, la respuesta se habla aunque esto esté apagado.',
   'common.on': 'activado', 'common.off': 'desactivado',
 
-  'chat.new': 'Nueva conversación', 'chat.none': 'Aún no hay conversaciones.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversaciones',
+  'chat.new': 'Nueva conversación', 'chat.none': 'Aún no hay conversaciones.', 'chat.msgs': '{n} msgs', 'chat.conversations': 'Conversaciones', 'chat.hideList': 'Ocultar conversaciones', 'chat.showList': 'Mostrar conversaciones',
   'chat.emptyTitle': 'Habla con el agente',
   'chat.emptyText': 'El mismo agente de WhatsApp, con las mismas herramientas, MCPs y memoria. Las respuestas aparecen aquí en vivo.',
   'chat.s1': '¿Qué MCPs tienes disponibles ahora?', 'chat.s2': 'Lista mis programaciones', 'chat.s3': '¿Cuánto disco está usando el contenedor?',

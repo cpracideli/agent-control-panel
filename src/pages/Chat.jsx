@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, Trash2, UserRound, Wrench, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, Trash2, UserRound, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -180,6 +180,16 @@ export default function Chat({ openMore, me }) {
   const [text, setText] = useState('');
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
+  // desktop: the conversations column can be collapsed; remembered per browser
+  const [listHidden, setListHiddenState] = useState(() => store.get('acp_chatlist_hidden') === '1');
+  const toggleListHidden = () => setListHiddenState((h) => { store.set('acp_chatlist_hidden', h ? '0' : '1'); return !h; });
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b' && window.matchMedia('(min-width: 821px)').matches) { e.preventDefault(); toggleListHidden(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [chatSearch, setChatSearch] = useState('');
   const [showMsgSearch, setShowMsgSearch] = useState(false);
   const [msgSearch, setMsgSearch] = useState('');
@@ -443,8 +453,8 @@ export default function Chat({ openMore, me }) {
   const empty = !text.trim() && !files.length;
 
   return (
-    <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '')}>
-      <aside className="chat-list" aria-hidden={undefined}>
+    <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '')}>
+      <aside className="chat-list" id="chat-list">
         <div className="drawer-head only-mobile">
           <h1 className="serif-title">{t('chat.conversations')}</h1>
         </div>
@@ -473,6 +483,8 @@ export default function Chat({ openMore, me }) {
         <div className="chat-scrim" onClick={() => setShowList(false)} />
         <header className="chat-head">
           <IconButton icon={Menu} className="ghost only-mobile nav-btn" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
+          <IconButton icon={listHidden ? PanelLeftOpen : PanelLeftClose} className="ghost bare only-desktop list-toggle" label={(listHidden ? t('chat.showList') : t('chat.hideList')) + ' (⌘/Ctrl+B)'} aria-controls="chat-list" aria-expanded={!listHidden} onClick={toggleListHidden} />
+          {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
