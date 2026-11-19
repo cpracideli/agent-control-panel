@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, AudioLines, Bot, Copy, ChevronLeft, Globe, Lock, Mic, MessagesSquare, Paperclip, Plus, RotateCcw, SlidersHorizontal, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Bot, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, Mic, Plus, RotateCcw, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -119,7 +119,19 @@ function ChatSettings({ chat, providers, onChange }) {
   );
 }
 
-export default function Chat({ openMore, me }) {
+// "Opus 4.7 · medium" for the composer pill, like the model picker in the Claude app.
+function modelLabel(chat, providers) {
+  if (!chat || !providers) return null;
+  const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
+  if (!prov) return null;
+  const agy = chat.provider === 'antigravity';
+  const id = agy ? chat.agyModel : (chat.model || prov.defaultModel);
+  const m = prov.models.find((x) => x.id === id);
+  const name = m ? m.label : (id || provName(chat.provider));
+  return { name, effort: (agy ? chat.agyEffort : chat.effort) || '' };
+}
+
+export default function Chat({ openMore, me, pages = [], go }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -142,8 +154,11 @@ export default function Chat({ openMore, me }) {
   // Read inside the SSE handler, which is created once per conversation.
   const speakRef = useRef({ voiceMode, lastVoice: false, lang });
   speakRef.current.voiceMode = voiceMode; speakRef.current.lang = lang;
-  const endRef = useRef(null);
+  const scrollRef = useRef(null);
+  const composerRef = useRef(null);
+  const mainRef = useRef(null);
   const inputRef = useRef(null);
+  const [atBottom, setAtBottom] = useState(true);
 
   const webChats = useMemo(() => (chats.data || []).filter((c) => c.kind === 'web'), [chats.data]);
 
@@ -188,7 +203,18 @@ export default function Chat({ openMore, me }) {
     return () => { closed = true; es.close(); };
   }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, live]);
+  // The composer floats over the conversation (glass), so the list reserves its height as bottom padding.
+  useEffect(() => {
+    const el = composerRef.current, host = mainRef.current;
+    if (!el || !host || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => host.style.setProperty('--composer-h', el.offsetHeight + 'px'));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const toBottom = (smooth) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
+  useEffect(() => { if (atBottom) toBottom(); }, [messages, live]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setAtBottom(true); setTimeout(() => toBottom(), 0); }, [current]);
+  const onScroll = (e) => { const el = e.currentTarget; setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120); };
 
   const newChat = async () => {
     try {
@@ -273,7 +299,7 @@ export default function Chat({ openMore, me }) {
     }, (err) => { end('fail'); toast(t('chat.micDenied') + (err?.message ? ' (' + err.message + ')' : ''), 'err'); });
   };
   const micButton = (
-    <button key="mic" type="button" className={'icon ghost round mic-hold' + (hold ? ' holding' : '')} aria-label={t('chat.record')} title={t('chat.holdHint')}
+    <button key="mic" type="button" className={'icon ghost cbtn mic-hold' + (hold ? ' holding' : '')} aria-label={t('chat.record')} title={t('chat.holdHint')}
       onPointerDown={onMicDown} onContextMenu={(e) => e.preventDefault()}
       onClick={(e) => { if (e.detail === 0) startRec(); /* keyboard */ }}
       style={hold ? { transform: `translate(${hold.dx}px, ${hold.dy}px) scale(1.6)` } : undefined}>
@@ -292,32 +318,52 @@ export default function Chat({ openMore, me }) {
 
   const info = chatInfo || webChats.find((c) => c.id === current);
 
+  const ml = modelLabel(info, providers.data);
+  const empty = !text.trim() && !files.length;
+  const navPages = pages.filter((p) => p.id !== 'chat');
+
   return (
     <div className={'chat' + (showList ? ' list-open' : '')}>
-      <aside className="chat-list">
-        <Btn icon={Plus} className="block" onClick={newChat}>{t('chat.new')}</Btn>
+      <aside className="chat-list" aria-hidden={undefined}>
+        <div className="drawer-head only-mobile">
+          <h1 className="serif-title">Agent Control</h1>
+          <button type="button" className="glass-btn icon press" aria-label={t('nav.settings')} onClick={() => { setShowList(false); openMore?.(); }}>
+            <span className="avatar-ring" style={{ width: 30, height: 30 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={18} />}</span>
+          </button>
+        </div>
+        {navPages.length > 0 && (
+          <nav className="drawer-nav only-mobile">
+            {navPages.map(({ id, icon: Icon }) => (
+              <button key={id} type="button" className="drawer-item" onClick={() => { setShowList(false); go?.(id); }}>
+                <Icon size={21} strokeWidth={1.7} /><span>{t('nav.' + id)}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+        <Btn icon={Plus} className="block only-desktop" onClick={newChat}>{t('chat.new')}</Btn>
+        <div className="drawer-label only-mobile">{t('chat.conversations')}</div>
         <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
         {webChats.map((c) => (
           <button key={c.id} className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
-            <span className="chat-title">{c.running ? <span className="spin" /> : <Globe size={13} />}{c.title}</span>
+            <span className="chat-title">{c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}<span className="ellipsis">{c.title}</span></span>
             <small>{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
           </button>
         ))}
         {!chats.loading && !webChats.length && <p className="muted small">{t('chat.none')}</p>}
+        <div className="drawer-foot only-mobile">
+          <button type="button" className="new-pill press" onClick={newChat}><Plus size={20} />{t('chat.new')}</button>
+        </div>
       </aside>
-      <div className="chat-scrim" onClick={() => setShowList(false)} />
 
-      <section className="chat-main">
+      <section className="chat-main" ref={mainRef}>
+        <div className="chat-scrim" onClick={() => setShowList(false)} />
         <header className="chat-head">
-          <IconButton icon={MessagesSquare} className="ghost only-mobile nav-btn" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
+          <IconButton icon={Menu} className="ghost only-mobile nav-btn" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
-          {info && <IconButton icon={SlidersHorizontal} className="ghost only-mobile nav-btn" label={t('chat.options')} onClick={() => setShowOpts(true)} />}
-          <IconButton icon={SquarePen} className="ghost only-mobile nav-btn" label={t('chat.new')} onClick={newChat} />
-          {openMore && (
-            <button className="avatar-btn press only-mobile" aria-label={t('nav.settings')} onClick={openMore}>
-              <span className="avatar-ring" style={{ width: 32, height: 32 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={18} />}</span>
-            </button>
-          )}
+          <div className="head-capsule only-mobile">
+            <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
+            <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
+          </div>
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>}
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
@@ -330,7 +376,7 @@ export default function Chat({ openMore, me }) {
           )}
         </header>
 
-        <div className="chat-scroll">
+        <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
           <ErrorBox error={loadErr} />
           {!messages.length && !live && (
             <div className="chat-empty">
@@ -346,55 +392,76 @@ export default function Chat({ openMore, me }) {
           )}
           {messages.map((m) => <Message key={m.id} m={m} chatId={current} />)}
           {live && <LiveRun live={live} />}
-          <div ref={endRef} />
         </div>
 
-        {rec.recording && !hold ? (
-          <div className="composer recording">
-            <IconButton icon={Trash2} className="ghost rec-cancel" size={18} label={t('chat.cancelRec')} onClick={rec.cancel} />
-            <div className="rec-body">
-              <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
-              <span className="rec-text">{rec.recording.transcript || t('chat.recording')}</span>
-            </div>
-            <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} onClick={finishRec} />
-          </div>
-        ) : (
-        <form className={'composer' + (hold && rec.recording ? ' recording holding' : '')} onSubmit={(e) => { e.preventDefault(); send(); }}
-          onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); }}>
-          {hold && rec.recording ? (
-            <div className="rec-body">
-              <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
-              <span className="rec-slide" style={{ transform: `translateX(${hold.dx / 2}px)`, opacity: Math.max(0.2, 1 + hold.dx / 110) }}>
-                <ChevronLeft size={16} />{t('chat.slideCancel')}
-              </span>
-            </div>
-          ) : <>
-          <PendingFiles files={files} onRemove={(i) => setFiles((x) => x.filter((_, j) => j !== i))} />
-          <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
-          <IconButton icon={Paperclip} className="ghost round" size={19} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
-          <textarea onPaste={onPaste}
-            ref={inputRef} rows={Math.min(8, Math.max(1, text.split('\n').length))} value={text}
-            placeholder={t('chat.placeholder')} aria-label={t('chat.placeholder')} enterKeyHint="send"
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) { e.preventDefault(); send(); } }}
-          />
-          </>}
-          {live && !hold && <IconButton icon={Square} className="danger" label={t('common.stop')} onClick={stop} />}
-          {!text.trim() && !files.length && canRecord()
-            ? <div className="mic-slot" key="mic-slot">
-                {hold && rec.recording && <span className="rec-lock" style={{ opacity: Math.min(1, 0.45 - hold.dy / 80) }}><Lock size={15} /></span>}
-                {micButton}
+        <div className="composer-dock" ref={composerRef}>
+          {!atBottom && <button type="button" className="glass-btn icon to-bottom press" aria-label="↓" onClick={() => toBottom(true)}><ArrowDown size={20} /></button>}
+          {rec.recording && !hold ? (
+            <div className="composer recording">
+              <div className="rec-body">
+                <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
+                <span className="rec-text">{rec.recording.transcript || t('chat.recording')}</span>
               </div>
-            : <IconButton icon={ArrowUp} className="primary send" size={19} label={t('chat.send')} type="submit" disabled={sending || (!text.trim() && !files.length)} />}
-        </form>
-        )}
-        {info && (
-          <div className="chat-foot muted small">
-            {t('chat.foot', { runs: info.totals.runs, time: f.dur(info.totals.ms), cost: f.usd(info.totals.cost) })}
-            {(info.session || info.agySession) ? ' · ' + t('chat.session', { id: (info.provider === 'antigravity' ? info.agySession : info.session).slice(0, 8) }) : ''}
-            {' '}<Badge kind={live ? 'warn' : 'ok'}>{live ? t('chat.busy') : t('chat.ready')}</Badge>
-          </div>
-        )}
+              <div className="composer-bar">
+                <IconButton icon={Trash2} className="ghost cbtn rec-cancel" size={19} label={t('chat.cancelRec')} onClick={rec.cancel} />
+                <span className="grow" />
+                <IconButton icon={ArrowUp} className="cmain" size={20} label={t('chat.send')} onClick={finishRec} />
+              </div>
+            </div>
+          ) : (
+          <form className={'composer' + (hold && rec.recording ? ' recording holding' : '')} onSubmit={(e) => { e.preventDefault(); send(); }}
+            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); }}>
+            {hold && rec.recording ? (
+              <div className="rec-body">
+                <span className="rec-dot" /><RecordingTimer started={rec.recording.started} />
+                <span className="rec-slide" style={{ transform: `translateX(${hold.dx / 2}px)`, opacity: Math.max(0.2, 1 + hold.dx / 110) }}>
+                  <ChevronLeft size={16} />{t('chat.slideCancel')}
+                </span>
+              </div>
+            ) : <>
+            <PendingFiles files={files} onRemove={(i) => setFiles((x) => x.filter((_, j) => j !== i))} />
+            <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
+            <textarea onPaste={onPaste}
+              ref={inputRef} rows={Math.min(8, Math.max(1, text.split('\n').length))} value={text}
+              placeholder={t('chat.placeholder')} aria-label={t('chat.placeholder')} enterKeyHint="send"
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) { e.preventDefault(); send(); } }}
+            />
+            </>}
+            <div className="composer-bar">
+              <div className="cb-left">
+                <IconButton icon={Plus} className="ghost cbtn" size={21} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
+                {ml && (
+                  <button type="button" className="model-pill press" onClick={() => setShowOpts(true)} aria-label={t('chat.model')}>
+                    <span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
+                  </button>
+                )}
+              </div>
+              <span className="grow" />
+              {empty && canRecord() && (
+                <div className="mic-slot" key="mic-slot">
+                  {hold && rec.recording && <span className="rec-lock" style={{ opacity: Math.min(1, 0.45 - hold.dy / 80) }}><Lock size={15} /></span>}
+                  {micButton}
+                </div>
+              )}
+              {!hold && (!empty
+                ? <IconButton icon={ArrowUp} className="cmain" size={20} label={t('chat.send')} type="submit" disabled={sending} />
+                : live
+                  ? <IconButton icon={Square} className="cmain" size={16} label={t('common.stop')} onClick={stop} />
+                  : hasTTS()
+                    ? <IconButton icon={AudioLines} className={'cmain' + (voiceMode ? ' on' : ' off')} size={20} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
+                    : <IconButton icon={ArrowUp} className="cmain" size={20} label={t('chat.send')} type="submit" disabled />)}
+            </div>
+          </form>
+          )}
+          {info && (
+            <div className="chat-foot muted small">
+              {t('chat.foot', { runs: info.totals.runs, time: f.dur(info.totals.ms), cost: f.usd(info.totals.cost) })}
+              {(info.session || info.agySession) ? ' · ' + t('chat.session', { id: (info.provider === 'antigravity' ? info.agySession : info.session).slice(0, 8) }) : ''}
+              {' '}<Badge kind={live ? 'warn' : 'ok'}>{live ? t('chat.busy') : t('chat.ready')}</Badge>
+            </div>
+          )}
+        </div>
       </section>
       {showOpts && info && (
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>

@@ -221,11 +221,11 @@ export default function App() {
 
       <main className={'main' + (page === 'chat' ? ' main-chat' : '')}>
         <header className="topbar">
-          <h1 className="large-title grow ellipsis">{t('nav.' + page)}</h1>
+          <h1 className="large-title serif-title grow ellipsis">{t('nav.' + page)}</h1>
           <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={38} /></button>
         </header>
         {banners}
-        <Page openMore={() => setMore(true)} me={me} />
+        <Page openMore={() => setMore(true)} me={me} pages={PAGES} go={go} />
       </main>
 
       <nav className="dock" aria-label={t('nav.menu')}>
