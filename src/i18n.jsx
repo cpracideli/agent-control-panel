@@ -107,6 +107,17 @@ const pt = {
   'logs.auditTitle': 'Auditoria (envios, agendamentos, MCP)', 'logs.nothing': 'Nada registrado.', 'logs.failed': '(falhou)', 'logs.to': 'para {n}',
   'logs.a.send': 'Mensagem enviada', 'logs.a.send-file': 'Arquivo enviado', 'logs.a.schedule-add': 'Agendamento criado',
   'logs.a.schedule-delete': 'Agendamento removido', 'logs.a.mcp-add': 'MCP adicionado', 'logs.a.mcp-remove': 'MCP removido', 'logs.a.event': 'evento',
+  'common.confirm': 'Confirmar', 'common.download': 'Baixar', 'common.preview': 'Visualizar', 'common.editTab': 'Editar', 'common.all': 'Todos',
+  'chat.searchChats': 'Buscar conversas…', 'chat.rename': 'Renomear', 'chat.renameTitle': 'Renomear conversa',
+  'chat.searchMsgs': 'Buscar na conversa…', 'chat.noMatches': 'Nenhuma mensagem encontrada.',
+  'chat.retry': 'Tentar novamente', 'chat.resend': 'Reenviar', 'chat.queuedBanner': '{n} na fila aguardando',
+  'chat.toolsErrors': '{n} erro(s)',
+  'sch.filterAll': 'Todos', 'sch.filterActive': 'Ativos', 'sch.filterPaused': 'Pausados',
+  'sch.nextRun': 'Próximo: {d}', 'sch.cronInvalid': 'Expressão cron inválida',
+  'logs.copy': 'Copiar logs', 'logs.download': 'Baixar .log', 'logs.allActions': 'Todas as ações',
+  'mem.unsavedConfirm': 'Descartar alterações não salvas?',
+  'use.metricTokens': 'Tokens', 'use.metricCost': 'Custo (USD)',
+  'env.pendingRestart': 'Há alterações salvas que só valem após reiniciar o agente.',
 };
 
 const en = {
@@ -216,6 +227,17 @@ const en = {
   'logs.auditTitle': 'Audit (messages, schedules, MCP)', 'logs.nothing': 'Nothing recorded.', 'logs.failed': '(failed)', 'logs.to': 'to {n}',
   'logs.a.send': 'Message sent', 'logs.a.send-file': 'File sent', 'logs.a.schedule-add': 'Schedule created',
   'logs.a.schedule-delete': 'Schedule removed', 'logs.a.mcp-add': 'MCP added', 'logs.a.mcp-remove': 'MCP removed', 'logs.a.event': 'event',
+  'common.confirm': 'Confirm', 'common.download': 'Download', 'common.preview': 'Preview', 'common.editTab': 'Edit', 'common.all': 'All',
+  'chat.searchChats': 'Search chats…', 'chat.rename': 'Rename', 'chat.renameTitle': 'Rename conversation',
+  'chat.searchMsgs': 'Search in chat…', 'chat.noMatches': 'No matching messages.',
+  'chat.retry': 'Retry', 'chat.resend': 'Resend', 'chat.queuedBanner': '{n} queued ahead',
+  'chat.toolsErrors': '{n} error(s)',
+  'sch.filterAll': 'All', 'sch.filterActive': 'Active', 'sch.filterPaused': 'Paused',
+  'sch.nextRun': 'Next: {d}', 'sch.cronInvalid': 'Invalid cron expression',
+  'logs.copy': 'Copy logs', 'logs.download': 'Download .log', 'logs.allActions': 'All actions',
+  'mem.unsavedConfirm': 'Discard unsaved changes?',
+  'use.metricTokens': 'Tokens', 'use.metricCost': 'Cost (USD)',
+  'env.pendingRestart': 'Saved changes only apply after restarting the agent.',
 };
 
 const es = {
@@ -325,6 +347,17 @@ const es = {
   'logs.auditTitle': 'Auditoría (envíos, programaciones, MCP)', 'logs.nothing': 'Nada registrado.', 'logs.failed': '(falló)', 'logs.to': 'para {n}',
   'logs.a.send': 'Mensaje enviado', 'logs.a.send-file': 'Archivo enviado', 'logs.a.schedule-add': 'Programación creada',
   'logs.a.schedule-delete': 'Programación eliminada', 'logs.a.mcp-add': 'MCP agregado', 'logs.a.mcp-remove': 'MCP eliminado', 'logs.a.event': 'evento',
+  'common.confirm': 'Confirmar', 'common.download': 'Descargar', 'common.preview': 'Vista previa', 'common.editTab': 'Editar', 'common.all': 'Todos',
+  'chat.searchChats': 'Buscar conversaciones…', 'chat.rename': 'Renombrar', 'chat.renameTitle': 'Renombrar conversación',
+  'chat.searchMsgs': 'Buscar en el chat…', 'chat.noMatches': 'No se encontraron mensajes.',
+  'chat.retry': 'Reintentar', 'chat.resend': 'Reenviar', 'chat.queuedBanner': '{n} en cola',
+  'chat.toolsErrors': '{n} error(es)',
+  'sch.filterAll': 'Todos', 'sch.filterActive': 'Activos', 'sch.filterPaused': 'Pausados',
+  'sch.nextRun': 'Próximo: {d}', 'sch.cronInvalid': 'Expresión cron inválida',
+  'logs.copy': 'Copiar logs', 'logs.download': 'Descargar .log', 'logs.allActions': 'Todas las acciones',
+  'mem.unsavedConfirm': '¿Descartar cambios sin guardar?',
+  'use.metricTokens': 'Tokens', 'use.metricCost': 'Costo (USD)',
+  'env.pendingRestart': 'Hay cambios guardados que solo aplican al reiniciar el agente.',
 };
 
 export const LANGS = [

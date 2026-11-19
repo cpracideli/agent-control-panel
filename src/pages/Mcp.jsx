@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity, Eye, Plug, Plus, Server, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, confirmAsk, useAction, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useLoad } from '../ui.jsx';
 
 const PRESETS = [
   { name: 'playwright', transport: 'stdio', command: 'npx', args: '@playwright/mcp@latest --browser chromium --headless --no-sandbox' },
@@ -78,6 +78,7 @@ function AddMcp({ provider, onClose, onDone }) {
 
 export default function Mcp() {
   const t = useT();
+  const confirm = useConfirm();
   const mcp = useLoad(() => bridge.mcp(), []);
   const [status, setStatus] = useState(null);
   const [agyStatus, setAgyStatus] = useState(null);
@@ -87,7 +88,7 @@ export default function Mcp() {
 
   const check = async () => { const r = await run('status', () => bridge.mcpStatus()); setStatus(r ? { output: r.output } : null); };
   const checkAgy = async () => { const r = await run('agy-status', () => bridge.mcpStatus('antigravity')); setAgyStatus(r || null); };
-  const remove = (provider, name, scope) => confirmAsk(t('mcp.removeConfirm', { n: name })) &&
+  const remove = async (provider, name, scope) => (await confirm(t('mcp.removeConfirm', { n: name }))) &&
     run('rm-' + name, () => bridge.removeMcp(provider, name, scope), t('common.removed')).then(() => mcp.reload(true));
 
   // "name: … - ✓ Connected" lines from `claude mcp list`

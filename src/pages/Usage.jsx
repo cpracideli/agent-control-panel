@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Gauge, Sparkles } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
-import { Badge, Card, ErrorBox, useLoad } from '../ui.jsx';
+import { Badge, Card, ErrorBox, useFmt, useLoad } from '../ui.jsx';
 
 const compact = (lang, n) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: n >= 1e6 ? 1 : 0 }).format(n || 0);
 const level = (p) => (p >= 95 ? 'err' : p >= 80 ? 'warn' : 'ok');
@@ -77,9 +77,11 @@ function BarChart({ title, rows, color, render, empty }) {
 
 export default function Usage() {
   const t = useT();
+  const f = useFmt();
   const { lang } = useI18n();
   const u = useLoad(() => bridge.usage(), [], { interval: 60000 });
   const [range, setRange] = useState('day');
+  const [metric, setMetric] = useState('tokens');
   const d = u.data;
 
   const series = useMemo(() => {
@@ -133,15 +135,20 @@ export default function Usage() {
         </div>
       )}
 
-      <Card title={t('use.history')} icon={BarChart3} actions={
+      <Card title={t('use.history')} icon={BarChart3} actions={<div className="row wrap">
+        <div className="seg">
+          <button type="button" className={metric === 'tokens' ? 'on' : ''} onClick={() => setMetric('tokens')}>{t('use.metricTokens')}</button>
+          <button type="button" className={metric === 'cost' ? 'on' : ''} onClick={() => setMetric('cost')}>{t('use.metricCost')}</button>
+        </div>
         <div className="seg">
           <button type="button" className={range === 'day' ? 'on' : ''} onClick={() => setRange('day')}>{t('use.days')}</button>
           <button type="button" className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>{t('use.weeks')}</button>
-        </div>}>
+        </div>
+      </div>}>
         {series && (
           <div className="stack">
-            <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.c.tokens, raw: r.c }))}
-              render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
+            <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
+              render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? f.usd(r.value) : tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
             <BarChart title="Antigravity" color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.a.tokens, raw: r.a }))}
               render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
               empty={t('use.agyEmpty')} />

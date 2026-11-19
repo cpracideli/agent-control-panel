@@ -64,8 +64,8 @@ function ChatOverrides({ providers }) {
       {!wa.length && chats.data && <p className="muted">{t('pr.noWa')}</p>}
       {wa.map((c) => {
         const agy = c.provider === 'antigravity';
-        const prov = providers.providers.find((p) => p.id === c.provider);
-        const efforts = agy ? (prov.models.find((m) => m.id === c.agyModel)?.efforts || []) : prov.efforts;
+        const prov = providers.providers.find((p) => p.id === c.provider) || providers.providers[0];
+        const efforts = agy ? (prov?.models.find((m) => m.id === c.agyModel)?.efforts || []) : (prov?.efforts || []);
         return (
           <div key={c.id} className="list-row wrap">
             <div className="grow"><b className="with-ic"><Smartphone size={14} />{c.title}</b><div className="muted small">{t('chat.session', { id: (agy ? c.agySession : c.session).slice(0, 8) || t('common.none') })}</div></div>

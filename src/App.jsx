@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Brain, CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { api, setUnauthorizedHandler } from './api.js';
+import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
@@ -149,9 +149,24 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [page, setPage] = useState(pageFromHash);
   const [more, setMore] = useState(false);
+  const [navStatus, setNavStatus] = useState({ running: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+
+  useEffect(() => {
+    if (!authed) return undefined;
+    let stop = false;
+    const poll = () => {
+      if (document.hidden || stop) return;
+      bridge.overview()
+        .then((o) => !stop && setNavStatus({ running: o.running?.length || 0, offline: false }))
+        .catch(() => !stop && setNavStatus((s) => ({ ...s, offline: true })));
+    };
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => { stop = true; clearInterval(id); };
+  }, [authed]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => setAuthed(false));
@@ -205,7 +220,10 @@ export default function App() {
         <nav>
           {PAGES.map(({ id, icon: Icon }) => (
             <button key={id} className={'nav-item' + (id === page ? ' active' : '')} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
-              <span className={'row-ic ic-' + id}><Icon size={15} /></span>{t('nav.' + id)}
+              <span className={'row-ic ic-' + id}><Icon size={15} /></span>
+              <span className="grow">{t('nav.' + id)}</span>
+              {id === 'chat' && navStatus.running > 0 && <span className="nav-dot warn" aria-label={t('common.running')} />}
+              {id === 'overview' && navStatus.offline && <span className="nav-dot err" aria-label={t('ov.offline')} />}
             </button>
           ))}
         </nav>
@@ -234,9 +252,10 @@ export default function App() {
           <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>
           {DOCK.map((id) => {
             const { icon: Icon } = PAGES.find((p) => p.id === id);
+            const dot = (id === 'chat' && navStatus.running > 0 && 'warn') || (id === 'overview' && navStatus.offline && 'err');
             return (
               <button key={id} className={id === page ? 'active' : ''} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
-                <Icon size={21} strokeWidth={id === page ? 2.3 : 1.9} /><span>{t('nav.' + id)}</span>
+                <span className="dock-ic"><Icon size={21} strokeWidth={id === page ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
               </button>
             );
           })}

@@ -487,9 +487,9 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 }
 
 /* usage page */
-:root { --chart-1: #d9774a; --chart-2: #2f6fe0; }
-:root[data-theme="dark"] { --chart-1: #c86a3f; --chart-2: #5b8ff0; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --chart-1: #c86a3f; --chart-2: #5b8ff0; } }
+:root { --chart-1: #007aff; --chart-2: #5856d6; }
+:root[data-theme="dark"] { --chart-1: #0a84ff; --chart-2: #5e5ce6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --chart-1: #0a84ff; --chart-2: #5e5ce6; } }
 .meter { padding: 8px 0; }
 .meter + .meter { border-top: .5px solid var(--sep); }
 .meter-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
@@ -688,55 +688,52 @@ button.primary { position: relative; box-shadow: inset 0 1px 1px rgba(255, 255, 
 }
 
 /* =====================================================================
-   Claude look (v3): warm neutrals + clay accent, serif for titles and
-   answers, inverted pill buttons, a floating glass composer, glass
-   circles in the nav bar and a side drawer that pushes the page away.
-   The glass is clearer than v2 so the content really shows through.
+   Apple / iOS system palette + Liquid Glass chrome
    ===================================================================== */
 :root {
-  --bg: #faf9f5; --panel: rgba(250, 249, 245, .82); --card: #ffffff; --card-2: #f0eee6;
-  --sunken: rgba(31, 30, 29, .06); --hover: rgba(31, 30, 29, .06); --active: rgba(31, 30, 29, .08);
-  --line: rgba(31, 30, 29, .1); --sep: rgba(31, 30, 29, .14);
-  --text: #1f1e1d; --muted: rgba(31, 30, 29, .56);
-  --accent: #c96442; --accent-2: #d97757; --accent-ink: #ffffff;
-  --bubble: #f0eee6; --bubble-ink: #1f1e1d; --inv: #1f1e1d; --inv-ink: #faf9f5;
-  --serif: 'Iowan Old Style', 'Charter', 'Source Serif 4', 'Source Serif Pro', Georgia, 'Times New Roman', serif;
+  --bg: #f2f2f7; --panel: rgba(246, 246, 250, .82); --card: #ffffff; --card-2: #f2f2f7;
+  --sunken: rgba(118, 118, 128, .12); --hover: rgba(120, 120, 128, .1); --active: rgba(0, 122, 255, .12);
+  --line: rgba(60, 60, 67, .16); --sep: rgba(60, 60, 67, .29);
+  --text: #000000; --muted: rgba(60, 60, 67, .6);
+  --accent: #007aff; --accent-2: #1a8cff; --accent-ink: #ffffff;
+  --bubble: #007aff; --bubble-ink: #ffffff; --inv: #007aff; --inv-ink: #ffffff;
+  --serif: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
   --lg-tint: linear-gradient(180deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .38) 100%);
-  --lg-tint-strong: linear-gradient(180deg, rgba(252, 251, 248, .72) 0%, rgba(248, 247, 242, .64) 100%);
+  --lg-tint-strong: linear-gradient(180deg, rgba(255, 255, 255, .72) 0%, rgba(242, 242, 247, .64) 100%);
   --lg-filter: blur(18px) saturate(180%);
   --lg-filter-strong: blur(26px) saturate(190%);
   --lg-glow: rgba(255, 255, 255, .6);
 }
 :root[data-theme="dark"] {
-  --bg: #171716; --panel: rgba(23, 23, 22, .8); --card: #242422; --card-2: #2c2c2a;
-  --sunken: rgba(245, 244, 239, .08); --hover: rgba(245, 244, 239, .07); --active: rgba(245, 244, 239, .12);
-  --line: rgba(245, 244, 239, .1); --sep: rgba(245, 244, 239, .13);
-  --text: #f5f4ef; --muted: rgba(245, 244, 239, .55);
-  --accent: #d97757; --accent-2: #e08a6c; --accent-ink: #ffffff;
-  --bubble: #2e2d2b; --bubble-ink: #f5f4ef; --inv: #f5f4ef; --inv-ink: #171716;
-  --lg-tint: linear-gradient(180deg, rgba(64, 63, 60, .36) 0%, rgba(40, 40, 38, .34) 100%);
-  --lg-tint-strong: linear-gradient(180deg, rgba(44, 44, 42, .62) 0%, rgba(32, 32, 30, .58) 100%);
+  --bg: #000000; --panel: rgba(22, 22, 24, .78); --card: #1c1c1e; --card-2: #2c2c2e;
+  --sunken: rgba(118, 118, 128, .24); --hover: rgba(120, 120, 128, .2); --active: rgba(10, 132, 255, .2);
+  --line: rgba(84, 84, 88, .5); --sep: rgba(84, 84, 88, .65);
+  --text: #ffffff; --muted: rgba(235, 235, 245, .6);
+  --accent: #0a84ff; --accent-2: #2b95ff; --accent-ink: #ffffff;
+  --bubble: #0a84ff; --bubble-ink: #ffffff; --inv: #0a84ff; --inv-ink: #ffffff;
+  --lg-tint: linear-gradient(180deg, rgba(44, 44, 46, .36) 0%, rgba(28, 28, 30, .34) 100%);
+  --lg-tint-strong: linear-gradient(180deg, rgba(44, 44, 46, .62) 0%, rgba(28, 28, 30, .58) 100%);
   --lg-filter: blur(18px) saturate(170%);
   --lg-filter-strong: blur(26px) saturate(180%);
   --lg-glow: rgba(255, 255, 255, .14);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #171716; --panel: rgba(23, 23, 22, .8); --card: #242422; --card-2: #2c2c2a;
-    --sunken: rgba(245, 244, 239, .08); --hover: rgba(245, 244, 239, .07); --active: rgba(245, 244, 239, .12);
-    --line: rgba(245, 244, 239, .1); --sep: rgba(245, 244, 239, .13);
-    --text: #f5f4ef; --muted: rgba(245, 244, 239, .55);
-    --accent: #d97757; --accent-2: #e08a6c; --accent-ink: #ffffff;
-    --bubble: #2e2d2b; --bubble-ink: #f5f4ef; --inv: #f5f4ef; --inv-ink: #171716;
-    --lg-tint: linear-gradient(180deg, rgba(64, 63, 60, .36) 0%, rgba(40, 40, 38, .34) 100%);
-    --lg-tint-strong: linear-gradient(180deg, rgba(44, 44, 42, .62) 0%, rgba(32, 32, 30, .58) 100%);
+    --bg: #000000; --panel: rgba(22, 22, 24, .78); --card: #1c1c1e; --card-2: #2c2c2e;
+    --sunken: rgba(118, 118, 128, .24); --hover: rgba(120, 120, 128, .2); --active: rgba(10, 132, 255, .2);
+    --line: rgba(84, 84, 88, .5); --sep: rgba(84, 84, 88, .65);
+    --text: #ffffff; --muted: rgba(235, 235, 245, .6);
+    --accent: #0a84ff; --accent-2: #2b95ff; --accent-ink: #ffffff;
+    --bubble: #0a84ff; --bubble-ink: #ffffff; --inv: #0a84ff; --inv-ink: #ffffff;
+    --lg-tint: linear-gradient(180deg, rgba(44, 44, 46, .36) 0%, rgba(28, 28, 30, .34) 100%);
+    --lg-tint-strong: linear-gradient(180deg, rgba(44, 44, 46, .62) 0%, rgba(28, 28, 30, .58) 100%);
     --lg-filter: blur(18px) saturate(170%);
     --lg-filter-strong: blur(26px) saturate(180%);
     --lg-glow: rgba(255, 255, 255, .14);
   }
 }
-:root[data-theme="dark"] .seg button.on { background: #4a4946; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg button.on { background: #4a4946; } }
+:root[data-theme="dark"] .seg button.on { background: #3a3a3c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg button.on { background: #3a3a3c; } }
 html, body { background: var(--bg); }
 .serif-title { font-family: var(--serif); font-weight: 600; letter-spacing: -.015em; }
 .large-title.serif-title { font-weight: 600; }
@@ -987,3 +984,36 @@ button.link, a { color: var(--accent); }
 /* with less frost, text on glass needs a soft halo to stay readable */
 .dock button, .composer textarea, .model-pill, .head-capsule button { text-shadow: 0 0 8px color-mix(in srgb, var(--bg) 85%, transparent), 0 1px 2px color-mix(in srgb, var(--bg) 60%, transparent); }
 .composer button.cbtn, .model-pill { background: color-mix(in srgb, var(--text) 9%, transparent); }
+
+/* UI enhancements */
+.nav-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.nav-dot.warn { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.nav-dot.err { background: var(--err); box-shadow: 0 0 6px var(--err); }
+.dock-ic { position: relative; display: inline-flex; }
+.dock-ic .nav-dot { position: absolute; top: -1px; right: -3px; }
+
+.code-wrap { position: relative; }
+.code-copy { position: absolute; top: 8px; right: 8px; opacity: 0; transition: opacity 120ms; z-index: 2; background: var(--sunken); border-radius: 7px; padding: 4px 6px; }
+.code-wrap:hover .code-copy, .code-wrap:focus-within .code-copy { opacity: 1; }
+@media (hover: none) { .code-copy { opacity: .85; } }
+
+.chat-search { margin-bottom: 8px; width: 100%; }
+.chat-item-row { display: flex; align-items: center; border-radius: 12px; position: relative; }
+.chat-item-row:hover { background: var(--sunken); }
+.chat-item-row.active { background: var(--active); }
+.chat-item-row .chat-item { flex: 1; min-width: 0; background: transparent !important; }
+.chat-item-actions { display: flex; gap: 2px; padding-right: 6px; opacity: 0; transition: opacity 120ms; }
+.chat-item-row:hover .chat-item-actions, .chat-item-row:focus-within .chat-item-actions { opacity: 1; }
+@media (hover: none) { .chat-item-actions { opacity: .75; } }
+
+.chat-search-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: .5px solid var(--sep); background: var(--panel); }
+.msg-actions-user { display: flex; justify-content: flex-end; opacity: 0; transition: opacity 120ms; margin-top: 2px; }
+.msg.user:hover .msg-actions-user { opacity: .85; }
+.queue-pill { display: flex; justify-content: center; margin-bottom: 6px; }
+
+.list-row.clickable { cursor: pointer; border-radius: 10px; padding-left: 8px; padding-right: 8px; margin-left: -8px; margin-right: -8px; }
+.list-row.clickable:hover { background: var(--sunken); }
+
+.logs .log-err { color: var(--err); font-weight: 500; }
+.logs .log-warn { color: var(--warn-ink); }
+.mem-preview { min-height: 200px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: .5px solid var(--sep); }

@@ -150,6 +150,36 @@ export function useFmt() {
 
 export function confirmAsk(text) { return window.confirm(text); }
 
+const ConfirmCtx = createContext(() => Promise.resolve(false));
+export const useConfirm = () => useContext(ConfirmCtx);
+export function ConfirmProvider({ children }) {
+  const t = useT();
+  const [req, setReq] = useState(null);
+  const ask = useCallback((text, opts = {}) => new Promise((resolve) => {
+    setReq({ text, danger: opts.danger !== false, resolve });
+  }), []);
+  const close = (ok) => {
+    req?.resolve(ok);
+    setReq(null);
+  };
+  return (
+    <ConfirmCtx.Provider value={ask}>
+      {children}
+      {req && (
+        <Modal title={t('common.confirm')} onClose={() => close(false)}>
+          <div className="stack">
+            <p>{req.text}</p>
+            <div className="row end">
+              <button type="button" className="ghost" onClick={() => close(false)}>{t('common.cancel')}</button>
+              <button type="button" autoFocus className={req.danger ? 'danger' : ''} onClick={() => close(true)}>{t('common.confirm')}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </ConfirmCtx.Provider>
+  );
+}
+
 // iOS-style page sheet: slides up from the bottom on phones, centered card on desktop.
 export function Sheet({ title, onClose, children }) {
   const t = useT();

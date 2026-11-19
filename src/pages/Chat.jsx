@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowUp, AudioLines, Bot, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, Mic, Plus, RotateCcw, Square, SquarePen, Trash2, UserRound, Wrench } from 'lucide-react';
+import { ArrowDown, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Lock, Menu, MessageCircle, Mic, Pencil, Plus, RotateCcw, Search, Square, SquarePen, Trash2, UserRound, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
-import { Badge, Btn, ErrorBox, IconButton, Sheet, confirmAsk, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const chatFromHash = () => {
   const m = window.location.hash.match(/^#\/chat\/([a-f0-9]+)/);
@@ -13,21 +13,50 @@ const chatFromHash = () => {
 };
 const provName = (p) => (p === 'antigravity' ? 'Antigravity' : 'Claude');
 
+function CodeBlock({ children, ...props }) {
+  const t = useT();
+  const [ok, setOk] = useState(false);
+  const preRef = useRef(null);
+  const copy = () => {
+    const txt = preRef.current?.innerText || '';
+    navigator.clipboard.writeText(txt);
+    setOk(true);
+    setTimeout(() => setOk(false), 1500);
+  };
+  return (
+    <div className="code-wrap">
+      <button type="button" className="code-copy ghost icon" aria-label={t('common.copy')} title={t('common.copy')} onClick={copy}>
+        {ok ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+      <pre ref={preRef} {...props}>{children}</pre>
+    </div>
+  );
+}
+
 const Md = ({ text }) => (
   <div className="md">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" />, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div> }}>{text || ''}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" />, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div>, pre: CodeBlock }}>{text || ''}</ReactMarkdown>
   </div>
 );
 
 function ToolList({ tools }) {
   const t = useT();
+  const toast = useToast();
   if (!tools || !tools.length) return null;
+  const errCount = tools.filter((x) => x.isError).length;
   return (
     <details className="tools">
-      <summary><Wrench size={13} /> {tools.length === 1 ? t('chat.toolsOne') : t('chat.toolsMany', { n: tools.length })}: {[...new Set(tools.map((x) => x.name))].join(', ')}</summary>
+      <summary>
+        <Wrench size={13} /> {tools.length === 1 ? t('chat.toolsOne') : t('chat.toolsMany', { n: tools.length })}: {[...new Set(tools.map((x) => x.name))].join(', ')}
+        {errCount > 0 && <> <Badge kind="err">{t('chat.toolsErrors', { n: errCount })}</Badge></>}
+      </summary>
       {tools.map((x, i) => (
         <div key={x.id || i} className={'tool' + (x.isError ? ' bad' : '')}>
-          <div className="tool-h"><b>{x.name}</b>{x.result === undefined && <span className="spin" />}</div>
+          <div className="tool-h">
+            <b>{x.name}</b>
+            {x.result === undefined && <span className="spin" />}
+            {x.result !== undefined && <IconButton icon={Copy} size={12} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(x.result || ''); toast(t('common.copied')); }} />}
+          </div>
           <pre>{x.input}</pre>
           {x.result !== undefined && <pre className="tool-out">{x.result || t('common.empty')}</pre>}
         </div>
@@ -36,7 +65,7 @@ function ToolList({ tools }) {
   );
 }
 
-function Message({ m, chatId }) {
+function Message({ m, chatId, onResend, onRetry }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -47,6 +76,11 @@ function Message({ m, chatId }) {
           <MessageFiles files={m.files} transcript={m.transcript} engine={m.transcriptEngine} pendingLabel={t('chat.transcribing')}
             pending={!m.transcript && !m.transcriptFailed && Date.now() - new Date(m.at).getTime() < 180000} />
           {m.text && <div className="bubble">{m.text}</div>}
+          {m.text && onResend && (
+            <div className="msg-actions-user">
+              <IconButton icon={RotateCcw} size={12} className="ghost bare" label={t('chat.resend')} onClick={() => onResend(m.text)} />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -63,6 +97,7 @@ function Message({ m, chatId }) {
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{f.usd(m.usage.cost)}</span> : null}
           {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} chatId={chatId} file={m.tts} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
+          {(m.error || m.stopped) && onRetry && <Btn icon={RotateCcw} className="ghost small" onClick={onRetry}>{t('chat.retry')}</Btn>}
           <IconButton icon={Copy} size={13} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(m.text); toast(t('common.copied')); }} />
         </div>
       </div>
@@ -135,6 +170,7 @@ export default function Chat({ openMore, me }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
+  const confirm = useConfirm();
   const chats = useLoad(() => bridge.chats(), [], { interval: 15000 });
   const providers = useLoad(() => bridge.providers(), []);
   const [current, setCurrent] = useState(chatFromHash);
@@ -144,6 +180,11 @@ export default function Chat({ openMore, me }) {
   const [text, setText] = useState('');
   const [loadErr, setLoadErr] = useState(null);
   const [showList, setShowList] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [msgSearch, setMsgSearch] = useState('');
+  const [renaming, setRenaming] = useState(null);
+  const [queuedAhead, setQueuedAhead] = useState(0);
   const rootRef = useRef(null);
   const openRef = useRef(false);
   openRef.current = showList;
@@ -164,6 +205,14 @@ export default function Chat({ openMore, me }) {
   const [atBottom, setAtBottom] = useState(true);
 
   const webChats = useMemo(() => (chats.data || []).filter((c) => c.kind === 'web'), [chats.data]);
+  const filteredChats = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    return q ? webChats.filter((c) => c.title.toLowerCase().includes(q)) : webChats;
+  }, [webChats, chatSearch]);
+  const shownMessages = useMemo(() => {
+    const q = msgSearch.trim().toLowerCase();
+    return q ? messages.filter((m) => (m.text || m.transcript || '').toLowerCase().includes(q)) : messages;
+  }, [messages, msgSearch]);
 
   const select = (id, replace) => {
     const h = '#/chat/' + id.slice(4);
@@ -181,7 +230,7 @@ export default function Chat({ openMore, me }) {
   useEffect(() => {
     if (!current) return undefined;
     let closed = false;
-    setMessages([]); setLive(null); setLoadErr(null); setChatInfo(null);
+    setMessages([]); setLive(null); setLoadErr(null); setChatInfo(null); setQueuedAhead(0); setMsgSearch(''); setShowMsgSearch(false);
     const load = () => bridge.messages(current)
       .then((r) => { if (!closed) { setMessages(r.messages); setChatInfo(r.chat); } })
       .catch((e) => !closed && setLoadErr(e.message));
@@ -196,12 +245,12 @@ export default function Chat({ openMore, me }) {
         if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
       }
       else if (ev.type === 'update') setMessages((ms) => ms.map((m) => (m.id === ev.id ? { ...m, ...ev.patch } : m)));
-      else if (ev.type === 'start') setLive({ started: Date.now(), texts: [], tools: [], provider: ev.provider });
+      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], provider: ev.provider }); setQueuedAhead((q) => Math.max(0, q - 1)); }
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
       else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input }] });
       else if (ev.type === 'tool_result') setLive((l) => l && { ...l, tools: l.tools.map((x) => (x.id === ev.id ? { ...x, result: ev.text, isError: ev.isError } : x)) });
-      else if (ev.type === 'idle') { setLive(null); chats.reload(true); }
+      else if (ev.type === 'idle') { setLive(null); setQueuedAhead(0); chats.reload(true); }
     };
     return () => { closed = true; es.close(); };
   }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -283,9 +332,9 @@ export default function Chat({ openMore, me }) {
       setTimeout(() => inputRef.current?.focus(), 50);
     } catch (e) { toast(e.message, 'err'); }
   };
-  const send = async (voice) => {
-    const msg = text.trim();
-    const pending = files;
+  const send = async (voice, overrideText) => {
+    const msg = (overrideText !== undefined ? overrideText : text).trim();
+    const pending = overrideText !== undefined ? [] : files;
     if (!msg && !pending.length && !voice) return;
     unlockSpeech();
     let id = current;
@@ -294,13 +343,13 @@ export default function Chat({ openMore, me }) {
       const payload = await Promise.all(pending.map(async (f) => ({ name: f.name, type: f.type, data: await readAsBase64(f.file) })));
       if (voice) payload.push({ name: 'voz.' + (voice.type.split('/')[1] || 'webm'), type: voice.type, data: await readAsBase64(voice.blob), voice: true });
       if (!id) { const c = await bridge.newWeb({}); id = c.id; select(c.id); }
-      setText(''); setFiles([]);
+      if (overrideText === undefined) { setText(''); setFiles([]); }
       speakRef.current.lastVoice = Boolean(voice);
       const r = await bridge.send(id, msg, payload, voice?.transcript);
-      if (r.ahead) toast(t('chat.queued', { n: r.ahead }));
+      if (r.ahead) { setQueuedAhead(r.ahead); toast(t('chat.queued', { n: r.ahead })); }
       chats.reload(true);
       pending.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
-    } catch (e) { toast(e.message, 'err'); setText(msg); setFiles(pending); }
+    } catch (e) { toast(e.message, 'err'); if (overrideText === undefined) { setText(msg); setFiles(pending); } }
     finally { setSending(false); }
   };
   const addFiles = (list) => {
@@ -367,10 +416,23 @@ export default function Chat({ openMore, me }) {
   );
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => { try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); } catch (e) { toast(e.message, 'err'); } };
-  const remove = async () => {
-    if (!confirmAsk(t('chat.deleteConfirm'))) return;
-    try { await bridge.deleteChat(current); setCurrent(null); window.history.replaceState(null, '', '#/chat'); chats.reload(); }
-    catch (e) { toast(e.message, 'err'); }
+  const remove = async (targetId = current) => {
+    if (!(await confirm(t('chat.deleteConfirm')))) return;
+    try {
+      await bridge.deleteChat(targetId);
+      if (targetId === current) { setCurrent(null); window.history.replaceState(null, '', '#/chat'); }
+      chats.reload();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const saveRename = async (e) => {
+    e.preventDefault();
+    if (!renaming || !renaming.title.trim()) return;
+    try {
+      const updated = await bridge.patchChat(renaming.id, { title: renaming.title.trim() });
+      if (renaming.id === current) setChatInfo(updated);
+      chats.reload(true);
+      setRenaming(null);
+    } catch (err) { toast(err.message, 'err'); }
   };
   const reset = async () => { await change({ reset: true }); toast(t('chat.resetDone')); };
   const stop = async () => { try { await bridge.stopChat(current); } catch (e) { toast(e.message, 'err'); } };
@@ -387,14 +449,21 @@ export default function Chat({ openMore, me }) {
           <h1 className="serif-title">{t('chat.conversations')}</h1>
         </div>
         <Btn icon={Plus} className="block only-desktop" onClick={newChat}>{t('chat.new')}</Btn>
+        <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
         <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
-        {webChats.map((c) => (
-          <button key={c.id} className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
-            <span className="chat-title">{c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}<span className="ellipsis">{c.title}</span></span>
-            <small>{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
-          </button>
+        {filteredChats.map((c) => (
+          <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '')}>
+            <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
+              <span className="chat-title">{c.running ? <span className="spin" /> : <MessageCircle size={18} strokeWidth={1.7} />}<span className="ellipsis">{c.title}</span></span>
+              <small>{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+            </button>
+            <div className="chat-item-actions">
+              <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
+              <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
+            </div>
+          </div>
         ))}
-        {!chats.loading && !webChats.length && <p className="muted small">{t('chat.none')}</p>}
+        {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
         <div className="drawer-foot only-mobile">
           <button type="button" className="new-pill press" onClick={newChat}><Plus size={20} />{t('chat.new')}</button>
         </div>
@@ -420,11 +489,18 @@ export default function Chat({ openMore, me }) {
           )}
           {info && (
             <div className="row only-desktop">
+              <IconButton icon={Search} className={'ghost' + (showMsgSearch ? ' active' : '')} label={t('chat.searchMsgs')} onClick={() => { setShowMsgSearch((x) => !x); setMsgSearch(''); }} />
               <IconButton icon={RotateCcw} label={t('common.newSession') + ' — ' + t('chat.resetTitle')} onClick={reset} />
-              <IconButton icon={Trash2} className="ghost danger-text" label={t('chat.delete')} onClick={remove} />
+              <IconButton icon={Trash2} className="ghost danger-text" label={t('chat.delete')} onClick={() => remove(current)} />
             </div>
           )}
         </header>
+        {showMsgSearch && (
+          <div className="chat-search-bar">
+            <label className="search grow"><Search size={14} /><input autoFocus value={msgSearch} onChange={(e) => setMsgSearch(e.target.value)} placeholder={t('chat.searchMsgs')} /></label>
+            <IconButton icon={X} label={t('common.close')} onClick={() => { setShowMsgSearch(false); setMsgSearch(''); }} />
+          </div>
+        )}
 
         <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
           <ErrorBox error={loadErr} />
@@ -440,11 +516,20 @@ export default function Chat({ openMore, me }) {
               </div>
             </div>
           )}
-          {messages.map((m) => <Message key={m.id} m={m} chatId={current} />)}
+          {msgSearch && !shownMessages.length && messages.length > 0 && <p className="muted small" style={{ textAlign: 'center', marginTop: 24 }}>{t('chat.noMatches')}</p>}
+          {shownMessages.map((m, idx) => {
+            const prevUser = m.role === 'assistant' ? [...shownMessages.slice(0, idx)].reverse().find((x) => x.role === 'user' && x.text) : null;
+            return (
+              <Message key={m.id} m={m} chatId={current}
+                onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
+                onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
+            );
+          })}
           {live && <LiveRun live={live} />}
         </div>
 
         <div className="composer-dock" ref={composerRef}>
+          {queuedAhead > 0 && <div className="queue-pill"><Badge kind="warn">{t('chat.queuedBanner', { n: queuedAhead })}</Badge></div>}
           {!atBottom && <button type="button" className="glass-btn icon to-bottom press" aria-label="↓" onClick={() => toBottom(true)}><ArrowDown size={20} /></button>}
           {rec.recording && !hold ? (
             <div className="composer recording">
@@ -527,15 +612,36 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           <div className="group">
+            <button className="group-row press" onClick={() => { setShowOpts(false); setShowMsgSearch(true); }}>
+              <span className="row-ic ic-chat"><Search size={17} /></span>
+              <span className="grow"><b>{t('chat.searchMsgs')}</b></span>
+            </button>
+            <button className="group-row press" onClick={() => { setShowOpts(false); setRenaming({ id: info.id, title: info.title }); }}>
+              <span className="row-ic ic-chat"><Pencil size={17} /></span>
+              <span className="grow"><b>{t('chat.rename')}</b></span>
+            </button>
             <button className="group-row press" onClick={() => { setShowOpts(false); reset(); }}>
               <span className="row-ic ic-providers"><RotateCcw size={17} /></span>
               <span className="grow"><b>{t('common.newSession')}</b><small className="muted">{t('chat.resetTitle')}</small></span>
             </button>
-            <button className="group-row press danger-text" onClick={() => { setShowOpts(false); remove(); }}>
+            <button className="group-row press danger-text" onClick={() => { setShowOpts(false); remove(current); }}>
               <span className="row-ic ic-logout"><Trash2 size={17} /></span><span className="grow">{t('chat.delete')}</span>
             </button>
           </div>
         </Sheet>
+      )}
+      {renaming && (
+        <Modal title={t('chat.renameTitle')} onClose={() => setRenaming(null)}>
+          <form className="stack" onSubmit={saveRename}>
+            <Field label={t('mem.title')}>
+              <input autoFocus required value={renaming.title} onChange={(e) => setRenaming({ ...renaming, title: e.target.value })} />
+            </Field>
+            <div className="row end">
+              <button type="button" className="ghost" onClick={() => setRenaming(null)}>{t('common.cancel')}</button>
+              <button disabled={!renaming.title.trim()}>{t('common.save')}</button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { Brain, FileText, MessageSquarePlus, Pencil, Pin, Plus, Search, Trash2 } from 'lucide-react';
 import { api, bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, Sheet, confirmAsk, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const mem = {
   projects: () => api('GET', '/bridge/memory/projects'),
@@ -51,14 +51,27 @@ function SuggestSheet({ item, onClose }) {
 
 function Editor({ initial, local, onSave, onClose }) {
   const t = useT();
+  const confirm = useConfirm();
   const [v, setV] = useState(initial);
+  const [tab, setTab] = useState('edit');
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
   const isNew = !initial.exists;
+  const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  const handleClose = async () => {
+    if (!dirty || (await confirm(t('mem.unsavedConfirm')))) onClose();
+  };
+  const previewText = local ? (isNew ? v.body : v.raw) : v.body;
   return (
-    <Sheet title={isNew ? t('mem.new') : t('mem.edit')} onClose={onClose}>
+    <Sheet title={isNew ? t('mem.new') : t('mem.edit')} onClose={handleClose}>
       <form className="group pad stack" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await onSave(v); onClose(); } catch { setBusy(false); } }}>
-        {local ? (
+        <div className="seg" style={{ alignSelf: 'flex-start' }}>
+          <button type="button" className={tab === 'edit' ? 'on' : ''} onClick={() => setTab('edit')}>{t('common.editTab')}</button>
+          <button type="button" className={tab === 'preview' ? 'on' : ''} onClick={() => setTab('preview')}>{t('common.preview')}</button>
+        </div>
+        {tab === 'preview' ? (
+          <div className="mem-preview"><Md text={previewText} /></div>
+        ) : local ? (
           isNew ? <>
             <Field label={t('mem.slug')} hint={t('mem.slugHint')}><input value={v.name} onChange={set('name')} required pattern="[\w\-.]+" /></Field>
             <Field label={t('mem.title')}><input value={v.title} onChange={set('title')} /></Field>
@@ -102,6 +115,7 @@ function AiMemory() {
   const t = useT();
   const f = useFmt();
   const toast = useToast();
+  const confirm = useConfirm();
   const projects = useLoad(() => mem.projects(), []);
   const [project, setProject] = useState('workspace');
   const pages = useLoad(() => mem.pages(project), [project]);
@@ -128,7 +142,7 @@ function AiMemory() {
     } catch (e) { toast(e.message, 'err'); throw e; }
   };
   const del = async (p) => {
-    if (!confirmAsk(t('mem.deleteConfirm', { n: p.title }))) return;
+    if (!(await confirm(t('mem.deleteConfirm', { n: p.title })))) return;
     try { await mem.deletePage(project, p.path); toast(t('mem.deleted')); setOpen(null); pages.reload(true); } catch (e) { toast(e.message, 'err'); }
   };
   const pg = open?.page;
@@ -185,6 +199,7 @@ function LocalMemory() {
   const t = useT();
   const f = useFmt();
   const toast = useToast();
+  const confirm = useConfirm();
   const data = useLoad(() => mem.local(), []);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(null);
@@ -198,7 +213,7 @@ function LocalMemory() {
     } catch (e) { toast(e.message, 'err'); throw e; }
   };
   const del = async (x) => {
-    if (!confirmAsk(t('mem.deleteConfirm', { n: x.name }))) return;
+    if (!(await confirm(t('mem.deleteConfirm', { n: x.name })))) return;
     try { await mem.deleteLocal(x.file); toast(t('mem.deletedLocal')); setOpen(null); data.reload(true); } catch (e) { toast(e.message, 'err'); }
   };
   return (
