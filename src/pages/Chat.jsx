@@ -131,7 +131,7 @@ function modelLabel(chat, providers) {
   return { name, effort: (agy ? chat.agyEffort : chat.effort) || '' };
 }
 
-export default function Chat({ openMore, me, pages = [], go }) {
+export default function Chat({ openMore, me }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -320,28 +320,14 @@ export default function Chat({ openMore, me, pages = [], go }) {
 
   const ml = modelLabel(info, providers.data);
   const empty = !text.trim() && !files.length;
-  const navPages = pages.filter((p) => p.id !== 'chat');
 
   return (
     <div className={'chat' + (showList ? ' list-open' : '')}>
       <aside className="chat-list" aria-hidden={undefined}>
         <div className="drawer-head only-mobile">
-          <h1 className="serif-title">Agent Control</h1>
-          <button type="button" className="glass-btn icon press" aria-label={t('nav.settings')} onClick={() => { setShowList(false); openMore?.(); }}>
-            <span className="avatar-ring" style={{ width: 30, height: 30 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={18} />}</span>
-          </button>
+          <h1 className="serif-title">{t('chat.conversations')}</h1>
         </div>
-        {navPages.length > 0 && (
-          <nav className="drawer-nav only-mobile">
-            {navPages.map(({ id, icon: Icon }) => (
-              <button key={id} type="button" className="drawer-item" onClick={() => { setShowList(false); go?.(id); }}>
-                <Icon size={21} strokeWidth={1.7} /><span>{t('nav.' + id)}</span>
-              </button>
-            ))}
-          </nav>
-        )}
         <Btn icon={Plus} className="block only-desktop" onClick={newChat}>{t('chat.new')}</Btn>
-        <div className="drawer-label only-mobile">{t('chat.conversations')}</div>
         <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
         {webChats.map((c) => (
           <button key={c.id} className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
@@ -364,6 +350,11 @@ export default function Chat({ openMore, me, pages = [], go }) {
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
             <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
           </div>
+          {openMore && (
+            <button type="button" className="glass-btn icon press head-avatar only-mobile" aria-label={t('nav.settings')} onClick={openMore}>
+              <span className="avatar-ring" style={{ width: 34, height: 34 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={19} />}</span>
+            </button>
+          )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} onChange={change} /></div>}
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />

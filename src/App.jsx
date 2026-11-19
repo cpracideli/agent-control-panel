@@ -225,7 +225,7 @@ export default function App() {
           <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={38} /></button>
         </header>
         {banners}
-        <Page openMore={() => setMore(true)} me={me} pages={PAGES} go={go} />
+        <Page openMore={() => setMore(true)} me={me} />
       </main>
 
       <nav className="dock" aria-label={t('nav.menu')}>
