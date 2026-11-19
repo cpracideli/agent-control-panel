@@ -175,6 +175,7 @@ label.glass-btn { padding: 0 6px 0 12px; }
 .nav-item .row-ic { width: 26px; height: 26px; border-radius: 7px; }
 .ic-chat { background: var(--ok); }
 .ic-overview { background: var(--accent); }
+.ic-usage { background: #5856d6; }
 .ic-providers { background: var(--purple); }
 .ic-mcp { background: var(--indigo); }
 .ic-schedules { background: var(--warn); }
@@ -483,3 +484,33 @@ pre.logs { max-height: 65vh; min-height: 300px; }
   .login-tools, .toasts { top: calc(var(--top-safe) + 10px); }
   .sheet-bg, .modal-bg { padding-top: calc(var(--top-safe) + 16px); }
 }
+
+/* usage page */
+:root { --chart-1: #d9774a; --chart-2: #2f6fe0; }
+:root[data-theme="dark"] { --chart-1: #c86a3f; --chart-2: #5b8ff0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --chart-1: #c86a3f; --chart-2: #5b8ff0; } }
+.meter { padding: 8px 0; }
+.meter + .meter { border-top: .5px solid var(--sep); }
+.meter-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.meter-label { font-weight: 500; }
+.meter-val { font-variant-numeric: tabular-nums; font-size: 17px; }
+.meter-track { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden; }
+.meter-fill { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width .4s ease; min-width: 2px; }
+.meter-fill.warn { background: var(--warn); }
+.meter-fill.err { background: var(--err); }
+.meter-foot { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+.meter-flag { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
+.meter-flag.warn { color: var(--warn-ink); }
+.meter-flag.err, .meter-err { color: var(--err); }
+.bars-card + .bars-card { margin-top: 18px; }
+.bars-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.bars-title { font-weight: 600; }
+.bars-tip { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bars-tip b { color: var(--text); font-weight: 600; }
+.bars { position: relative; display: flex; align-items: stretch; gap: 0; height: 150px; padding-top: 18px; border-top: .5px dashed var(--sep); }
+.bars-max { position: absolute; top: 2px; left: 0; font-size: 11px; }
+.bar-hit { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; background: transparent; padding: 0 2px; border-radius: 6px; gap: 4px; cursor: default; touch-action: pan-y; }
+.bar-hit.on { background: var(--sunken); }
+.bar { width: 100%; max-width: 26px; border-radius: 4px 4px 0 0; transition: height .3s ease; }
+.bar-x { font-size: 10.5px; color: var(--muted); height: 14px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bars-empty { padding: 20px 0; text-align: center; }

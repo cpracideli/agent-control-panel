@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
+import { BarChart3, CalendarClock, ChevronRight, Download, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
@@ -7,6 +7,7 @@ import { IconButton, Sheet, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Overview from './pages/Overview.jsx';
+import Usage from './pages/Usage.jsx';
 import Providers from './pages/Providers.jsx';
 import Mcp from './pages/Mcp.jsx';
 import Schedules from './pages/Schedules.jsx';
@@ -16,6 +17,7 @@ import Logs from './pages/Logs.jsx';
 const PAGES = [
   { id: 'chat', icon: MessageSquare, el: Chat },
   { id: 'overview', icon: Gauge, el: Overview },
+  { id: 'usage', icon: BarChart3, el: Usage },
   { id: 'providers', icon: Sparkles, el: Providers },
   { id: 'mcp', icon: Plug, el: Mcp },
   { id: 'schedules', icon: CalendarClock, el: Schedules },

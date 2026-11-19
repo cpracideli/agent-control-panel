@@ -28,6 +28,7 @@ export const del = (p) => api('DELETE', p);
 
 export const bridge = {
   overview: () => get('/bridge/overview'),
+  usage: (days) => get('/bridge/usage' + (days ? '?days=' + days : '')),
   providers: () => get('/bridge/providers'),
   settings: (s) => put('/bridge/settings', s),
   chats: () => get('/bridge/chats'),

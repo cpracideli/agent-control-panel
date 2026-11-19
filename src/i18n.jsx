@@ -2,7 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 const pt = {
   'app.loading': 'Carregando…',
-  'nav.chat': 'Chat', 'nav.overview': 'Painel', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Agendamentos',
+  'nav.chat': 'Chat', 'nav.usage': 'Consumo', 'use.session': 'Sessão atual (5 h)', 'use.weekly': 'Semana (todos os modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
+  'use.resetsIn': 'renova em {t}', 'use.resetsAt': 'renova {t}', 'use.resetNow': 'renovando agora', 'use.high': 'alto', 'use.almostOut': 'quase no limite',
+  'use.stale': 'Dados do último minuto bom. ', 'use.models': '{n} modelos', 'use.today': 'hoje', 'use.last7': '7 dias', 'use.msgs': '{n} respostas', 'use.runs': '{n} execuções',
+  'use.history': 'Histórico de tokens', 'use.days': '14 dias', 'use.weeks': '8 semanas', 'use.weekOf': 'semana de {d}',
+  'use.agyEmpty': 'Sem execuções do Antigravity registradas no período.', 'use.note': 'Tokens = entrada + saída (leituras de cache ficam de fora). Claude inclui tudo que o Claude Code rodou nesta máquina.',
+  'use.agySince': 'Antigravity registrado desde {d}.', 'use.agyFromNow': 'O histórico do Antigravity começa a ser registrado a partir de agora.',
+  'nav.overview': 'Painel', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Agendamentos',
   'nav.envs': 'Variáveis', 'nav.logs': 'Logs', 'nav.logout': 'Sair', 'nav.menu': 'Menu',
   'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Escuro', 'lang.label': 'Idioma',
   'pwa.install': 'Instalar app', 'pwa.update': 'Nova versão disponível', 'pwa.reload': 'Atualizar', 'pwa.offline': 'Sem conexão',
@@ -98,7 +104,13 @@ const pt = {
 
 const en = {
   'app.loading': 'Loading…',
-  'nav.chat': 'Chat', 'nav.overview': 'Overview', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Schedules',
+  'nav.chat': 'Chat', 'nav.usage': 'Usage', 'use.session': 'Current session (5 h)', 'use.weekly': 'Week (all models)', 'use.weeklyOpus': 'Week (Opus)', 'use.weeklySonnet': 'Week (Sonnet)',
+  'use.resetsIn': 'resets in {t}', 'use.resetsAt': 'resets {t}', 'use.resetNow': 'resetting now', 'use.high': 'high', 'use.almostOut': 'almost at the limit',
+  'use.stale': 'Last good reading. ', 'use.models': '{n} models', 'use.today': 'today', 'use.last7': '7 days', 'use.msgs': '{n} replies', 'use.runs': '{n} runs',
+  'use.history': 'Token history', 'use.days': '14 days', 'use.weeks': '8 weeks', 'use.weekOf': 'week of {d}',
+  'use.agyEmpty': 'No Antigravity runs recorded in this period.', 'use.note': 'Tokens = input + output (cache reads excluded). Claude covers everything Claude Code ran on this machine.',
+  'use.agySince': 'Antigravity recorded since {d}.', 'use.agyFromNow': 'Antigravity history starts being recorded now.',
+  'nav.overview': 'Overview', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Schedules',
   'nav.envs': 'Variables', 'nav.logs': 'Logs', 'nav.logout': 'Sign out', 'nav.menu': 'Menu',
   'theme.label': 'Theme', 'theme.system': 'System', 'theme.light': 'Light', 'theme.dark': 'Dark', 'lang.label': 'Language',
   'pwa.install': 'Install app', 'pwa.update': 'New version available', 'pwa.reload': 'Reload', 'pwa.offline': 'Offline',
@@ -194,7 +206,13 @@ const en = {
 
 const es = {
   'app.loading': 'Cargando…',
-  'nav.chat': 'Chat', 'nav.overview': 'Panel', 'nav.providers': 'Proveedores', 'nav.mcp': 'MCP', 'nav.schedules': 'Programaciones',
+  'nav.chat': 'Chat', 'nav.usage': 'Consumo', 'use.session': 'Sesión actual (5 h)', 'use.weekly': 'Semana (todos los modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
+  'use.resetsIn': 'se renueva en {t}', 'use.resetsAt': 'se renueva {t}', 'use.resetNow': 'renovando ahora', 'use.high': 'alto', 'use.almostOut': 'casi en el límite',
+  'use.stale': 'Última lectura válida. ', 'use.models': '{n} modelos', 'use.today': 'hoy', 'use.last7': '7 días', 'use.msgs': '{n} respuestas', 'use.runs': '{n} ejecuciones',
+  'use.history': 'Historial de tokens', 'use.days': '14 días', 'use.weeks': '8 semanas', 'use.weekOf': 'semana del {d}',
+  'use.agyEmpty': 'Sin ejecuciones de Antigravity en el período.', 'use.note': 'Tokens = entrada + salida (sin lecturas de caché). Claude incluye todo lo que Claude Code ejecutó en esta máquina.',
+  'use.agySince': 'Antigravity registrado desde {d}.', 'use.agyFromNow': 'El historial de Antigravity empieza a registrarse ahora.',
+  'nav.overview': 'Panel', 'nav.providers': 'Proveedores', 'nav.mcp': 'MCP', 'nav.schedules': 'Programaciones',
   'nav.envs': 'Variables', 'nav.logs': 'Logs', 'nav.logout': 'Salir', 'nav.menu': 'Menú',
   'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Oscuro', 'lang.label': 'Idioma',
   'pwa.install': 'Instalar app', 'pwa.update': 'Nueva versión disponible', 'pwa.reload': 'Actualizar', 'pwa.offline': 'Sin conexión',
