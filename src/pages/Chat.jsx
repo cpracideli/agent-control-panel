@@ -684,8 +684,9 @@ export default function Chat({ openMore, me }) {
         if (dx > -8) { if (dx > 8) s = null; return; }
         s.drag = true; s.x = p.clientX; clearTimeout(settle); el.classList.remove('settling'); el.classList.add('revealing');
       }
+      // no stopPropagation: the message's long-press needs this move to cancel itself (the drawer
+      // handler already ignores leftward drags while closed)
       if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
       const d = Math.min(0, p.clientX - s.x);
       set(d > -MAX ? d : -MAX - Math.pow(-d - MAX, 0.6)); // rubber band past the time column
     };

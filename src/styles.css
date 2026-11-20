@@ -1607,3 +1607,5 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
   .kb-open .chat-scroll { padding-bottom: calc(var(--composer-h, 140px) + 24px); }
   .kb-open .main:not(.main-chat) > .page { padding-bottom: 32px; }
 }
+/* the time column lives just outside each message; keep it hidden unless the conversation is being dragged */
+.chat-scroll:not(.revealing):not(.settling) .msg-time { visibility: hidden; }
