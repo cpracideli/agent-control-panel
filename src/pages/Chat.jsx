@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, Trash2, Users, UserRound, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
+import { LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
 const chatFromHash = () => {
@@ -294,9 +295,27 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
+  const [selectable, setSelectable] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(m.text || m.transcript || ''); toast(t('common.copied')); };
+  const lp = useLongPress((rect) => {
+    setPressed(true); setTimeout(() => setPressed(false), 260);
+    const when = m.at ? new Date(m.at).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' }) : '';
+    openContextMenu({ rect, title: when, items: m.role === 'user' ? [
+      (m.text || m.transcript) && { icon: Copy, label: t('common.copy'), onClick: copy },
+      m.text && onResend && { icon: Pencil, label: t('common.edit'), onClick: () => onResend(m.text) },
+      m.text && { icon: TextSelect, label: t('chat.selectText'), onClick: () => setSelectable(true) },
+    ] : [
+      m.text && { icon: Copy, label: t('common.copy'), onClick: copy },
+      m.text && onQuote && { icon: Reply, label: t('chat.quote'), onClick: () => onQuote(m.text) },
+      m.text && !m.error && { icon: Volume2, label: t('chat.listen'), onClick: () => speak(m.id, m.text, lang, chatId, m.tts) },
+      m.text && { icon: TextSelect, label: t('chat.selectText'), onClick: () => setSelectable(true) },
+    ] });
+  });
+  const extra = (selectable ? ' selectable' : '') + (pressed ? ' pressed' : '');
   if (m.role === 'user') {
     return (
-      <div className="msg user" title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
+      <div className={'msg user' + extra} {...lp} title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
         <MsgTime at={m.at} lang={lang} />
         <div className="user-col">
           <MessageFiles files={m.files} transcript={m.transcript} engine={m.transcriptEngine} pendingLabel={t('chat.transcribing')}
@@ -313,7 +332,7 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
     );
   }
   return (
-    <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')} title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
+    <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '') + extra} {...lp} title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
       <MsgTime at={m.at} lang={lang} />
       {bot && (bot.id !== 'default' || bot.avatar) ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
@@ -880,7 +899,13 @@ export default function Chat({ openMore, me }) {
                 onDelete={() => remove(c.id)}
                 className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}
               >
-                <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => { if (swipedId === c.id) { setSwipedId(null); return; } select(c.id); }}>
+                <LongPressButton className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => { if (swipedId === c.id) { setSwipedId(null); return; } select(c.id); }}
+                  onLongPress={(rect) => openContextMenu({ rect, title: c.title, items: [
+                    { icon: Pin, label: c.pinned ? t('chat.unpin') : t('chat.pin'), onClick: () => togglePin(c) },
+                    { icon: Pencil, label: t('chat.rename'), onClick: () => setRenaming({ id: c.id, title: c.title }) },
+                    { icon: Archive, label: c.archived ? t('chat.unarchive') : t('chat.archive'), onClick: () => toggleArchive(c) },
+                    { icon: Trash2, label: t('chat.delete'), danger: true, onClick: () => remove(c.id) },
+                  ] })}>
                   <span className="chat-title">
                     {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
                     <span className="ellipsis">{c.title}</span>
@@ -888,7 +913,7 @@ export default function Chat({ openMore, me }) {
                     {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
                   </span>
                   <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
-                </button>
+                </LongPressButton>
                 <div className="chat-item-actions">
                   <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
                   <IconButton icon={Archive} size={13} className="ghost bare" label={c.archived ? t('chat.unarchive') : t('chat.archive')} onClick={(e) => { e.stopPropagation(); toggleArchive(c); }} />

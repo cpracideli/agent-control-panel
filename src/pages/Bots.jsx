@@ -3,7 +3,7 @@ import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, Rotat
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
-import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, openContextMenu, useIsMobile } from '../native.jsx';
 
 const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
@@ -376,6 +376,12 @@ export default function Bots() {
               badges={b.isDefault && <Badge>{t('bots.default')}</Badge>}
               subtitle={b.description || t('bots.noDescription')}
               onOpen={() => setDetail(b.id)}
+              onLongPress={(rect) => openContextMenu({ rect, title: b.name, items: [
+                { icon: MessageSquare, label: t('bots.chat'), onClick: () => chatWith(b) },
+                { icon: Pencil, label: t('common.edit'), onClick: () => setForm(b) },
+                { icon: Download, label: t('bots.export'), onClick: () => exportBot(b) },
+                !b.isDefault && { icon: Trash2, label: t('common.remove'), danger: true, onClick: () => removeBot(b) },
+              ] })}
               swipe={[
                 { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(b) },
                 !b.isDefault && { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeBot(b) },

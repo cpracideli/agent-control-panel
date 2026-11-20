@@ -191,3 +191,87 @@ export function DetailSheet({ title, header, children, actions = [], onClose }) 
     </Sheet>
   );
 }
+
+// ---------- context menu (long press) ----------
+// openContextMenu({ rect, title, items: [{ icon, label, onClick, danger }] }) from anywhere;
+// <ContextMenuHost /> (mounted once in App) renders it over a blurred backdrop, next to the pressed element.
+const CTX_EVT = 'acp-context-menu';
+export function openContextMenu(menu) {
+  haptic(12);
+  window.dispatchEvent(new CustomEvent(CTX_EVT, { detail: menu }));
+}
+
+export function ContextMenuHost() {
+  const [menu, setMenu] = useState(null);
+  const [leaving, setLeaving] = useState(false);
+  const panelRef = useRef(null);
+  const openedAt = useRef(0);
+  const [pos, setPos] = useState(null);
+  useEffect(() => {
+    const on = (e) => { openedAt.current = Date.now(); setLeaving(false); setPos(null); setMenu(e.detail); };
+    window.addEventListener(CTX_EVT, on);
+    return () => window.removeEventListener(CTX_EVT, on);
+  }, []);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const k = (e) => e.key === 'Escape' && close();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  });
+  useEffect(() => {
+    // place the menu below the pressed element when there's room, otherwise above it
+    if (!menu || !panelRef.current) return;
+    const r = menu.rect || { top: window.innerHeight / 2, bottom: window.innerHeight / 2, left: 16, right: window.innerWidth - 16 };
+    const h = panelRef.current.offsetHeight, w = panelRef.current.offsetWidth;
+    const vh = window.visualViewport?.height || window.innerHeight, vw = window.innerWidth;
+    let top = r.bottom + 8;
+    if (top + h > vh - 12) top = Math.max(12, r.top - h - 8);
+    if (top + h > vh - 12) top = Math.max(12, vh - h - 12);
+    const left = Math.min(Math.max(12, (r.left + r.right) / 2 - w / 2), vw - w - 12);
+    setPos({ top, left, origin: top < r.top ? 'bottom' : 'top' });
+  }, [menu]);
+  // the finger lifting at the end of the long press must not dismiss the menu it just opened
+  const close = (fromBackdrop) => { if (leaving || (fromBackdrop === true && Date.now() - openedAt.current < 450)) return; setLeaving(true); setTimeout(() => { setMenu(null); setLeaving(false); }, 160); };
+  if (!menu) return null;
+  return createPortal(
+    <div className={'ctx-bg' + (leaving ? ' leaving' : '')} onMouseDown={(e) => e.target === e.currentTarget && close(true)} onTouchStart={(e) => e.target === e.currentTarget && close(true)}>
+      <div ref={panelRef} className="ctx-menu" role="menu" aria-label={menu.title || ''}
+        style={pos ? { top: pos.top, left: pos.left, transformOrigin: pos.origin + ' center' } : { visibility: 'hidden' }}>
+        {menu.title && <div className="ctx-title">{menu.title}</div>}
+        {menu.items.filter(Boolean).map((it) => (
+          <button key={it.label} type="button" role="menuitem" className={'ctx-item' + (it.danger ? ' danger' : '')} disabled={it.disabled}
+            onClick={() => { close(); setTimeout(it.onClick, 0); }}>
+            <span className="grow">{it.label}</span>{it.icon && <it.icon size={18} />}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// Long-press handlers for any element (touch: ~450 ms still; mouse: right click).
+export function useLongPress(cb, ms = 450) {
+  const st = useRef(null);
+  const fired = useRef(0);
+  const cancel = () => { if (st.current) { clearTimeout(st.current.t); st.current = null; } };
+  return {
+    onTouchStart: (e) => {
+      if (e.touches.length !== 1) return;
+      const p = e.touches[0], el = e.currentTarget;
+      st.current = { x: p.clientX, y: p.clientY, t: setTimeout(() => { st.current = null; fired.current = Date.now(); window.getSelection?.()?.removeAllRanges(); cb(el.getBoundingClientRect(), el); }, ms) };
+    },
+    onTouchMove: (e) => { const s = st.current; if (!s) return; const p = e.touches[0]; if (Math.abs(p.clientX - s.x) > 8 || Math.abs(p.clientY - s.y) > 8) cancel(); },
+    onTouchEnd: cancel,
+    onTouchCancel: cancel,
+    onContextMenu: (e) => { if (e.target.closest?.('a, input, textarea')) return; e.preventDefault(); cancel(); fired.current = Date.now(); cb(e.currentTarget.getBoundingClientRect(), e.currentTarget); },
+    // the tap that ends a long press must not also act as a click
+    onClickCapture: (e) => { if (Date.now() - fired.current < 600) { e.preventDefault(); e.stopPropagation(); } },
+  };
+}
+
+// A <button> that also opens a context menu on long press.
+export function LongPressButton({ onLongPress, children, ...props }) {
+  const lp = useLongPress((rect, el) => onLongPress(rect, el));
+  return <button type="button" {...props} {...lp}>{children}</button>;
+}

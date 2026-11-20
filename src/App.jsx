@@ -4,6 +4,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, haptic, useTheme } from './ui.jsx';
+import { ContextMenuHost } from './native.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
@@ -303,6 +304,7 @@ export default function App() {
         </div>
       </nav>
 
+      <ContextMenuHost />
       {more && <MoreSheet me={me} page={page} go={go} install={install} logout={logout} onClose={() => setMore(false)} />}
     </div>
   );
