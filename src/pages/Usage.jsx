@@ -21,24 +21,45 @@ function resetsIn(t, lang, iso) {
 function Meter({ label, percent, resetsAt, sub }) {
   const t = useT();
   const { lang } = useI18n();
-  const p = Math.max(0, Math.min(100, percent ?? 0));
+  // A window whose reset time has passed: the stored percent belongs to the old window, so don't show it.
+  const expired = Boolean(resetsAt) && new Date(resetsAt).getTime() <= Date.now();
+  const p = expired ? 0 : Math.max(0, Math.min(100, percent ?? 0));
   const lv = level(p);
   return (
-    <div className="meter">
+    <div className={'meter' + (expired ? ' meter-expired' : '')}>
       <div className="meter-h">
         <span className="meter-label">{label}</span>
-        <b className="meter-val">{percent == null ? '—' : (Math.round(p * 10) / 10).toLocaleString(lang) + '%'}</b>
+        <b className="meter-val">{expired || percent == null ? '—' : (Math.round(p * 10) / 10).toLocaleString(lang) + '%'}</b>
       </div>
       <div className="meter-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={p} aria-label={label}>
-        <span className={'meter-fill ' + lv} style={{ width: p + '%' }} />
+        {!expired && <span className={'meter-fill ' + lv} style={{ width: p + '%' }} />}
       </div>
       <div className="meter-foot muted small">
-        <span>{resetsIn(t, lang, resetsAt)}</span>
-        {lv !== 'ok' && <span className={'meter-flag ' + lv}><AlertTriangle size={12} />{t(lv === 'err' ? 'use.almostOut' : 'use.high')}</span>}
+        <span>{expired ? t('use.expired') : resetsIn(t, lang, resetsAt)}</span>
+        {!expired && lv !== 'ok' && <span className={'meter-flag ' + lv}><AlertTriangle size={12} />{t(lv === 'err' ? 'use.almostOut' : 'use.high')}</span>}
         {sub && <span className="ellipsis">{sub}</span>}
       </div>
     </div>
   );
+}
+
+// Status line under a provider: stale data warning (with error and last good reading) or plain error.
+function LimitStatus({ v, as: Tag = 'p' }) {
+  const t = useT();
+  const { lang } = useI18n();
+  if (!v) return null;
+  const when = (iso) => new Date(iso).toLocaleString(lang, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (v.error && v.stale) {
+    return (
+      <Tag className="small meter-stale" role="status">
+        <AlertTriangle size={13} />
+        <span>{v.fetchedAt ? t('use.staleAt', { t: when(v.fetchedAt) }) : t('use.stale')}{' '}{t('use.errorWas', { e: v.error })}</span>
+      </Tag>
+    );
+  }
+  if (v.error) return <Tag className="small meter-err">{v.error}</Tag>;
+  if (v.fetchedAt) return <Tag className="small muted">{t('use.updated', { t: when(v.fetchedAt) })}</Tag>;
+  return null;
 }
 
 // Sunday-based weeks are confusing for "this week"; group by ISO week starting Monday.
@@ -137,12 +158,12 @@ export default function Usage() {
       <div className="page page-list">
         <ErrorBox error={u.error} onRetry={() => u.reload()} />
         <ListGroup title={<span className="with-ic">Claude {d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}</span>}
-          footer={d?.claude.error && <span className={d.claude.stale ? '' : 'meter-err'}>{d.claude.stale ? t('use.stale') : ''}{d.claude.error}</span>}>
+          footer={d && <LimitStatus v={d.claude} as="span" />}>
           {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
           {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
         </ListGroup>
         <ListGroup title={<span className="with-ic">Antigravity {d?.antigravity.tier && <Badge>{d.antigravity.tier}</Badge>}</span>}
-          footer={d?.antigravity.error && <span className={d.antigravity.stale ? '' : 'meter-err'}>{d.antigravity.stale ? t('use.stale') : ''}{d.antigravity.error}</span>}>
+          footer={d && <LimitStatus v={d.antigravity} as="span" />}>
           {d?.antigravity.groups?.map((g) => (
             <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
           ))}
@@ -169,12 +190,12 @@ export default function Usage() {
 
       <div className="grid2">
         <Card title="Claude" icon={Gauge} actions={d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}>
-          {d?.claude.error && <p className={'small ' + (d.claude.stale ? 'muted' : 'meter-err')}>{d.claude.stale ? t('use.stale') : ''}{d.claude.error}</p>}
+          {d && <LimitStatus v={d.claude} />}
           {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
           {!d && !u.error && <p className="muted">…</p>}
         </Card>
         <Card title="Antigravity" icon={Sparkles} actions={d?.antigravity.tier && <Badge>{d.antigravity.tier}</Badge>}>
-          {d?.antigravity.error && <p className={'small ' + (d.antigravity.stale ? 'muted' : 'meter-err')}>{d.antigravity.stale ? t('use.stale') : ''}{d.antigravity.error}</p>}
+          {d && <LimitStatus v={d.antigravity} />}
           {d?.antigravity.groups?.map((g) => (
             <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
           ))}

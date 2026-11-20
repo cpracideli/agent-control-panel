@@ -503,6 +503,9 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 .meter-flag { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
 .meter-flag.warn { color: var(--warn-ink); }
 .meter-flag.err, .meter-err { color: var(--err); }
+.meter-stale { display: flex; gap: 6px; align-items: flex-start; color: var(--warn); margin: 0 0 6px; }
+.meter-stale svg { flex: none; margin-top: 2px; }
+.meter-expired .meter-val { color: var(--muted, inherit); opacity: .6; }
 .bars-card + .bars-card { margin-top: 18px; }
 .bars-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .bars-title { font-weight: 600; }
