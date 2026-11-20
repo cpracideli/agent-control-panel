@@ -3,6 +3,7 @@ import { CheckSquare, MessageSquare, Pencil, Play, Plus, Send, Trash2 } from 'lu
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const STATUSES = ['todo', 'in_progress', 'review', 'blocked', 'done'];
 const PRIO_KIND = { low: 'muted', medium: 'ok', high: 'warn', urgent: 'err' };
@@ -124,6 +125,47 @@ export default function Board() {
   const list = tickets.data || [];
   const detail = detailId ? list.find((x) => x.id === detailId) : null;
 
+  const mobile = useIsMobile();
+  const runTicket = (tk) => run('run' + tk.id, () => bridge.runTicket(tk.id), t('bd.runStarted')).then(() => tickets.reload(true));
+  const modals = (
+    <>
+      {form && <TicketForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => tickets.reload(true)} />}
+      {detail && <TicketDetail ticket={detail} onClose={() => setDetailId(null)} onEdit={(tk) => setForm(tk)} onChanged={() => tickets.reload(true)} />}
+    </>
+  );
+  if (mobile) {
+    return (
+      <div className="page page-list">
+        <HeaderActions>
+          <AddButton items={[{ icon: Plus, label: t('bd.new'), onClick: () => setForm({}) }]} />
+        </HeaderActions>
+        <ErrorBox error={tickets.error} onRetry={() => tickets.reload()} />
+        {STATUSES.map((st) => {
+          const col = list.filter((x) => x.status === st);
+          if (!col.length) return null;
+          return (
+            <ListGroup key={st} title={t('bd.st.' + st) + ' · ' + col.length}>
+              {col.map((tk) => (
+                <ListRow key={tk.id}
+                  leading={<span className={'row-ic ic-board prio-' + tk.priority}>{tk.running ? <span className="spin" /> : <CheckSquare size={18} />}</span>}
+                  title={tk.title}
+                  badges={<Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>}
+                  subtitle={'#' + tk.id + ' · ' + (tk.botName || t('bd.unassigned')) + ' · ' + f.ago(tk.updated) + ((tk.comments || []).length ? ' · 💬 ' + tk.comments.length : '')}
+                  onOpen={() => setDetailId(tk.id)}
+                  swipe={[
+                    st === 'todo' && tk.bot && !tk.running && { icon: Play, label: t('bd.runWithBot'), kind: 'warn', disabled: busy === 'run' + tk.id, onClick: () => runTicket(tk) },
+                    { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(tk) },
+                  ].filter(Boolean)} />
+              ))}
+            </ListGroup>
+          );
+        })}
+        {tickets.data && !list.length && <p className="muted empty-note">—</p>}
+        {modals}
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <ErrorBox error={tickets.error} onRetry={() => tickets.reload()} />
@@ -173,8 +215,7 @@ export default function Board() {
           })}
         </div>
       </Card>
-      {form && <TicketForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => tickets.reload(true)} />}
-      {detail && <TicketDetail ticket={detail} onClose={() => setDetailId(null)} onEdit={(tk) => setForm(tk)} onChanged={() => tickets.reload(true)} />}
+      {modals}
     </div>
   );
 }

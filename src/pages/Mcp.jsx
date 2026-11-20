@@ -3,6 +3,7 @@ import { Activity, Eye, Plug, Plus, Server, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useLoad } from '../ui.jsx';
+import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const PRESETS = [
   { name: 'playwright', transport: 'stdio', command: 'npx', args: '@playwright/mcp@latest --browser chromium --headless --no-sandbox' },
@@ -85,6 +86,7 @@ export default function Mcp() {
   const [adding, setAdding] = useState(null);
   const [view, setView] = useState(null);
   const [busy, run] = useAction();
+  const mobile = useIsMobile();
 
   const check = async () => { const r = await run('status', () => bridge.mcpStatus()); setStatus(r ? { output: r.output } : null); };
   const checkAgy = async () => { const r = await run('agy-status', () => bridge.mcpStatus('antigravity')); setAgyStatus(r || null); };
@@ -102,6 +104,60 @@ export default function Mcp() {
   const agy = mcp.data?.antigravity;
   const agyRows = Object.entries(agy?.servers || {});
   const agyHealth = (n) => { const r = agyStatus?.servers?.[n]; return r && (r.disabled ? 'Disabled' : r.ok ? 'Connected' : r.status.replace(/^✗\s*/, '')); };
+
+  if (mobile) {
+    const claudeRows = rows.map(({ n, cfg, scope }) => {
+      const h = health[n];
+      return (
+        <ListRow key={scope + n} leading={<span className="row-ic ic-mcp"><Server size={18} /></span>} title={n}
+          badges={<>{h ? <Badge kind={/connected/i.test(h) ? 'ok' : 'err'}>{h}</Badge> : <Badge kind="muted">{scope}</Badge>}</>}
+          subtitle={<span className="mono">{transportOf(cfg)} · {describe(cfg)}</span>}
+          onOpen={() => setView({ n, cfg })}
+          swipe={scope !== 'project' ? [{ icon: Trash2, label: t('common.remove'), kind: 'danger', disabled: busy === 'rm-' + n, onClick: () => remove('claude', n, scope) }] : []} />
+      );
+    });
+    const agyList = agyRows.map(([n, cfg]) => {
+      const h = agyHealth(n);
+      return (
+        <ListRow key={'agy' + n} leading={<span className="row-ic ic-mcp"><Server size={18} /></span>} title={n}
+          badges={<>{h ? <Badge kind={/connected/i.test(h) ? 'ok' : /disabled/i.test(h) ? 'muted' : 'err'}>{h}</Badge> : cfg.disabled && <Badge kind="muted">disabled</Badge>}</>}
+          subtitle={<span className="mono">{cfg.command ? 'stdio · ' + [cfg.command, ...(cfg.args || [])].join(' ') : 'http · ' + (cfg.serverUrl || cfg.url)}</span>}
+          onOpen={() => setView({ n, cfg })}
+          swipe={[{ icon: Trash2, label: t('common.remove'), kind: 'danger', disabled: busy === 'rm-' + n, onClick: () => remove('antigravity', n) }]} />
+      );
+    });
+    const testRow = (key, fn) => (
+      <div className="group nlist-tools">
+        <button type="button" className="group-row press" disabled={busy === key} onClick={fn}>
+          <span className="row-ic ic-plain"><Activity size={17} /></span><span className="grow">{busy === key ? t('mcp.testing') : t('mcp.test')}</span>
+        </button>
+      </div>
+    );
+    return (
+      <div className="page page-list">
+        <HeaderActions>
+          <AddButton label={t('common.add')} items={[
+            { icon: Plug, label: 'Claude Code', onClick: () => setAdding('claude') },
+            agy?.installed && { icon: Plug, label: 'Antigravity', onClick: () => setAdding('antigravity') },
+          ]} />
+        </HeaderActions>
+        <ErrorBox error={mcp.error} onRetry={() => mcp.reload()} />
+        {mcp.loading && !c && <p className="muted">{t('common.loading')}</p>}
+        <ListGroup title="Claude Code">{c && !rows.length ? <p className="muted nlist-empty">{t('mcp.none')}</p> : claudeRows}</ListGroup>
+        {testRow('status', check)}
+        {status?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{status.output}</pre></details>}
+        <ListGroup title="Antigravity">
+          {agy && !agy.installed ? <p className="muted nlist-empty">{t('mcp.agyMissing')}</p> : agy?.installed && !agyRows.length ? <pre className="nlist-empty">{agy.list || t('mcp.agyEmpty')}</pre> : agyList}
+        </ListGroup>
+        {agy?.installed && testRow('agy-status', checkAgy)}
+        {agyStatus?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{agyStatus.output}</pre></details>}
+        {agy?.config && <details className="tools"><summary>{t('mcp.config', { p: agy.configPath })}</summary><pre>{JSON.stringify(agy.config, null, 2)}</pre></details>}
+        <p className="muted small">{t('mcp.note')}</p>
+        {adding && <AddMcp provider={adding} onClose={() => setAdding(null)} onDone={() => mcp.reload(true)} />}
+        {view && <Modal title={view.n} onClose={() => setView(null)}><pre>{JSON.stringify(view.cfg, null, 2)}</pre></Modal>}
+      </div>
+    );
+  }
 
   return (
     <div className="page">

@@ -3,6 +3,7 @@ import { Copy, Download, MessageSquare, Pencil, Plus, Search, Trash2, Wand2 } fr
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 function SkillForm({ initial, bots, onClose, onSaved }) {
   const t = useT();
@@ -92,6 +93,66 @@ export default function Skills() {
     }
   };
 
+  const mobile = useIsMobile();
+  const [detail, setDetail] = useState(null);
+  const removeSkill = async (sk) => (await confirm(t('sk.removeConfirm', { n: sk.name }))) && run('d' + sk.slug, () => bridge.deleteSkill(sk.slug), t('common.removed')).then(() => skills.reload(true));
+  const copySlug = (sk) => { navigator.clipboard.writeText('/' + sk.slug); toast(t('common.copied')); };
+  const modals = (
+    <>
+      {form && <SkillForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => skills.reload(true)} />}
+      {ghOpen && <GithubImportModal onClose={() => setGhOpen(false)} onImported={() => skills.reload(true)} />}
+    </>
+  );
+  if (mobile) {
+    const sel = (skills.data || []).find((x) => x.slug === detail);
+    return (
+      <div className="page page-list">
+        <HeaderActions>
+          <AddButton label={t('sk.new')} items={[
+            { icon: Plus, label: t('sk.new'), onClick: () => setForm({}) },
+            { icon: Download, label: t('sk.fromGithub'), onClick: () => setGhOpen(true) },
+          ]} />
+        </HeaderActions>
+        <ErrorBox error={skills.error} onRetry={() => skills.reload()} />
+        <label className="search search-native"><Search size={16} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('common.filter')} /></label>
+        {skills.data && !list.length && <p className="muted empty-note">{t('sk.none')}</p>}
+        {list.length > 0 && (
+          <ListGroup>
+            {list.map((sk) => (
+              <ListRow key={sk.slug} leading={<span className="row-ic ic-skills"><Wand2 size={18} /></span>}
+                title={sk.name} badges={<Badge>/{sk.slug}</Badge>}
+                subtitle={sk.description || t('bots.noDescription')}
+                onOpen={() => setDetail(sk.slug)}
+                swipe={[
+                  { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(sk) },
+                  { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeSkill(sk) },
+                ]} />
+            ))}
+          </ListGroup>
+        )}
+        {sel && (
+          <DetailSheet title={'/' + sel.slug} onClose={() => setDetail(null)}
+            header={<>
+              <span className="row-ic detail-ic ic-skills"><Wand2 size={30} /></span>
+              <h2>{sel.name}</h2>
+              <p className="muted">{sel.description || t('bots.noDescription')}</p>
+              <div className="row wrap center bot-badges">
+                <span className="chip">{sel.botName || t('sk.allBots')}</span><span className="chip">{sel.source || 'manual'}</span><span className="chip">{f.ago(sel.updated)}</span>
+              </div>
+              <pre className="history-preview">{sel.instructions}</pre>
+            </>}
+            actions={[
+              { icon: MessageSquare, label: t('sk.useInChat'), kind: 'primary', disabled: busy === 'run' + sel.slug, onClick: () => runInChat(sel) },
+              { icon: Copy, label: t('common.copy') + ' /' + sel.slug, onClick: () => copySlug(sel) },
+              { icon: Pencil, label: t('common.edit'), onClick: () => setForm(sel) },
+              { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeSkill(sel) },
+            ]} />
+        )}
+        {modals}
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <ErrorBox error={skills.error} onRetry={() => skills.reload()} />
@@ -132,8 +193,7 @@ export default function Skills() {
           ))}
         </div>
       </Card>
-      {form && <SkillForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => skills.reload(true)} />}
-      {ghOpen && <GithubImportModal onClose={() => setGhOpen(false)} onImported={() => skills.reload(true)} />}
+      {modals}
     </div>
   );
 }

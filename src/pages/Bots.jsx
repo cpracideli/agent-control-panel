@@ -3,6 +3,7 @@ import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, Rotat
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
@@ -315,6 +316,8 @@ export default function Bots() {
   const [tplOpen, setTplOpen] = useState(false);
   const [impOpen, setImpOpen] = useState(false);
   const [busy, run] = useAction();
+  const mobile = useIsMobile();
+  const [detail, setDetail] = useState(null);
   const mcpNames = mcp.data ? [...new Set(['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})))].sort() : [];
   const provLabel = (b) => {
     const p = (providers.data?.providers || []).find((x) => x.id === b.provider);
@@ -336,6 +339,71 @@ export default function Bots() {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     toast(t('bots.exported'));
   };
+  const removeBot = async (b) => (await confirm(t('bots.removeConfirm', { n: b.name }))) && run('d' + b.id, () => bridge.deleteBot(b.id), t('common.removed')).then(() => bots.reload(true));
+  const chips = (b) => [
+    provLabel(b) || t('bots.inheritModel'),
+    b.memory === 'own' ? t('bots.memOwnShort', { n: b.memorySize }) : t('bots.memSharedShort'),
+    b.approvalMode && b.approvalMode !== 'auto' ? t('bots.app.' + b.approvalMode) : null,
+    Array.isArray(b.mcp) ? t('bots.mcpCount', { n: b.mcp.length }) : null,
+    b.instructions ? t('bots.hasInstructions') : null,
+    t('bots.stats', { c: b.chats, r: b.routines }),
+  ].filter(Boolean);
+  const modals = (
+    <>
+      {form && <BotForm initial={form} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
+      {memory && <MemoryModal bot={memory} onClose={() => { setMemory(null); bots.reload(true); }} />}
+      {history && <HistoryModal bot={history} onClose={() => setHistory(null)} onRestored={() => bots.reload(true)} />}
+      {tplOpen && <TemplatesModal onClose={() => setTplOpen(false)} onCreated={() => bots.reload(true)} />}
+      {impOpen && <ImportBotModal onClose={() => setImpOpen(false)} onImported={() => bots.reload(true)} />}
+    </>
+  );
+
+  if (mobile) {
+    const sel = (bots.data || []).find((b) => b.id === detail);
+    return (
+      <div className="page page-list">
+        <HeaderActions>
+          <AddButton label={t('bots.new')} items={[
+            { icon: Plus, label: t('bots.new'), onClick: () => setForm({}) },
+            { icon: Sparkles, label: t('bots.templates'), onClick: () => setTplOpen(true) },
+            { icon: Upload, label: t('bots.import'), onClick: () => setImpOpen(true) },
+          ]} />
+        </HeaderActions>
+        <ErrorBox error={bots.error} onRetry={() => bots.reload()} />
+        <ListGroup>
+          {(bots.data || []).map((b) => (
+            <ListRow key={b.id} leading={<BotAvatar bot={b} size={40} />} title={b.name}
+              badges={b.isDefault && <Badge>{t('bots.default')}</Badge>}
+              subtitle={b.description || t('bots.noDescription')}
+              onOpen={() => setDetail(b.id)}
+              swipe={[
+                { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(b) },
+                !b.isDefault && { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeBot(b) },
+              ].filter(Boolean)} />
+          ))}
+        </ListGroup>
+        {sel && (
+          <DetailSheet title={sel.name} onClose={() => setDetail(null)}
+            header={<>
+              <BotAvatar bot={sel} size={72} />
+              <h2>{sel.name} {sel.isDefault && <Badge>{t('bots.default')}</Badge>}</h2>
+              <p className="muted">{sel.description || t('bots.noDescription')}</p>
+              <div className="row wrap center bot-badges">{chips(sel).map((c) => <span key={c} className="chip">{c}</span>)}</div>
+            </>}
+            actions={[
+              { icon: MessageSquare, label: t('bots.chat'), kind: 'primary', disabled: busy === 'chat' + sel.id, onClick: () => chatWith(sel) },
+              { icon: Pencil, label: t('common.edit'), onClick: () => setForm(sel) },
+              sel.memory === 'own' && { icon: Brain, label: t('bots.memory'), onClick: () => setMemory(sel) },
+              { icon: History, label: t('bots.history'), disabled: !sel.history?.length, onClick: () => setHistory(sel) },
+              { icon: Download, label: t('bots.export'), onClick: () => exportBot(sel) },
+              !sel.isDefault && { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeBot(sel) },
+            ]} />
+        )}
+        {modals}
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <ErrorBox error={bots.error} onRetry={() => bots.reload()} />
@@ -379,11 +447,7 @@ export default function Bots() {
           ))}
         </div>
       </Card>
-      {form && <BotForm initial={form} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
-      {memory && <MemoryModal bot={memory} onClose={() => { setMemory(null); bots.reload(true); }} />}
-      {history && <HistoryModal bot={history} onClose={() => setHistory(null)} onRestored={() => bots.reload(true)} />}
-      {tplOpen && <TemplatesModal onClose={() => setTplOpen(false)} onCreated={() => bots.reload(true)} />}
-      {impOpen && <ImportBotModal onClose={() => setImpOpen(false)} onImported={() => bots.reload(true)} />}
+      {modals}
     </div>
   );
 }

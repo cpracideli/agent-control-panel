@@ -3,6 +3,7 @@ import { CalendarClock, Eye, Globe, History, Link2, Pause, Pencil, Play, Plus, R
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const hookUrl = (s) => window.location.origin + '/hooks/' + s.id + '/' + s.hookToken;
 const STATUS_KIND = { ok: 'ok', quiet: 'muted', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
@@ -165,6 +166,87 @@ export default function Schedules() {
   const [filter, setFilter] = useState('all');
   const [busy, run] = useAction();
   const list = (sch.data || []).filter((s) => filter === 'all' || (filter === 'paused' ? s.paused : !s.paused));
+  const mobile = useIsMobile();
+  const [detail, setDetail] = useState(null);
+  const removeSch = async (s) => (await confirm(t('sch.removeConfirm', { id: s.id }))) && run('d' + s.id, () => bridge.deleteSchedule(s.id), t('common.removed')).then(() => sch.reload(true));
+  const togglePause = (s) => run('p' + s.id, () => bridge.patchSchedule(s.id, { paused: !s.paused })).then(() => sch.reload(true));
+  const modals = (
+    <>
+      {form && <ScheduleForm initial={form} chats={chats.data || []} bots={bots.data || []} onClose={() => setForm(null)} onSaved={() => sch.reload(true)} />}
+      {runsOf && <RunsModal sch={runsOf} onClose={() => { setRunsOf(null); sch.reload(true); }} />}
+    </>
+  );
+  const filterSeg = (
+    <div className="seg">
+      {[['all', 'sch.filterAll'], ['active', 'sch.filterActive'], ['paused', 'sch.filterPaused']].map(([k, lk]) => (
+        <button key={k} type="button" className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{t(lk)}</button>
+      ))}
+    </div>
+  );
+
+  if (mobile) {
+    const sel = (sch.data || []).find((s) => s.id === detail);
+    const when = (s) => (s.cron ? s.cron : s.at ? t('sch.once', { d: f.date(s.at) }) : s.webhook ? 'webhook' : s.watch ? t('sch.watchBadge', { n: s.watch.every }) : '');
+    return (
+      <div className="page page-list">
+        <HeaderActions>
+          <AddButton items={[{ icon: Plus, label: t('sch.new'), disabled: !chats.data?.length, onClick: () => setForm({}) }]} />
+        </HeaderActions>
+        <ErrorBox error={sch.error} onRetry={() => sch.reload()} />
+        <div className="list-toolbar seg-full">{filterSeg}</div>
+        {sch.data && !list.length && <p className="muted empty-note">{t('sch.none')}</p>}
+        {list.length > 0 && (
+          <ListGroup>
+            {list.map((s) => {
+              const nextAt = !s.paused && s.cron ? nextCronRun(s.cron) : null;
+              return (
+                <ListRow key={s.id}
+                  leading={<span className={'row-ic ' + (s.paused ? 'ic-paused' : 'ic-schedules')}>{s.paused ? <Pause size={18} /> : <CalendarClock size={18} />}</span>}
+                  title={s.description || '#' + s.id}
+                  badges={<>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}{s.lastRunInfo && s.lastRunInfo.status !== 'ok' && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status)}</Badge>}</>}
+                  subtitle={<><span className="mono">{when(s)}</span>{nextAt ? ' · ' + t('sch.nextRun', { d: f.date(nextAt) }) : ''}{s.botName ? ' · ' + s.botName : ''}</>}
+                  onOpen={() => setDetail(s.id)}
+                  swipe={[
+                    { icon: s.paused ? Play : Pause, label: s.paused ? t('sch.resume') : t('sch.pause'), kind: 'warn', onClick: () => togglePause(s) },
+                    { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(s) },
+                    { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeSch(s) },
+                  ]} />
+              );
+            })}
+          </ListGroup>
+        )}
+        {sel && (
+          <DetailSheet title={'#' + sel.id} onClose={() => setDetail(null)}
+            header={<>
+              <span className={'row-ic detail-ic ' + (sel.paused ? 'ic-paused' : 'ic-schedules')}>{sel.paused ? <Pause size={30} /> : <CalendarClock size={30} />}</span>
+              <h2>{sel.description || '#' + sel.id}</h2>
+              <div className="row wrap center">
+                {sel.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}
+                {sel.webhook && <Badge kind="muted">webhook</Badge>}{sel.watch && <Badge kind="muted">{t('sch.watchBadge', { n: sel.watch.every })}</Badge>}
+                {sel.quiet && <Badge kind="muted">{t('sch.quietBadge')}</Badge>}
+                {sel.lastRunInfo && <Badge kind={STATUS_KIND[sel.lastRunInfo.status] || 'muted'}>{t('sch.st.' + sel.lastRunInfo.status)}</Badge>}
+              </div>
+              <div className="detail-lines muted">
+                {(sel.cron || sel.at) && <span className="mono">{sel.cron ? sel.cron : t('sch.once', { d: f.date(sel.at) })}</span>}
+                <span className="with-ic center-ic"><ChatIc id={sel.chatId} />{sel.chatTitle}{sel.botName && ' · ' + sel.botName}</span>
+                {!sel.paused && sel.cron && nextCronRun(sel.cron) && <span>{t('sch.nextRun', { d: f.date(nextCronRun(sel.cron)) })}</span>}
+                {sel.lastRun && <span>{t('sch.last', { d: f.date(sel.lastRun) })}</span>}
+              </div>
+            </>}
+            actions={[
+              { icon: Zap, label: t('sch.runNow'), kind: 'primary', disabled: busy === 'run' + sel.id, onClick: () => run('run' + sel.id, () => bridge.runSchedule(sel.id), t('sch.running')) },
+              { icon: sel.paused ? Play : Pause, label: sel.paused ? t('sch.resume') : t('sch.pause'), onClick: () => togglePause(sel) },
+              { icon: History, label: t('sch.runs'), onClick: () => setRunsOf(sel) },
+              sel.webhook && { icon: Link2, label: t('sch.copyHook'), onClick: () => { navigator.clipboard.writeText(hookUrl(sel)); toast(t('common.copied')); } },
+              { icon: Pencil, label: t('common.edit'), onClick: () => setForm(sel) },
+              { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeSch(sel) },
+            ]} />
+        )}
+        {modals}
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <ErrorBox error={sch.error} onRetry={() => sch.reload()} />
@@ -204,8 +286,7 @@ export default function Schedules() {
           );
         })}
       </Card>
-      {form && <ScheduleForm initial={form} chats={chats.data || []} bots={bots.data || []} onClose={() => setForm(null)} onSaved={() => sch.reload(true)} />}
-      {runsOf && <RunsModal sch={runsOf} onClose={() => { setRunsOf(null); sch.reload(true); }} />}
+      {modals}
     </div>
   );
 }
