@@ -133,6 +133,11 @@ export const bridge = {
   sendWhatsApp: (to, text) => post('/bridge/send', { to, text }),
 };
 
+export const prefs = {
+  get: () => get('/prefs'),
+  save: (b) => put('/prefs', b),
+};
+
 export const coolify = {
   status: () => get('/coolify/status'),
   envs: () => get('/coolify/envs'),

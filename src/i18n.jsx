@@ -173,6 +173,12 @@ const pt = {
   'ov.status': 'Status', 'ov.totals': 'Totais', 'ov.repo': 'Repositório', 'use.limits': 'Limites do plano', 'use.tokens': 'Tokens', 'comp.screenTitle': 'Tela', 'comp.actions': 'Ações', 'comp.details': 'Detalhes', 'comp.statusLbl': 'Status', 'comp.openUrl': 'Abrir endereço', 'logs.linesLbl': 'Linhas', 'logs.tools': 'Ferramentas',
   'chat.activity': 'Atividade', 'chat.noActivity': 'Nenhuma atividade recente.', 'chat.pin': 'Fixar', 'chat.unpin': 'Desafixar', 'chat.archive': 'Arquivar', 'chat.unarchive': 'Desarquivar', 'chat.showArchived': 'Ver arquivadas ({n})', 'chat.backToChats': 'Voltar às conversas', 'chat.quote': 'Citar',
   'sch.presetEmail': 'Preset: Novo e-mail (Gmail)', 'sch.presetFolder': 'Preset: Pasta inbox',
+  'dock.title': 'Barra inferior', 'dock.preview': 'Pré-visualização da barra inferior', 'dock.selected': 'Na barra ({n}/4)',
+  'dock.available': 'Outras páginas', 'dock.moreFixed': 'Sempre na 5ª posição',
+  'dock.pickHint': 'Escolha mais {n} página(s) abaixo para completar a barra.', 'dock.fullHint': '4 de 4 selecionadas — remova uma acima para trocar.',
+  'dock.dragHint': 'Arraste pelo ícone à esquerda para reordenar.', 'dock.restore': 'Restaurar padrão',
+  'dock.saved': 'Barra inferior atualizada', 'dock.savedLocal': 'Barra atualizada neste dispositivo',
+  'dock.remove': 'Remover da barra', 'dock.save': 'Salvar',
 };
 
 const en = {
@@ -348,6 +354,12 @@ const en = {
   'ov.status': 'Status', 'ov.totals': 'Totals', 'ov.repo': 'Repository', 'use.limits': 'Plan limits', 'use.tokens': 'Tokens', 'comp.screenTitle': 'Screen', 'comp.actions': 'Actions', 'comp.details': 'Details', 'comp.statusLbl': 'Status', 'comp.openUrl': 'Open address', 'logs.linesLbl': 'Lines', 'logs.tools': 'Tools',
   'chat.activity': 'Activity', 'chat.noActivity': 'No recent activity.', 'chat.pin': 'Pin', 'chat.unpin': 'Unpin', 'chat.archive': 'Archive', 'chat.unarchive': 'Unarchive', 'chat.showArchived': 'Show archived ({n})', 'chat.backToChats': 'Back to chats', 'chat.quote': 'Quote',
   'sch.presetEmail': 'Preset: New Gmail', 'sch.presetFolder': 'Preset: Inbox folder',
+  'dock.title': 'Bottom bar', 'dock.preview': 'Bottom bar preview', 'dock.selected': 'In bar ({n}/4)',
+  'dock.available': 'Other pages', 'dock.moreFixed': 'Always in 5th slot',
+  'dock.pickHint': 'Pick {n} more page(s) below to fill the bar.', 'dock.fullHint': '4 of 4 selected — remove one above to swap.',
+  'dock.dragHint': 'Drag the left handle to reorder.', 'dock.restore': 'Restore default',
+  'dock.saved': 'Bottom bar updated', 'dock.savedLocal': 'Bottom bar updated on this device',
+  'dock.remove': 'Remove from bar', 'dock.save': 'Save',
 };
 
 const es = {
@@ -485,6 +497,12 @@ const es = {
   'mem.unsavedConfirm': '¿Descartar cambios sin guardar?',
   'use.metricTokens': 'Tokens', 'use.metricCost': 'Costo (USD)',
   'env.pendingRestart': 'Hay cambios guardados que solo aplican al reiniciar el agente.',
+  'dock.title': 'Barra inferior', 'dock.preview': 'Vista previa de la barra inferior', 'dock.selected': 'En la barra ({n}/4)',
+  'dock.available': 'Otras páginas', 'dock.moreFixed': 'Siempre en la 5ª posición',
+  'dock.pickHint': 'Elige {n} página(s) más abajo para completar la barra.', 'dock.fullHint': '4 de 4 seleccionadas — quita una arriba para cambiar.',
+  'dock.dragHint': 'Arrastra desde el ícono izquierdo para reordenar.', 'dock.restore': 'Restaurar predeterminado',
+  'dock.saved': 'Barra inferior actualizada', 'dock.savedLocal': 'Barra actualizada en este dispositivo',
+  'dock.remove': 'Quitar de la barra', 'dock.save': 'Guardar',
 };
 
 export const LANGS = [

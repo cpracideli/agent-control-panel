@@ -107,6 +107,59 @@ app.get('/api/me', (req, res) => {
   res.json({ ok: Boolean(s), email: s && s.email !== 'password' ? s.email : null, google: googleOn(), password: Boolean(ADMIN_PASSWORD) });
 });
 
+// ---------- per-user preferences (persisted in the bridge's settings.json) ----------
+const VALID_DOCK_PAGES = new Set(['chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs']);
+function parseDockPref(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (!Array.isArray(raw) || raw.length !== 4) return undefined;
+  const clean = raw.map((x) => String(x || '').trim());
+  if (clean.some((x) => !VALID_DOCK_PAGES.has(x)) || new Set(clean).size !== 4) return undefined;
+  return clean;
+}
+const prefUserOf = (req) => String(session(req)?.email || 'password').trim().toLowerCase();
+
+app.get('/api/prefs', auth, async (req, res) => {
+  if (!BRIDGE_TOKEN) return res.json({ dock: null, synced: false });
+  const user = prefUserOf(req);
+  try {
+    const r = await fetch(`${BRIDGE_URL}/admin/prefs/${encodeURIComponent(user)}`, {
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
+    });
+    if (r.status === 404) return res.json({ dock: null, synced: false });
+    if (!r.ok) return res.json({ dock: null, synced: false });
+    const data = await r.json().catch(() => ({}));
+    const dock = parseDockPref(data?.dock);
+    res.json({ dock: dock === undefined ? null : dock, synced: true });
+  } catch {
+    res.json({ dock: null, synced: false });
+  }
+});
+
+app.put('/api/prefs', auth, async (req, res) => {
+  const body = req.body || {};
+  if (!('dock' in body)) return res.status(400).json({ error: 'Campo dock é obrigatório' });
+  const dock = parseDockPref(body.dock);
+  if (dock === undefined) return res.status(400).json({ error: 'Escolha exatamente 4 páginas válidas e diferentes' });
+  if (!BRIDGE_TOKEN) return res.json({ ok: true, dock, synced: false });
+  const user = prefUserOf(req);
+  try {
+    const r = await fetch(`${BRIDGE_URL}/admin/prefs/${encodeURIComponent(user)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dock }),
+    });
+    if (r.status === 404) return res.json({ ok: true, dock, synced: false });
+    const text = await r.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch {}
+    if (!r.ok) return res.status(r.status === 401 ? 502 : r.status).json({ error: data.error || 'Falha ao salvar preferências' });
+    const saved = parseDockPref(data?.dock);
+    res.json({ ok: true, dock: saved === undefined ? dock : saved, synced: true });
+  } catch (e) {
+    res.status(502).json({ error: 'Bridge inacessível: ' + (e.cause?.code || e.message) });
+  }
+});
+
 // Authorization-code flow. The callback does not set the session directly: it hands the
 // page a one-time code that the page exchanges with fetch. That way the cookie lands in
 // the context that asked for it, which matters for an installed iOS PWA, whose cookie jar
