@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Gauge, Sparkles } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
-import { Badge, Card, ErrorBox, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Card, ErrorBox, Skeleton, useFmt, useLoad } from '../ui.jsx';
+import { ListGroup, Row, useIsMobile } from '../native.jsx';
 
 const compact = (lang, n) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: n >= 1e6 ? 1 : 0 }).format(n || 0);
 const level = (p) => (p >= 95 ? 'err' : p >= 80 ? 'warn' : 'ok');
@@ -82,6 +83,7 @@ export default function Usage() {
   const u = useLoad(() => bridge.usage(), [], { interval: 60000, cacheKey: '/bridge/usage' });
   const [range, setRange] = useState('day');
   const [metric, setMetric] = useState('tokens');
+  const mobile = useIsMobile();
   const d = u.data;
 
   const series = useMemo(() => {
@@ -106,6 +108,60 @@ export default function Usage() {
   const today = d?.days.at(-1);
   const tok = (n) => compact(lang, n) + ' tokens';
   const claudeLabel = { session: t('use.session'), weekly: t('use.weekly'), weekly_opus: t('use.weeklyOpus'), weekly_sonnet: t('use.weeklySonnet') };
+
+  const segs = (
+    <div className="dash-seg">
+      <div className="seg">
+        <button type="button" className={metric === 'tokens' ? 'on' : ''} onClick={() => setMetric('tokens')}>{t('use.metricTokens')}</button>
+        <button type="button" className={metric === 'cost' ? 'on' : ''} onClick={() => setMetric('cost')}>{t('use.metricCost')}</button>
+      </div>
+      <div className="seg">
+        <button type="button" className={range === 'day' ? 'on' : ''} onClick={() => setRange('day')}>{t('use.days')}</button>
+        <button type="button" className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>{t('use.weeks')}</button>
+      </div>
+    </div>
+  );
+  const charts = series && (
+    <div className="stack">
+      <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
+        render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? f.usd(r.value) : tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
+      <BarChart title="Antigravity" color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.a.tokens, raw: r.a }))}
+        render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+        empty={t('use.agyEmpty')} />
+    </div>
+  );
+  const note = d && <>{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</>;
+
+  if (mobile) {
+    return (
+      <div className="page page-list">
+        <ErrorBox error={u.error} onRetry={() => u.reload()} />
+        <ListGroup title={<span className="with-ic">Claude {d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}</span>}
+          footer={d?.claude.error && <span className={d.claude.stale ? '' : 'meter-err'}>{d.claude.stale ? t('use.stale') : ''}{d.claude.error}</span>}>
+          {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
+          {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
+        </ListGroup>
+        <ListGroup title={<span className="with-ic">Antigravity {d?.antigravity.tier && <Badge>{d.antigravity.tier}</Badge>}</span>}
+          footer={d?.antigravity.error && <span className={d.antigravity.stale ? '' : 'meter-err'}>{d.antigravity.stale ? t('use.stale') : ''}{d.antigravity.error}</span>}>
+          {d?.antigravity.groups?.map((g) => (
+            <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
+          ))}
+          {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
+        </ListGroup>
+        {d && (
+          <ListGroup title={t('use.tokens')}>
+            <Row icon={Gauge} tint="ic-overview" label={'Claude · ' + t('use.today')} sub={t('use.msgs', { n: today.claude.msgs })} value={<b>{tok(today.claude.tokens)}</b>} />
+            <Row icon={Gauge} tint="ic-overview" label={'Claude · ' + t('use.last7')} sub={t('use.msgs', { n: sum(7, (x) => x.claude.msgs) })} value={<b>{tok(sum(7, (x) => x.claude.tokens))}</b>} />
+            <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.today')} sub={t('use.runs', { n: today.antigravity.runs })} value={<b>{tok(today.antigravity.tokens)}</b>} />
+            <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.last7')} sub={t('use.runs', { n: sum(7, (x) => x.antigravity.runs) })} value={<b>{tok(sum(7, (x) => x.antigravity.tokens))}</b>} />
+          </ListGroup>
+        )}
+        <ListGroup title={t('use.history')} footer={note}>
+          <div className="group-form stack">{segs}{charts}</div>
+        </ListGroup>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
