@@ -293,3 +293,75 @@ export function Disclosure({ summary, children, open: openProp = false, classNam
     </div>
   );
 }
+
+// ---------- pull to refresh ----------
+// Drag down while the screen is at the top: the content follows with resistance, a spinner appears,
+// and past the threshold releasing revalidates every useLoad on screen (refreshAll), with a haptic tick.
+export function PullToRefresh({ enabled, onRefresh }) {
+  const t = useT();
+  const [state, setState] = useState({ y: 0, phase: 'idle' }); // idle | pull | ready | loading | done
+  const ref = useRef(state);
+  ref.current = state;
+  useEffect(() => {
+    const main = document.querySelector('main.main');
+    if (!main || !enabled) return undefined;
+    const TH = 72;
+    let s = null;
+    const set = (v) => { ref.current = v; setState(v); };
+    let off;
+    const paint = (y) => {
+      clearTimeout(off);
+      main.style.setProperty('--ptr', y + 'px');
+      if (y > 0) main.classList.add('ptr-on'); else off = setTimeout(() => main.classList.remove('ptr-on'), 420);
+    };
+    const start = (e) => {
+      if (e.touches.length !== 1 || main.scrollTop > 0 || ref.current.phase === 'loading') { s = null; return; }
+      if (e.target.closest?.('.sheet-bg, .modal-bg, .ctx-bg, .nrow-wrap.swiping, input, textarea, select')) { s = null; return; }
+      s = { y0: e.touches[0].clientY, x0: e.touches[0].clientX, active: false, ready: false };
+    };
+    const move = (e) => {
+      if (!s) return;
+      const dy = e.touches[0].clientY - s.y0, dx = e.touches[0].clientX - s.x0;
+      if (!s.active) {
+        if (dy < 8 || Math.abs(dx) > dy || main.scrollTop > 0) { if (dy < -4 || Math.abs(dx) > 10) s = null; return; }
+        s.active = true; s.y0 = e.touches[0].clientY; main.classList.add('ptr-dragging');
+      }
+      if (e.cancelable) e.preventDefault();
+      const y = Math.max(0, e.touches[0].clientY - s.y0);
+      const eased = Math.min(140, y * 0.5 + Math.sqrt(y) * 2); // rubber band
+      const ready = eased >= TH;
+      if (ready !== s.ready) { s.ready = ready; if (ready) haptic(10); }
+      paint(eased);
+      set({ y: eased, phase: ready ? 'ready' : 'pull' });
+    };
+    const end = async () => {
+      if (!s) return;
+      const g = s; s = null;
+      main.classList.remove('ptr-dragging');
+      if (!g.active) return;
+      if (!g.ready) { paint(0); set({ y: 0, phase: 'idle' }); return; }
+      paint(56); set({ y: 56, phase: 'loading' });
+      const t0 = Date.now();
+      try { await onRefresh(); } finally {
+        await new Promise((r) => setTimeout(r, Math.max(0, 600 - (Date.now() - t0))));
+        haptic(6); paint(0); set({ y: 0, phase: 'idle' });
+      }
+    };
+    main.addEventListener('touchstart', start, { passive: true });
+    main.addEventListener('touchmove', move, { passive: false });
+    main.addEventListener('touchend', end);
+    main.addEventListener('touchcancel', end);
+    return () => {
+      main.removeEventListener('touchstart', start); main.removeEventListener('touchmove', move);
+      main.removeEventListener('touchend', end); main.removeEventListener('touchcancel', end);
+      clearTimeout(off); main.style.removeProperty('--ptr'); main.classList.remove('ptr-dragging', 'ptr-on');
+    };
+  }, [enabled, onRefresh]);
+  if (!enabled || state.phase === 'idle') return null;
+  const p = Math.min(1, state.y / 72);
+  return (
+    <div className={'ptr ptr-' + state.phase} aria-live="polite" aria-label={state.phase === 'loading' ? t('ptr.loading') : state.phase === 'ready' ? t('ptr.release') : t('ptr.pull')}>
+      <span className="ptr-spinner" style={{ opacity: p, transform: state.phase === 'loading' ? undefined : `rotate(${p * 270}deg) scale(${0.6 + p * 0.4})` }} />
+    </div>
+  );
+}

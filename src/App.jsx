@@ -3,8 +3,8 @@ import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Downlo
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
-import { IconButton, Sheet, haptic, useTheme } from './ui.jsx';
-import { ContextMenuHost } from './native.jsx';
+import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
+import { ContextMenuHost, PullToRefresh } from './native.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
@@ -282,6 +282,7 @@ export default function App() {
           <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={34} /></button>
         </header>
         <h1 className="large-title serif-title ellipsis page-title">{t('nav.' + page)}</h1>
+        <PullToRefresh enabled={page !== 'chat' && page !== 'computer'} onRefresh={refreshAll} />
         {banners}
         <Page openMore={() => setMore(true)} me={me} />
       </main>

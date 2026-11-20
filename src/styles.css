@@ -1549,3 +1549,16 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .disc.trigger-box > .disc-sum { color: var(--text); font-size: 13px; }
 .disc.run-row > .disc-sum { color: var(--text); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .disc-body, .disc-chev { transition: none !important; } }
+
+/* (g) pull to refresh */
+@media (max-width: 820px) {
+  /* transform only while pulling/settling, so fixed sheets inside the page keep the viewport as containing block */
+  .main.ptr-on:not(.main-chat) > .page, .main.ptr-on:not(.main-chat) > .page-title { transform: translateY(var(--ptr, 0px)); transition: transform 380ms cubic-bezier(.22, 1, .36, 1); }
+  .main.ptr-dragging > .page, .main.ptr-dragging > .page-title { transition: none; }
+}
+.ptr { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 60px); z-index: 9; transform: translateX(-50%); pointer-events: none; }
+.ptr-spinner { display: block; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--muted) 35%, transparent); border-top-color: var(--muted); }
+.ptr-ready .ptr-spinner { border-top-color: var(--accent); }
+.ptr-loading .ptr-spinner { border-top-color: var(--accent); animation: spin 700ms linear infinite; }
+@media (max-width: 820px) and (display-mode: standalone) { .ptr { top: calc(var(--top-safe) + 60px); } }
+@media (min-width: 821px) { .ptr { display: none; } }

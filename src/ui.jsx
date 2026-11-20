@@ -49,6 +49,10 @@ export function ToastProvider({ children }) {
   );
 }
 
+// Every mounted useLoad registers its reload here so pull-to-refresh can revalidate the whole screen.
+const loaders = new Set();
+export const refreshAll = () => Promise.allSettled([...loaders].map((fn) => fn(true)));
+
 // ---------- data loading (local-first: hydrate from cache immediately, revalidate in background) ----------
 export function useLoad(fn, deps = [], { interval, cacheKey } = {}) {
   const [state, setState] = useState(() => {
@@ -74,6 +78,7 @@ export function useLoad(fn, deps = [], { interval, cacheKey } = {}) {
     if (cached !== undefined) setState({ data: cached, error: null, loading: false });
     reload(cached !== undefined);
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loaders.add(reload); return () => { loaders.delete(reload); }; }, [reload]);
   useEffect(() => {
     if (!interval) return undefined;
     const t = setInterval(() => { if (!document.hidden) reload(true); }, interval);
