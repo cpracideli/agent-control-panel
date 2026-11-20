@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
-import { ContextMenuHost, PullToRefresh } from './native.jsx';
+import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
+import { useEdgeBack, useNavStack } from './stack.jsx';
 import { ViewerHost } from './viewer.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
@@ -43,7 +44,7 @@ const PAGES = [
 
 const pageFromHash = () => {
   const h = window.location.hash.replace('#/', '').split('/')[0];
-  return PAGES.some((p) => p.id === h) ? h : 'chat';
+  return h === 'more' || PAGES.some((p) => p.id === h) ? h : 'chat';
 };
 
 const THEMES = [{ id: 'system', icon: Monitor }, { id: 'light', icon: Sun }, { id: 'dark', icon: Moon }, { id: 'terminal', icon: SquareTerminal }];
@@ -156,14 +157,15 @@ function Avatar({ me, size = 34 }) {
   );
 }
 
-function MoreSheet({ me, page, go, install, logout, onClose }) {
+// Pages + appearance + account. Root of the "Mais" tab, and also the sheet behind the avatar.
+function MoreList({ me, page, go, install, logout, onClose }) {
   const { t } = useI18n();
   return (
-    <Sheet title={t('nav.more')} onClose={onClose}>
+    <>
       <div className="group-label">{t('nav.pages')}</div>
       <div className="group">
         {MORE.map(({ id, icon: Icon }) => (
-          <button key={id} className={'group-row press' + (id === page ? ' on' : '')} onClick={() => { go(id); onClose(); }}>
+          <button key={id} className={'group-row press' + (id === page ? ' on' : '')} onClick={() => { go(id); onClose?.(); }}>
             <span className={'row-ic ic-' + id}><Icon size={17} /></span>
             <span className="grow">{t('nav.' + id)}</span>
             <ChevronRight size={17} className="chev" />
@@ -184,7 +186,71 @@ function MoreSheet({ me, page, go, install, logout, onClose }) {
         {install && <button className="group-row press" onClick={install}><span className="row-ic ic-install"><Download size={17} /></span><span className="grow">{t('pwa.install')}</span></button>}
         <button className="group-row press danger-text" onClick={logout}><span className="row-ic ic-logout"><LogOut size={17} /></span><span className="grow">{t('nav.logout')}</span></button>
       </div>
-    </Sheet>
+    </>
+  );
+}
+
+function MoreSheet(props) {
+  const { t } = useI18n();
+  return <Sheet title={t('nav.more')} onClose={props.onClose}><MoreList {...props} /></Sheet>;
+}
+
+const TABS = [...DOCK, 'more'];
+const tabOf = (id) => (DOCK.includes(id) ? id : 'more');
+const hashOf = (id) => '#/' + id;
+
+// One screen of a navigation stack: its own nav bar (back button, collapsing title, actions slot),
+// its own scroll position and pull-to-refresh. Chat draws its own header.
+function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, banners, cls, moreProps }) {
+  const { t } = useI18n();
+  const [el, setEl] = useState(null);
+  const [actionsEl, setActionsEl] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const chat = id === 'chat';
+  const Page = id === 'more' ? null : PAGES.find((p) => p.id === id).el;
+  const title = t('nav.' + id);
+  return (
+    <section ref={setEl} className={'screen screen-' + id + (isTop ? ' top' : '') + (cls ? ' ' + cls : '')} data-screen={id} aria-hidden={!active || !isTop}
+      onScroll={chat ? undefined : (e) => { const c = e.currentTarget.scrollTop > 40; if (c !== collapsed) setCollapsed(c); }}>
+      {!chat && (
+        <header className={'topbar' + (collapsed ? ' collapsed' : '') + (depth > 0 ? ' has-back' : '')}>
+          {depth > 0 && (
+            <button type="button" className="nav-back press" onClick={onBack} aria-label={backLabel}>
+              <ChevronLeft size={24} strokeWidth={2.4} /><span className="ellipsis">{backLabel}</span>
+            </button>
+          )}
+          <span className="topbar-title ellipsis" aria-hidden={!collapsed}>{title}</span>
+          <div className="topbar-actions" ref={setActionsEl} />
+          <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={openMore}><Avatar me={me} size={34} /></button>
+        </header>
+      )}
+      {!chat && <h1 className="large-title serif-title ellipsis page-title">{title}</h1>}
+      {!chat && <PullToRefresh enabled={active && isTop && id !== 'computer'} onRefresh={refreshAll} scrollEl={el} />}
+      {active && isTop && banners}
+      <ScreenCtx.Provider value={{ actionsEl, active: active && isTop }}>
+        {id === 'more'
+          ? <div className="page page-list more-root"><MoreList {...moreProps} /></div>
+          : <Page openMore={openMore} me={me} />}
+      </ScreenCtx.Provider>
+    </section>
+  );
+}
+
+// A tab's stack of screens. Only the top one is shown, except while a push/pop or an edge drag is running.
+function TabLayer({ tab, stack, active, anim, onPop, renderScreen }) {
+  const ref = useRef(null);
+  useEdgeBack(ref, { enabled: active && stack.length > 1 && !anim, onPop });
+  const a = anim && anim.tab === tab ? anim.kind : null;
+  return (
+    <div ref={ref} className={'tab-layer' + (active ? ' active' : '') + (a ? ' anim-' + a : '')} hidden={!active}>
+      {stack.map((id, i) => {
+        const isTop = i === stack.length - 1;
+        const isUnder = i === stack.length - 2;
+        const cls = a === 'push' ? (isTop ? 'enter-push' : isUnder ? 'leave-push' : '')
+          : a === 'pop' ? (isTop ? 'leave-pop' : isUnder ? 'enter-pop' : '') : '';
+        return renderScreen(id, i, isTop, cls, stack[i - 1]);
+      })}
+    </div>
   );
 }
 
@@ -193,12 +259,12 @@ export default function App() {
   const [authed, setAuthed] = useState(null);
   const [me, setMe] = useState(null);
   const [authError, setAuthError] = useState(null);
-  const [page, setPage] = useState(pageFromHash);
+  const stackNav = useNavStack({ tabs: TABS, tabOf, initial: pageFromHash(), hashOf, parseHash: pageFromHash });
+  const stackNavRef = useRef(stackNav);
+  stackNavRef.current = stackNav;
+  const { nav } = stackNav;
+  const page = stackNav.top();
   const [more, setMore] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  // a new screen starts at the top with the large title showing
-  useEffect(() => { const m = document.querySelector('main.main'); if (m) m.scrollTop = 0; setCollapsed(false); }, [page]);
-  const onMainScroll = (e) => { const c = e.currentTarget.scrollTop > 40; if (c !== collapsed) setCollapsed(c); };
   const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
@@ -242,7 +308,7 @@ export default function App() {
         setAuthed(r.ok);
       } catch { setMe({ google: false, password: true }); setAuthed(false); }
     })();
-    const onHash = () => setPage(pageFromHash());
+    const onHash = () => stackNavRef.current.go(pageFromHash());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -262,24 +328,26 @@ export default function App() {
     );
   }
 
-  const Page = PAGES.find((p) => p.id === page).el;
-  // Replace instead of push: in the installed app an edge swipe is "back", and the history would fight the drawer gesture.
-  const go = (id) => { window.history.replaceState(null, '', '#/' + id); setPage(id); };
-  // Dock tap: switching tabs gives a light haptic; tapping the active tab scrolls it back to the top (like a native tab bar).
-  const tapTab = (id) => {
-    if (id === page) {
-      // the chat keeps its position (scrolling a long conversation to its first message would be a surprise)
-      if (id !== 'chat') document.querySelector('main.main')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      return;
-    }
-    haptic(8);
-    go(id);
+  // Sidebar, avatar sheet, links: tab roots switch tabs, other pages are pushed on the "Mais" stack.
+  const go = (id) => stackNav.go(id);
+  // Dock: switch tab; tapping the active tab pops to its root, or scrolls it back to the top.
+  const tapTab = (tab) => {
+    if (tab !== nav.tab) { stackNav.switchTab(tab); return; }
+    if (stackNav.popToRoot(tab)) { haptic(8); return; }
+    // the chat keeps its position (scrolling a long conversation to its first message would be a surprise)
+    if (tab !== 'chat') document.querySelector('.tab-layer.active > .screen.top')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   };
   const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setAuthed(false); };
-  const dockIndex = DOCK.includes(page) ? DOCK.indexOf(page) : 4;
+  const dockIndex = TABS.indexOf(nav.tab);
+  const moreProps = { me, page, go, install, logout };
+  const renderScreen = (id, depth, isTop, cls, prev) => (
+    <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
+      backLabel={prev ? t('nav.' + prev) : ''} onBack={() => stackNav.pop()}
+      me={me} openMore={() => setMore(true)} banners={banners} moreProps={moreProps} />
+  );
 
   return (
-    <div className={'shell' + (page === 'chat' ? ' on-chat' : '')}>
+    <div className={'shell' + (page === 'chat' ? ' on-chat' : '') + (nav.anim ? ' navigating' : '')}>
       <aside className="nav">
         <div className="brand"><img src="/pwa-192.png" alt="" width="26" height="26" className="app-icon sm" />Agent Control</div>
         <nav>
@@ -308,17 +376,11 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={'main' + (page === 'chat' ? ' main-chat' : '')} onScroll={page === 'chat' ? undefined : onMainScroll}>
-        {/* iOS-style navigation bar: compact title fades in over glass once the large title scrolls away */}
-        <header className={'topbar' + (collapsed ? ' collapsed' : '')}>
-          <span className="topbar-title ellipsis" aria-hidden={!collapsed}>{t('nav.' + page)}</span>
-          <div className="topbar-actions" id="topbar-actions" />
-          <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={34} /></button>
-        </header>
-        <h1 className="large-title serif-title ellipsis page-title">{t('nav.' + page)}</h1>
-        <PullToRefresh enabled={page !== 'chat' && page !== 'computer'} onRefresh={refreshAll} />
-        {banners}
-        <Page openMore={() => setMore(true)} me={me} />
+      <main className="main">
+        {TABS.filter((tab) => nav.visited.includes(tab) || tab === nav.tab).map((tab) => (
+          <TabLayer key={tab} tab={tab} stack={nav.stacks[tab]} active={tab === nav.tab} anim={nav.anim}
+            onPop={() => stackNav.pop({ animated: false })} renderScreen={renderScreen} />
+        ))}
       </main>
 
       <nav className="dock" aria-label={t('nav.menu')}>
@@ -328,12 +390,12 @@ export default function App() {
             const { icon: Icon } = PAGES.find((p) => p.id === id);
             const dot = (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn')) || (id === 'overview' && navStatus.offline && 'err');
             return (
-              <button key={id} className={id === page ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === page ? 'page' : undefined}>
-                <span className="dock-ic"><Icon size={21} strokeWidth={id === page ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
+              <button key={id} className={id === nav.tab ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === nav.tab ? 'page' : undefined}>
+                <span className="dock-ic"><Icon size={21} strokeWidth={id === nav.tab ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
               </button>
             );
           })}
-          <button className={dockIndex === 4 ? 'active' : ''} onClick={() => { haptic(8); setMore(true); }}>
+          <button className={dockIndex === 4 ? 'active' : ''} onClick={() => tapTab('more')} aria-current={nav.tab === 'more' ? 'page' : undefined}>
             <LayoutGrid size={21} strokeWidth={dockIndex === 4 ? 2.3 : 1.9} /><span>{t('nav.more')}</span>
           </button>
         </div>

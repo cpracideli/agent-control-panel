@@ -1,6 +1,6 @@
 // Native-feeling building blocks for phones: inset-grouped lists, swipe actions,
 // detail sheets and header actions. Desktop keeps the original card layouts.
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Plus } from 'lucide-react';
 import { Sheet, haptic } from './ui.jsx';
@@ -18,13 +18,16 @@ export function useIsMobile() {
   return m;
 }
 
-// Renders its children into the navigation bar (#topbar-actions) on phones.
+// Each screen in the navigation stack provides its own nav-bar slot (and whether it is the visible one).
+export const ScreenCtx = createContext({ actionsEl: null, active: true });
+export const useScreen = () => useContext(ScreenCtx);
+
+// Renders its children into this screen's navigation bar on phones.
 export function HeaderActions({ children }) {
   const mobile = useIsMobile();
-  const [host, setHost] = useState(null);
-  useEffect(() => { setHost(document.getElementById('topbar-actions')); }, []);
-  if (!mobile || !host) return null;
-  return createPortal(children, host);
+  const { actionsEl } = useScreen();
+  if (!mobile || !actionsEl) return null;
+  return createPortal(children, actionsEl);
 }
 
 // Round "+" in the navigation bar. One item acts directly; several open a small action list.
@@ -297,13 +300,13 @@ export function Disclosure({ summary, children, open: openProp = false, classNam
 // ---------- pull to refresh ----------
 // Drag down while the screen is at the top: the content follows with resistance, a spinner appears,
 // and past the threshold releasing revalidates every useLoad on screen (refreshAll), with a haptic tick.
-export function PullToRefresh({ enabled, onRefresh }) {
+export function PullToRefresh({ enabled, onRefresh, scrollEl }) {
   const t = useT();
   const [state, setState] = useState({ y: 0, phase: 'idle' }); // idle | pull | ready | loading | done
   const ref = useRef(state);
   ref.current = state;
   useEffect(() => {
-    const main = document.querySelector('main.main');
+    const main = scrollEl;
     if (!main || !enabled) return undefined;
     const TH = 72;
     let s = null;
@@ -356,7 +359,7 @@ export function PullToRefresh({ enabled, onRefresh }) {
       main.removeEventListener('touchend', end); main.removeEventListener('touchcancel', end);
       clearTimeout(off); main.style.removeProperty('--ptr'); main.classList.remove('ptr-dragging', 'ptr-on');
     };
-  }, [enabled, onRefresh]);
+  }, [enabled, onRefresh, scrollEl]);
   if (!enabled || state.phase === 'idle') return null;
   const p = Math.min(1, state.y / 72);
   return (
