@@ -778,6 +778,20 @@ export default function Chat({ openMore, me }) {
   const toggleArchive = async (c) => {
     try { await bridge.patchChat(c.id, { archived: !c.archived }); chats.reload(true); } catch (e) { toast(e.message, 'err'); }
   };
+  const clearAllChats = async () => {
+    if (!webChats.length) return;
+    if (!(await confirm(t('chat.clearAll'), t('chat.clearAllQ', { n: webChats.length }), t('common.delete')))) return;
+    try {
+      await Promise.all(webChats.map((c) => bridge.deleteChat(c.id).catch(() => {})));
+      webChats.forEach((c) => localCache.del('/bridge/web/' + c.id.slice(4) + '/messages'));
+      store.set(LAST_CHAT_KEY, '');
+      localCache.del('/bridge/chats');
+      setCurrent(null); setMessages([]); setChatInfo(null);
+      window.history.replaceState(null, '', '#/chat');
+      toast(t('chat.clearedAll'));
+      chats.reload(true);
+    } catch (e) { toast(e.message, 'err'); }
+  };
 
   return (
     <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '') + (term ? ' term' : '')}>
@@ -825,6 +839,11 @@ export default function Chat({ openMore, me }) {
             {(archivedCount > 0 || showArchived) && (
               <button type="button" className="ghost small block" style={{ marginTop: 6 }} onClick={() => setShowArchived((x) => !x)}>
                 <Archive size={13} /> {showArchived ? t('chat.backToChats') : t('chat.showArchived', { n: archivedCount })}
+              </button>
+            )}
+            {webChats.length > 0 && (
+              <button type="button" className="ghost small block danger-text" style={{ marginTop: 6 }} onClick={clearAllChats}>
+                <Trash2 size={13} /> {t('chat.clearAll')}
               </button>
             )}
           </>
