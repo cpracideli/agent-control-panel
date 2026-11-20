@@ -3,7 +3,7 @@ import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, Rotat
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
-import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, openContextMenu, useIsMobile } from '../native.jsx';
+import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, openContextMenu, useIsMobile } from '../native.jsx';
 
 const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
@@ -128,13 +128,12 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
             </select>
           </Field>
         </div>
-        <details className="trigger-box">
-          <summary className="small"><b><ShieldCheck size={14} style={{ verticalAlign: -2 }} /> {t('bots.rulesTitle')}</b></summary>
+        <Disclosure className="trigger-box" summary={<b className="with-ic"><ShieldCheck size={14} /> {t('bots.rulesTitle')}</b>}>
           <div className="form-grid" style={{ marginTop: 10 }}>
             <Field label={t('bots.allowRules')}><textarea rows={3} value={f.allowRules || ''} onChange={set('allowRules')} placeholder={t('bots.allowPh')} /></Field>
             <Field label={t('bots.blockRules')}><textarea rows={3} value={f.blockRules || ''} onChange={set('blockRules')} placeholder={t('bots.blockPh')} /></Field>
           </div>
-        </details>
+        </Disclosure>
         <Field label={t('bots.mcp')} hint={agy ? t('bots.mcpAgy') : t('bots.mcpHint')}>
           <div className="stack">
             <div className="seg">

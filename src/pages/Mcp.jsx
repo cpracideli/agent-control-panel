@@ -3,7 +3,7 @@ import { Activity, Eye, Plug, Plus, Server, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useLoad } from '../ui.jsx';
-import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { AddButton, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const PRESETS = [
   { name: 'playwright', transport: 'stdio', command: 'npx', args: '@playwright/mcp@latest --browser chromium --headless --no-sandbox' },
@@ -145,13 +145,13 @@ export default function Mcp() {
         {mcp.loading && !c && <p className="muted">{t('common.loading')}</p>}
         <ListGroup title="Claude Code">{c && !rows.length ? <p className="muted nlist-empty">{t('mcp.none')}</p> : claudeRows}</ListGroup>
         {testRow('status', check)}
-        {status?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{status.output}</pre></details>}
+        {status?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{status.output}</pre></Disclosure>}
         <ListGroup title="Antigravity">
           {agy && !agy.installed ? <p className="muted nlist-empty">{t('mcp.agyMissing')}</p> : agy?.installed && !agyRows.length ? <pre className="nlist-empty">{agy.list || t('mcp.agyEmpty')}</pre> : agyList}
         </ListGroup>
         {agy?.installed && testRow('agy-status', checkAgy)}
-        {agyStatus?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{agyStatus.output}</pre></details>}
-        {agy?.config && <details className="tools"><summary>{t('mcp.config', { p: agy.configPath })}</summary><pre>{JSON.stringify(agy.config, null, 2)}</pre></details>}
+        {agyStatus?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{agyStatus.output}</pre></Disclosure>}
+        {agy?.config && <Disclosure className="tools" summary={t('mcp.config', { p: agy.configPath })}><pre>{JSON.stringify(agy.config, null, 2)}</pre></Disclosure>}
         <p className="muted small">{t('mcp.note')}</p>
         {adding && <AddMcp provider={adding} onClose={() => setAdding(null)} onDone={() => mcp.reload(true)} />}
         {view && <Modal title={view.n} onClose={() => setView(null)}><pre>{JSON.stringify(view.cfg, null, 2)}</pre></Modal>}
@@ -184,7 +184,7 @@ export default function Mcp() {
             </div>
           );
         })}
-        {status?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{status.output}</pre></details>}
+        {status?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{status.output}</pre></Disclosure>}
       </Card>
 
       <Card title="Antigravity" icon={Plug} actions={agy?.installed && <>
@@ -210,8 +210,8 @@ export default function Mcp() {
             </div>
           );
         })}
-        {agyStatus?.output && <details className="tools" open><summary>{t('mcp.listOutput')}</summary><pre>{agyStatus.output}</pre></details>}
-        {agy?.config && <details className="tools"><summary>{t('mcp.config', { p: agy.configPath })}</summary><pre>{JSON.stringify(agy.config, null, 2)}</pre></details>}
+        {agyStatus?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{agyStatus.output}</pre></Disclosure>}
+        {agy?.config && <Disclosure className="tools" summary={t('mcp.config', { p: agy.configPath })}><pre>{JSON.stringify(agy.config, null, 2)}</pre></Disclosure>}
       </Card>
 
       <p className="muted small">{t('mcp.note')}</p>

@@ -7,7 +7,7 @@ import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
-import { LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
+import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
 const chatFromHash = () => {
@@ -128,11 +128,10 @@ function ToolList({ tools, term }) {
   if (!tools || !tools.length) return null;
   const errCount = tools.filter((x) => x.isError).length;
   return (
-    <details className="tools">
-      <summary>
+    <Disclosure className="tools" summary={<>
         <Wrench size={13} /> {tools.length === 1 ? t('chat.toolsOne') : t('chat.toolsMany', { n: tools.length })}: {[...new Set(tools.map((x) => x.name))].join(', ')}
         {errCount > 0 && <> <Badge kind="err">{t('chat.toolsErrors', { n: errCount })}</Badge></>}
-      </summary>
+      </>}>
       {tools.map((x, i) => (
         <div key={x.id || i} className={'tool' + (x.isError ? ' bad' : '')}>
           <div className="tool-h">
@@ -144,7 +143,7 @@ function ToolList({ tools, term }) {
           {x.result !== undefined && <pre className="tool-out">{x.result || t('common.empty')}</pre>}
         </div>
       ))}
-    </details>
+    </Disclosure>
   );
 }
 
@@ -175,12 +174,11 @@ function DelegationList({ delegations, botsById, term }) {
   const errCount = delegations.filter((x) => x.status === 'error').length;
   const runningOne = delegations.find((x) => x.status === 'running');
   return (
-    <details className="tools delegs" open={Boolean(runningOne)}>
-      <summary>
+    <Disclosure className="tools delegs" open={Boolean(runningOne)} summary={<>
         <Bot size={13} /> {runningOne ? t('chat.delegAsking', { n: runningOne.botName || runningOne.bot }) : (delegations.length === 1 ? t('chat.delegOne') : t('chat.delegMany', { n: delegations.length }))}: {[...new Set(delegations.map((x) => x.botName || x.bot))].join(', ')}
         {runningOne && <span className="spin" />}
         {errCount > 0 && <> <Badge kind="err">{t('chat.toolsErrors', { n: errCount })}</Badge></>}
-      </summary>
+      </>}>
       {delegations.map((d, i) => {
         const caller = (botsById && botsById[d.byBot]) || null;
         const target = (botsById && botsById[d.bot]) || null;
@@ -200,7 +198,7 @@ function DelegationList({ delegations, botsById, term }) {
           </div>
         );
       })}
-    </details>
+    </Disclosure>
   );
 }
 

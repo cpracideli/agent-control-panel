@@ -3,7 +3,7 @@ import { CalendarClock, Eye, Globe, History, Link2, Pause, Pencil, Play, Plus, R
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
-import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const hookUrl = (s) => window.location.origin + '/hooks/' + s.id + '/' + s.hookToken;
 const STATUS_KIND = { ok: 'ok', quiet: 'muted', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
@@ -140,14 +140,13 @@ function RunsModal({ sch, onClose }) {
       <ErrorBox error={runs.error} onRetry={() => runs.reload()} />
       {runs.data && !runs.data.length && <p className="muted">{t('sch.runsNone')}</p>}
       {(runs.data || []).map((r) => (
-        <details key={r.id} className="run-row">
-          <summary className="row wrap">
+        <Disclosure key={r.id} className="run-row" summary={<>
             <Badge kind={STATUS_KIND[r.status] || 'muted'}>{t('sch.st.' + r.status)}</Badge>
             <b>{f.date(r.at)}</b>
             <span className="muted small">{t('sch.tr.' + r.trigger)}{r.ms ? ' · ' + f.dur(r.ms) : ''}{r.cost ? ' · ' + f.usd(r.cost) : ''}</span>
-          </summary>
+          </>}>
           {r.text ? <pre className="history-preview">{r.text}</pre> : <p className="muted small">{t('common.empty')}</p>}
-        </details>
+        </Disclosure>
       ))}
     </Modal>
   );

@@ -275,3 +275,21 @@ export function LongPressButton({ onLongPress, children, ...props }) {
   const lp = useLongPress((rect, el) => onLongPress(rect, el));
   return <button type="button" {...props} {...lp}>{children}</button>;
 }
+
+// Disclosure row: a chevron that rotates and content that slides open (replaces <details>).
+// `open` is the initial state and re-opens it when it turns true (e.g. a delegation starts running).
+export function Disclosure({ summary, children, open: openProp = false, className = '', summaryClassName = '' }) {
+  const [open, setOpen] = useState(Boolean(openProp));
+  useEffect(() => { if (openProp) setOpen(true); }, [openProp]);
+  return (
+    <div className={'disc ' + className + (open ? ' open' : '')}>
+      <button type="button" className={'disc-sum ' + summaryClassName} aria-expanded={open} onClick={() => { haptic(6); setOpen((o) => !o); }}>
+        <ChevronRight size={15} className="disc-chev" aria-hidden />
+        <span className="disc-label">{summary}</span>
+      </button>
+      <div className="disc-body" aria-hidden={!open}>
+        <div className="disc-inner">{children}</div>
+      </div>
+    </div>
+  );
+}
