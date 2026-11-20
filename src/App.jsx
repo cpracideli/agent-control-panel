@@ -225,7 +225,7 @@ function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, ban
         </header>
       )}
       {!chat && <h1 className="large-title serif-title ellipsis page-title">{title}</h1>}
-      {!chat && <PullToRefresh enabled={active && isTop && id !== 'computer'} onRefresh={refreshAll} scrollEl={el} />}
+      {!chat && <PullToRefresh enabled={active && isTop} onRefresh={refreshAll} scrollEl={el} />}
       {active && isTop && banners}
       <ScreenCtx.Provider value={{ actionsEl, active: active && isTop }}>
         {id === 'more'

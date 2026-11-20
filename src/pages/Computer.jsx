@@ -3,7 +3,8 @@ import { AlertTriangle, Camera, Check, ExternalLink, Eye, Globe, GraduationCap, 
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useLoad, useToast } from '../ui.jsx';
-import { imageLink } from '../viewer.jsx';
+import { imageLink, openImage } from '../viewer.jsx';
+import { ListGroup, Row, useIsMobile } from '../native.jsx';
 
 function TeachModal({ currentUrl, onClose }) {
   const t = useT();
@@ -52,6 +53,7 @@ export default function Computer() {
   const [busy, run] = useAction();
   const frameRef = useRef(null);
   const wrapRef = useRef(null);
+  const mobile = useIsMobile();
 
   const d = st.data;
   const running = d?.status === 'running';
@@ -98,6 +100,75 @@ export default function Computer() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else el.requestFullscreen?.().catch(() => {});
   };
+
+  const teach = async () => { if (!human) await run('ctrl', () => bridge.computerControl('human')); st.reload(true); setTeaching(true); };
+  const screen = (
+    <div ref={wrapRef} className={'computer-screen' + (human ? ' human' : '')}>
+      {running ? (
+        <iframe key={viewerKey} ref={frameRef} src={bridge.computerViewerUrl(!human)} title={t('comp.title')} className="computer-frame" />
+      ) : (
+        <div className="computer-off">
+          <Monitor size={42} className="muted" />
+          <h3>{t('comp.offTitle')}</h3>
+          <p className="muted small" style={{ maxWidth: 460, textAlign: 'center' }}>{t('comp.offHint')}</p>
+          <Btn icon={Play} disabled={busy === 'start'} onClick={start}>{t('comp.start')}</Btn>
+        </div>
+      )}
+    </div>
+  );
+  const needBanner = needs && (
+    <div className="banner warn computer-need-banner">
+      <AlertTriangle size={18} />
+      <div className="grow">
+        <b>{t('comp.needsYou')}</b>
+        <div className="small">{d.needsHuman.reason}</div>
+      </div>
+      <Btn icon={Check} className="small" disabled={busy === 'res'} onClick={() => resolveHuman('done')}>{t('comp.imDone')}</Btn>
+      <Btn icon={SkipForward} className="ghost small" disabled={busy === 'res'} onClick={() => resolveHuman('skip')}>{t('comp.skip')}</Btn>
+    </div>
+  );
+
+  if (mobile) {
+    const statusBadge = <Badge kind={running ? (needs ? 'warn' : 'ok') : 'muted'}>{running ? (human ? t('comp.youHaveControl') : t('comp.running')) : t('comp.stoppedState')}</Badge>;
+    return (
+      <div className="page page-list">
+        <ErrorBox error={st.error} onRetry={() => st.reload()} />
+        {needBanner}
+        <ListGroup title={t('comp.screenTitle')}>{screen}</ListGroup>
+        <ListGroup title={t('comp.statusLbl')}>
+          <Row icon={Monitor} tint="ic-computer" label={t('comp.title')} value={statusBadge} sub={running && d?.currentUrl ? d.currentUrl : undefined} />
+          {running && (
+            <form className="group-row vrow" onSubmit={openUrl}>
+              <span className="row-ic ic-plain"><Globe size={17} /></span>
+              <label className="search grow"><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={d?.currentUrl || 'https://...'} aria-label={t('comp.openUrl')} /></label>
+              <Btn icon={ExternalLink} className="ghost small" type="submit" disabled={busy === 'open' || !url.trim()}>{t('comp.go')}</Btn>
+            </form>
+          )}
+        </ListGroup>
+        <ListGroup title={t('comp.actions')}>
+          {!running ? (
+            <Row icon={Play} tint="ic-chat" label={t('comp.start')} kind="accent" disabled={busy === 'start'} onClick={start} />
+          ) : (
+            <>
+              <Row icon={human ? Eye : Hand} tint={human ? 'ic-schedules' : 'ic-overview'} label={human ? t('comp.releaseControl') : t('comp.takeControl')} kind="accent" disabled={busy === 'ctrl'} onClick={toggleControl} chevron />
+              <Row icon={GraduationCap} tint="ic-skills" label={t('comp.teach')} onClick={teach} chevron />
+              <Row icon={Camera} tint="ic-dashboards" label={t('comp.screenshot')} onClick={() => openImage(bridge.computerScreenshotUrl(), t('comp.screenshot'))} chevron />
+              <Row icon={RefreshCw} tint="ic-plain" label={t('comp.reconnect')} onClick={() => setViewerKey((k) => k + 1)} />
+              <Row icon={Maximize2} tint="ic-plain" label={t('pg.full')} onClick={fullscreen} />
+              <Row icon={Power} tint="ic-logout" label={t('comp.stop')} kind="danger" disabled={busy === 'stop'} onClick={stop} />
+            </>
+          )}
+        </ListGroup>
+        {d && (
+          <ListGroup title={t('comp.details')} footer={t('comp.profileHint')}>
+            <Row label="Display" value={<code className="mono">{d.display}</code>} />
+            {d.cdpUrl && <Row label="CDP" value={<code className="mono">{d.cdpUrl}</code>} />}
+          </ListGroup>
+        )}
+        {teaching && <TeachModal currentUrl={d?.currentUrl} onClose={() => setTeaching(false)} />}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
