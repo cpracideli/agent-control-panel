@@ -549,7 +549,13 @@ export default function Chat({ openMore, me }) {
     }
   }, [current]);
   useEffect(() => {
-    const onHash = () => { const id = chatFromHash(); if (id) setCurrent(id); };
+    // the chat stays mounted under the tab bar now, so links that open a chat with a prefilled
+    // command (e.g. Skills > Use in chat) are picked up here as well as on first mount
+    const onHash = () => {
+      const id = chatFromHash(); if (id) setCurrent(id);
+      const pf = sessionStorage.getItem('acp_prefill');
+      if (pf) { sessionStorage.removeItem('acp_prefill'); setText(pf); }
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
