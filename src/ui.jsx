@@ -2,16 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { store, useI18n, useT } from './i18n.jsx';
 
-// ---------- theme: system | light | dark ----------
+// ---------- theme: system | light | dark | terminal ----------
 const ThemeCtx = createContext(null);
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => store.get('acp_theme') || 'system');
+  const [theme, setThemeState] = useState(() => store.get('acp_theme') || (store.get('acp_chat_style') === 'terminal' ? 'terminal' : 'system'));
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', theme);
     const apply = () => {
       const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.setAttribute('content', dark ? '#000000' : '#f2f2f7'); m.removeAttribute('media'); });
+      const color = theme === 'terminal' ? '#141413' : dark ? '#000000' : '#f2f2f7';
+      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.setAttribute('content', color); m.removeAttribute('media'); });
     };
     apply();
     const mq = window.matchMedia('(prefers-color-scheme: dark)');

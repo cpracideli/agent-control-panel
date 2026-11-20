@@ -1219,3 +1219,88 @@ a.btn.small { padding: 5px 12px; font-size: 13px; }
 
 
 
+
+/* ---------- global theme: terminal (Claude Code aesthetic across the whole app) ---------- */
+:root[data-theme="terminal"] {
+  --bg: #141413;
+  --panel: #1a1918;
+  --card: #1f1e1d;
+  --card-2: #2a2927;
+  --sunken: #2a2927;
+  --hover: #2f2e2b;
+  --active: rgba(217, 119, 87, .18);
+  --line: #3b3a37;
+  --sep: #3b3a37;
+  --text: #e8e6dc;
+  --muted: #8f8c84;
+  --accent: #d97757;
+  --accent-2: #e38b6d;
+  --accent-ink: #141413;
+  --bubble: #2a2927;
+  --bubble-ink: #e8e6dc;
+  --inv: #d97757;
+  --inv-ink: #141413;
+  --ok: #7fb069;
+  --ok-ink: #7fb069;
+  --warn: #e5b567;
+  --warn-ink: #e5b567;
+  --warn-bg: #e5b567;
+  --err: #ef6b5f;
+  --chart-1: #d97757;
+  --chart-2: #7fb069;
+  --shadow: none;
+  --radius: 8px;
+  --font: var(--mono);
+  --serif: var(--mono);
+  --lg-tint: #1f1e1d;
+  --lg-tint-strong: #1f1e1d;
+  --lg-filter: none;
+  --lg-filter-strong: none;
+  --lg-rim: none;
+  --lg-edge: #3b3a37;
+  --lg-bevel: none;
+  --lg-shadow: 0 0 0 1px #3b3a37;
+  --lg-glow: transparent;
+  --lg-lens: rgba(217, 119, 87, .16);
+  color-scheme: dark;
+}
+:root[data-theme="terminal"] body { font-size: 13.5px; letter-spacing: 0; }
+:root[data-theme="terminal"] .serif-title,
+:root[data-theme="terminal"] .large-title { font-family: var(--mono); letter-spacing: -.01em; }
+:root[data-theme="terminal"] .nav { background: var(--panel); border-right: 1px solid var(--line); }
+:root[data-theme="terminal"] .nav-item { border-radius: 6px; }
+:root[data-theme="terminal"] .nav-item.active { background: var(--active); color: var(--accent); }
+:root[data-theme="terminal"] .row-ic { border-radius: 6px; }
+:root[data-theme="terminal"] .card,
+:root[data-theme="terminal"] .group,
+:root[data-theme="terminal"] .sheet,
+:root[data-theme="terminal"] .modal,
+:root[data-theme="terminal"] .toast,
+:root[data-theme="terminal"] .chat-list { border-radius: 8px; box-shadow: none; border: 1px solid var(--line); }
+:root[data-theme="terminal"] .sheet,
+:root[data-theme="terminal"] .modal { background: var(--bg); }
+:root[data-theme="terminal"] .sheet .group,
+:root[data-theme="terminal"] .modal .card { background: var(--card); }
+:root[data-theme="terminal"] .seg { background: var(--card-2); border: 1px solid var(--line); border-radius: 6px; }
+:root[data-theme="terminal"] .seg button { border-radius: 4px; }
+:root[data-theme="terminal"] .seg button.on { background: var(--accent); color: var(--accent-ink); }
+:root[data-theme="terminal"] button,
+:root[data-theme="terminal"] a.btn,
+:root[data-theme="terminal"] input,
+:root[data-theme="terminal"] select,
+:root[data-theme="terminal"] textarea { font-family: var(--mono); border-radius: 6px; }
+:root[data-theme="terminal"] .dock-capsule,
+:root[data-theme="terminal"] .head-capsule,
+:root[data-theme="terminal"] .glass-btn,
+:root[data-theme="terminal"] .chat-head .nav-btn {
+  background: var(--card) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 0 0 1px var(--line) !important;
+  border-radius: 8px;
+}
+:root[data-theme="terminal"] .dock-capsule::after,
+:root[data-theme="terminal"] .glass-btn::after { display: none; }
+:root[data-theme="terminal"] .dock button { text-shadow: none; }
+:root[data-theme="terminal"] .dock-pill > span { background: var(--active); border-radius: 6px; }
+:root[data-theme="terminal"] .badge { border-radius: 4px; }

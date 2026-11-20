@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, SquareTerminal, Trash2, Users, UserRound, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, Trash2, Users, UserRound, Wand2, Wrench, X } from 'lucide-react';
 import { bridge } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
-import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 
 const chatFromHash = () => {
@@ -387,9 +387,9 @@ export default function Chat({ openMore, me }) {
   const [files, setFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [voiceMode, setVoiceModeState] = useState(() => store.get('acp_voice') === '1');
-  // Chat style: 'bubbles' (default) or 'terminal' (looks like Claude Code in a terminal). Visual only, per browser.
-  const [term, setTermState] = useState(() => store.get('acp_chat_style') === 'terminal');
-  const setTerm = (on) => { store.set('acp_chat_style', on ? 'terminal' : 'bubbles'); setTermState(on); };
+  // Chat style follows the global theme ('terminal' renders Claude Code terminal layout).
+  const { theme } = useTheme();
+  const term = theme === 'terminal';
   const [pushOn, setPushState] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0');
   const togglePush = async () => {
     if (typeof Notification === 'undefined') return;
@@ -795,7 +795,6 @@ export default function Chat({ openMore, me }) {
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
-          <IconButton icon={SquareTerminal} className={'ghost voice-toggle only-desktop' + (term ? ' on' : '')} label={t('chat.style') + ': ' + (term ? t('chat.styleTerminal') : t('chat.styleBubbles'))} onClick={() => setTerm(!term)} />
           {typeof Notification !== 'undefined' && (
             <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
           )}
@@ -971,16 +970,6 @@ export default function Chat({ openMore, me }) {
               )}
             </div>
           )}
-          <div className="group">
-            <div className="group-row">
-              <span className="row-ic ic-chat"><SquareTerminal size={17} /></span>
-              <span className="grow"><b>{t('chat.style')}</b><small className="muted">{t('chat.styleHint')}</small></span>
-              <div className="seg seg-ios" role="radiogroup" aria-label={t('chat.style')}>
-                <button type="button" role="radio" aria-checked={!term} className={!term ? 'on' : ''} onClick={() => setTerm(false)}>{t('chat.styleBubbles')}</button>
-                <button type="button" role="radio" aria-checked={term} className={term ? 'on' : ''} onClick={() => setTerm(true)}>{t('chat.styleTerminal')}</button>
-              </div>
-            </div>
-          </div>
           {hasTTS() && (
             <div className="group">
               <label className="group-row">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
@@ -44,7 +44,7 @@ const pageFromHash = () => {
   return PAGES.some((p) => p.id === h) ? h : 'chat';
 };
 
-const THEMES = [{ id: 'system', icon: Monitor }, { id: 'light', icon: Sun }, { id: 'dark', icon: Moon }];
+const THEMES = [{ id: 'system', icon: Monitor }, { id: 'light', icon: Sun }, { id: 'dark', icon: Moon }, { id: 'terminal', icon: SquareTerminal }];
 
 function ThemeSwitch({ compact, glass, labels }) {
   const { theme, setTheme } = useTheme();

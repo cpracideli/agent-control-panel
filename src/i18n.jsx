@@ -17,7 +17,7 @@ const pt = {
   'use.agySince': 'Antigravity registrado desde {d}.', 'use.agyFromNow': 'O histórico do Antigravity começa a ser registrado a partir de agora.',
   'nav.overview': 'Painel', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Agendamentos',
   'nav.envs': 'Variáveis', 'nav.logs': 'Logs', 'nav.logout': 'Sair', 'nav.menu': 'Menu',
-  'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Escuro', 'lang.label': 'Idioma',
+  'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Escuro', 'theme.terminal': 'Terminal', 'lang.label': 'Idioma',
   'pwa.install': 'Instalar app', 'pwa.update': 'Nova versão disponível', 'pwa.reload': 'Atualizar', 'pwa.offline': 'Sem conexão',
 
   'common.cancel': 'Cancelar', 'common.save': 'Salvar', 'common.saved': 'Salvo', 'common.remove': 'Remover', 'common.removed': 'Removido',
@@ -189,7 +189,7 @@ const en = {
   'use.agySince': 'Antigravity recorded since {d}.', 'use.agyFromNow': 'Antigravity history starts being recorded now.',
   'nav.overview': 'Overview', 'nav.providers': 'Providers', 'nav.mcp': 'MCP', 'nav.schedules': 'Schedules',
   'nav.envs': 'Variables', 'nav.logs': 'Logs', 'nav.logout': 'Sign out', 'nav.menu': 'Menu',
-  'theme.label': 'Theme', 'theme.system': 'System', 'theme.light': 'Light', 'theme.dark': 'Dark', 'lang.label': 'Language',
+  'theme.label': 'Theme', 'theme.system': 'System', 'theme.light': 'Light', 'theme.dark': 'Dark', 'theme.terminal': 'Terminal', 'lang.label': 'Language',
   'pwa.install': 'Install app', 'pwa.update': 'New version available', 'pwa.reload': 'Reload', 'pwa.offline': 'Offline',
 
   'common.cancel': 'Cancel', 'common.save': 'Save', 'common.saved': 'Saved', 'common.remove': 'Remove', 'common.removed': 'Removed',
@@ -361,7 +361,7 @@ const es = {
   'use.agySince': 'Antigravity registrado desde {d}.', 'use.agyFromNow': 'El historial de Antigravity empieza a registrarse ahora.',
   'nav.overview': 'Panel', 'nav.providers': 'Proveedores', 'nav.mcp': 'MCP', 'nav.schedules': 'Programaciones',
   'nav.envs': 'Variables', 'nav.logs': 'Logs', 'nav.logout': 'Salir', 'nav.menu': 'Menú',
-  'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Oscuro', 'lang.label': 'Idioma',
+  'theme.label': 'Tema', 'theme.system': 'Sistema', 'theme.light': 'Claro', 'theme.dark': 'Oscuro', 'theme.terminal': 'Terminal', 'lang.label': 'Idioma',
   'pwa.install': 'Instalar app', 'pwa.update': 'Nueva versión disponible', 'pwa.reload': 'Actualizar', 'pwa.offline': 'Sin conexión',
 
   'common.cancel': 'Cancelar', 'common.save': 'Guardar', 'common.saved': 'Guardado', 'common.remove': 'Eliminar', 'common.removed': 'Eliminado',
