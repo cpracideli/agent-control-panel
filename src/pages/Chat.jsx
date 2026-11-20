@@ -52,7 +52,7 @@ function SwipeChatRow({ isOpen, onOpen, onClose, onRename, onDelete, className, 
   };
 
   return (
-    <div className={'swipe-row ' + (className || '')} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+    <div className={'swipe-row ' + (offset ? 'swiping ' : '') + (className || '')} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
       <div className="swipe-actions only-mobile" aria-hidden={!isOpen}>
         <button type="button" className="swipe-btn edit" onClick={(e) => { e.stopPropagation(); onClose(); onRename(); }} aria-label="Renomear"><Pencil size={16} /></button>
         <button type="button" className="swipe-btn del" onClick={(e) => { e.stopPropagation(); onClose(); onDelete(); }} aria-label="Apagar"><Trash2 size={16} /></button>
@@ -583,6 +583,8 @@ export default function Chat({ openMore, me }) {
       if (p.clientX < 24 && !openRef.current) e.preventDefault();
       // horizontal scrollers and the text box keep their own sideways gestures
       if (p.clientX >= 24 && e.target.closest?.('.table-wrap, .pending-files, textarea, pre, .rec-body, .mic-hold')) { s = null; return; }
+      // with the drawer open, a sideways swipe on a conversation row reveals its actions instead of closing the drawer
+      if (openRef.current && e.target.closest?.('.swipe-row')) { s = null; return; }
       s = { x: p.clientX, y: p.clientY, open: openRef.current, drag: false, pos: openRef.current ? W() : 0 };
     };
     const move = (e) => {

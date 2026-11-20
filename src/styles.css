@@ -1307,13 +1307,17 @@ a.btn.small { padding: 5px 12px; font-size: 13px; }
 :root[data-theme="terminal"] .badge { border-radius: 4px; }
 
 /* ---------- swipe actions on chat list rows (mobile) ---------- */
-.swipe-row { position: relative; overflow: hidden; border-radius: 14px; }
-.swipe-track { position: relative; z-index: 1; display: flex; align-items: center; width: 100%; background: var(--bg); }
-@media (min-width: 821px) {
-  .swipe-row { overflow: visible; border-radius: 0; }
-  .swipe-track { background: transparent; }
+.swipe-row { position: relative; flex-shrink: 0; }
+.swipe-track { position: relative; z-index: 1; display: flex; align-items: center; width: 100%; min-width: 0; border-radius: inherit; background: transparent; }
+.swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; align-items: stretch; z-index: 0; visibility: hidden; border-radius: 0 14px 14px 0; overflow: hidden; }
+@media (max-width: 820px) {
+  .swipe-row { overflow: hidden; border-radius: 14px; }
+  .swipe-row.swiping .swipe-actions { visibility: visible; }
+  .swipe-row.swiping .swipe-track { background: var(--bg); }
+  .swipe-row.swiping.active .swipe-track { background: color-mix(in srgb, var(--active) 100%, var(--bg)); }
+  /* swipe left replaces the inline row buttons on touch screens */
+  .chat-list .chat-item-actions { display: none; }
 }
-.swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; align-items: stretch; z-index: 0; }
 .swipe-btn { width: 56px; border: 0; border-radius: 0 !important; display: flex; align-items: center; justify-content: center; color: #fff; padding: 0; }
 .swipe-btn.edit { background: var(--accent); color: var(--accent-ink); }
 .swipe-btn.del { background: var(--err); color: #fff; }
