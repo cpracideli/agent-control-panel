@@ -44,7 +44,7 @@ function TeachModal({ currentUrl, onClose }) {
 export default function Computer() {
   const t = useT();
   const toast = useToast();
-  const st = useLoad(() => bridge.computerStatus(), [], { interval: 5000 });
+  const st = useLoad(() => bridge.computerStatus(), [], { interval: 5000, cacheKey: '/bridge/computer/status' });
   const [url, setUrl] = useState('');
   const [viewerKey, setViewerKey] = useState(0);
   const [teaching, setTeaching] = useState(false);

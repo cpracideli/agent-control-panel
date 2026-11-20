@@ -79,7 +79,7 @@ export default function Usage() {
   const t = useT();
   const f = useFmt();
   const { lang } = useI18n();
-  const u = useLoad(() => bridge.usage(), [], { interval: 60000 });
+  const u = useLoad(() => bridge.usage(), [], { interval: 60000, cacheKey: '/bridge/usage' });
   const [range, setRange] = useState('day');
   const [metric, setMetric] = useState('tokens');
   const d = u.data;

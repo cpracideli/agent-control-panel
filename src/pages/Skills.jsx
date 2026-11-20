@@ -75,8 +75,8 @@ export default function Skills() {
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
-  const skills = useLoad(() => bridge.skills(), [], { interval: 30000 });
-  const bots = useLoad(() => bridge.bots(), []);
+  const skills = useLoad(() => bridge.skills(), [], { interval: 30000, cacheKey: '/bridge/skills' });
+  const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [q, setQ] = useState('');
   const [form, setForm] = useState(null);
   const [ghOpen, setGhOpen] = useState(false);

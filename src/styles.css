@@ -1305,3 +1305,15 @@ a.btn.small { padding: 5px 12px; font-size: 13px; }
 :root[data-theme="terminal"] .dock button { text-shadow: none; }
 :root[data-theme="terminal"] .dock-pill > span { background: var(--active); border-radius: 6px; }
 :root[data-theme="terminal"] .badge { border-radius: 4px; }
+
+/* ---------- swipe actions on chat list rows (mobile) ---------- */
+.swipe-row { position: relative; overflow: hidden; border-radius: 14px; }
+.swipe-track { position: relative; z-index: 1; display: flex; align-items: center; width: 100%; background: var(--bg); }
+@media (min-width: 821px) {
+  .swipe-row { overflow: visible; border-radius: 0; }
+  .swipe-track { background: transparent; }
+}
+.swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; align-items: stretch; z-index: 0; }
+.swipe-btn { width: 56px; border: 0; border-radius: 0 !important; display: flex; align-items: center; justify-content: center; color: #fff; padding: 0; }
+.swipe-btn.edit { background: var(--accent); color: var(--accent-ink); }
+.swipe-btn.del { background: var(--err); color: #fff; }

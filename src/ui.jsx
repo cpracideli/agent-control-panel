@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { localCache } from './api.js';
 import { store, useI18n, useT } from './i18n.jsx';
 
 // ---------- theme: system | light | dark | terminal ----------
@@ -48,17 +49,31 @@ export function ToastProvider({ children }) {
   );
 }
 
-// ---------- data loading ----------
-export function useLoad(fn, deps = [], { interval } = {}) {
-  const [state, setState] = useState({ data: null, error: null, loading: true });
+// ---------- data loading (local-first: hydrate from cache immediately, revalidate in background) ----------
+export function useLoad(fn, deps = [], { interval, cacheKey } = {}) {
+  const [state, setState] = useState(() => {
+    const cached = cacheKey ? localCache.get(cacheKey) : undefined;
+    return cached !== undefined ? { data: cached, error: null, loading: false } : { data: null, error: null, loading: true };
+  });
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  const keyRef = useRef(cacheKey);
+  keyRef.current = cacheKey;
   const reload = useCallback(async (quiet) => {
-    if (!quiet) setState((s) => ({ ...s, loading: true }));
-    try { const data = await fnRef.current(); setState({ data, error: null, loading: false }); }
-    catch (e) { setState((s) => ({ ...s, error: e.message, loading: false })); }
+    if (!quiet) setState((s) => (s.data !== null ? s : { ...s, loading: true }));
+    try {
+      const data = await fnRef.current();
+      if (keyRef.current) localCache.set(keyRef.current, data);
+      setState({ data, error: null, loading: false });
+    } catch (e) {
+      setState((s) => ({ ...s, error: e.message, loading: false }));
+    }
   }, []);
-  useEffect(() => { reload(); }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const cached = cacheKey ? localCache.get(cacheKey) : undefined;
+    if (cached !== undefined) setState({ data: cached, error: null, loading: false });
+    reload(cached !== undefined);
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!interval) return undefined;
     const t = setInterval(() => { if (!document.hidden) reload(true); }, interval);

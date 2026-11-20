@@ -5,6 +5,37 @@ export class ApiError extends Error {
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
+// Local-first cache (memory + localStorage) for instant screen loads & stale-while-revalidate.
+const CACHE_PREFIX = 'acp_lc:';
+const MAX_CACHE_BYTES = 260000;
+const memCache = new Map();
+export const localCache = {
+  get(key) {
+    if (!key) return undefined;
+    if (memCache.has(key)) return memCache.get(key);
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + key);
+      if (raw == null) return undefined;
+      const val = JSON.parse(raw);
+      memCache.set(key, val);
+      return val;
+    } catch { return undefined; }
+  },
+  set(key, val) {
+    if (!key || val === undefined) return;
+    memCache.set(key, val);
+    try {
+      const raw = JSON.stringify(val);
+      if (raw.length <= MAX_CACHE_BYTES) localStorage.setItem(CACHE_PREFIX + key, raw);
+    } catch {}
+  },
+  del(key) {
+    if (!key) return;
+    memCache.delete(key);
+    try { localStorage.removeItem(CACHE_PREFIX + key); } catch {}
+  },
+};
+
 export async function api(method, path, body) {
   const r = await fetch('/api' + path, {
     method,
@@ -17,6 +48,7 @@ export async function api(method, path, body) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (r.status === 401 && path !== '/login') onUnauthorized();
   if (!r.ok) throw new ApiError((data && data.error) || `Erro ${r.status}`, r.status);
+  if (method === 'GET' && data !== null) localCache.set(path, data);
   return data;
 }
 
@@ -33,6 +65,7 @@ export const bridge = {
   settings: (s) => put('/bridge/settings', s),
   chats: () => get('/bridge/chats'),
   patchChat: (id, b) => patch('/bridge/chats/' + encodeURIComponent(id), b),
+  autoTitleChat: (id) => post('/bridge/chats/' + encodeURIComponent(id) + '/auto-title'),
   stopChat: (id) => post('/bridge/chats/' + encodeURIComponent(id) + '/stop'),
   deleteChat: (id) => del('/bridge/chats/' + encodeURIComponent(id)),
   newWeb: (b) => post('/bridge/web', b),

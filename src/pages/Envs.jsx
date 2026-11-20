@@ -30,8 +30,8 @@ function VaultTab() {
   const t = useT();
   const f = useFmt();
   const confirm = useConfirm();
-  const sec = useLoad(() => bridge.secrets(), []);
-  const bots = useLoad(() => bridge.bots(), []);
+  const sec = useLoad(() => bridge.secrets(), [], { cacheKey: '/bridge/secrets' });
+  const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [form, setForm] = useState({ name: '', label: '', value: '', scope: 'global', kind: 'api_key', note: '' });
   const [busy, run] = useAction();
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -100,7 +100,7 @@ export default function Envs() {
   const t = useT();
   const confirm = useConfirm();
   const [tab, setTab] = useState('vault');
-  const envs = useLoad(() => coolify.envs(), []);
+  const envs = useLoad(() => coolify.envs(), [], { cacheKey: '/coolify/envs' });
   const [filter, setFilter] = useState('');
   const [k, setK] = useState('');
   const [v, setV] = useState('');

@@ -116,7 +116,7 @@ function AiMemory() {
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
-  const projects = useLoad(() => mem.projects(), []);
+  const projects = useLoad(() => mem.projects(), [], { cacheKey: 'mem:projects' });
   const [project, setProject] = useState('workspace');
   const pages = useLoad(() => mem.pages(project), [project]);
   const [q, setQ] = useState('');
@@ -200,7 +200,7 @@ function LocalMemory() {
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
-  const data = useLoad(() => mem.local(), []);
+  const data = useLoad(() => mem.local(), [], { cacheKey: 'mem:local' });
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(null);
   const [editing, setEditing] = useState(null);

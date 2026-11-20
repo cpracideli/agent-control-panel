@@ -306,9 +306,9 @@ export default function Bots() {
   const t = useT();
   const toast = useToast();
   const confirm = useConfirm();
-  const bots = useLoad(() => bridge.bots(), [], { interval: 30000 });
-  const providers = useLoad(() => bridge.providers(), []);
-  const mcp = useLoad(() => bridge.mcp(), []);
+  const bots = useLoad(() => bridge.bots(), [], { interval: 30000, cacheKey: '/bridge/bots' });
+  const providers = useLoad(() => bridge.providers(), [], { cacheKey: '/bridge/providers' });
+  const mcp = useLoad(() => bridge.mcp(), [], { cacheKey: '/bridge/mcp' });
   const [form, setForm] = useState(null);
   const [memory, setMemory] = useState(null);
   const [history, setHistory] = useState(null);

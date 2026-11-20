@@ -2,16 +2,67 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, Trash2, Users, UserRound, Wand2, Wrench, X } from 'lucide-react';
-import { bridge } from '../api.js';
+import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 
+const LAST_CHAT_KEY = 'acp_last_chat';
 const chatFromHash = () => {
   const m = window.location.hash.match(/^#\/chat\/([a-f0-9]+)/);
   return m ? 'web:' + m[1] : null;
 };
+
+// Swipe-left gesture on mobile chat list rows to reveal Rename & Delete actions without closing the drawer.
+function SwipeChatRow({ isOpen, onOpen, onClose, onRename, onDelete, className, children }) {
+  const [dx, setDx] = useState(0);
+  const st = useRef(null);
+  const MAX = 112;
+  const offset = st.current?.dragging ? dx : (isOpen ? -MAX : 0);
+
+  const onTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    st.current = { x0: t.clientX, y0: t.clientY, base: isOpen ? -MAX : 0, dragging: false, locked: false };
+  };
+  const onTouchMove = (e) => {
+    const s = st.current;
+    if (!s || s.locked) return;
+    const t = e.touches[0];
+    const mx = t.clientX - s.x0, my = t.clientY - s.y0;
+    if (!s.dragging) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      if (Math.abs(my) > Math.abs(mx) || (!isOpen && mx > 0)) { s.locked = true; return; }
+      s.dragging = true;
+    }
+    e.stopPropagation();
+    const next = Math.max(-MAX - 16, Math.min(0, s.base + mx));
+    setDx(next);
+  };
+  const onTouchEnd = (e) => {
+    const s = st.current;
+    if (!s) return;
+    if (s.dragging) {
+      e.stopPropagation();
+      if (dx < -MAX / 2) onOpen(); else onClose();
+    }
+    st.current = null;
+    setDx(0);
+  };
+
+  return (
+    <div className={'swipe-row ' + (className || '')} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+      <div className="swipe-actions only-mobile" aria-hidden={!isOpen}>
+        <button type="button" className="swipe-btn edit" onClick={(e) => { e.stopPropagation(); onClose(); onRename(); }} aria-label="Renomear"><Pencil size={16} /></button>
+        <button type="button" className="swipe-btn del" onClick={(e) => { e.stopPropagation(); onClose(); onDelete(); }} aria-label="Apagar"><Trash2 size={16} /></button>
+      </div>
+      <div className="swipe-track" style={{ transform: offset ? `translateX(${offset}px)` : undefined, transition: st.current?.dragging ? 'none' : 'transform 200ms cubic-bezier(.32, .72, 0, 1)' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 const provName = (p) => (p === 'antigravity' ? 'Antigravity' : 'Claude');
 
 function CodeBlock({ children, ...props }) {
@@ -345,16 +396,17 @@ export default function Chat({ openMore, me }) {
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
-  const chats = useLoad(() => bridge.chats(), [], { interval: 15000 });
-  const providers = useLoad(() => bridge.providers(), []);
-  const botsL = useLoad(() => bridge.bots(), [], { interval: 60000 });
-  const skillsL = useLoad(() => bridge.skills(), [], { interval: 60000 });
-  const activityL = useLoad(() => bridge.activity(), [], { interval: 15000 });
-  const compSt = useLoad(() => bridge.computerStatus(), [], { interval: 15000 });
+  const chats = useLoad(() => bridge.chats(), [], { interval: 15000, cacheKey: '/bridge/chats' });
+  const providers = useLoad(() => bridge.providers(), [], { cacheKey: '/bridge/providers' });
+  const botsL = useLoad(() => bridge.bots(), [], { interval: 60000, cacheKey: '/bridge/bots' });
+  const skillsL = useLoad(() => bridge.skills(), [], { interval: 60000, cacheKey: '/bridge/skills' });
+  const activityL = useLoad(() => bridge.activity(), [], { interval: 15000, cacheKey: '/bridge/activity' });
+  const compSt = useLoad(() => bridge.computerStatus(), [], { interval: 15000, cacheKey: '/bridge/computer/status' });
   const botsById = useMemo(() => Object.fromEntries((botsL.data || []).map((b) => [b.id, b])), [botsL.data]);
   const [listTab, setListTab] = useState('chats');
   const [showArchived, setShowArchived] = useState(false);
-  const [current, setCurrent] = useState(chatFromHash);
+  const [swipedId, setSwipedId] = useState(null);
+  const [current, setCurrent] = useState(() => chatFromHash() || store.get(LAST_CHAT_KEY) || null);
   const [messages, setMessages] = useState([]);
   const [chatInfo, setChatInfo] = useState(null);
   const [live, setLive] = useState(null);
@@ -437,22 +489,37 @@ export default function Chat({ openMore, me }) {
   }, [messages, msgSearch]);
 
   const select = (id, replace) => {
+    store.set(LAST_CHAT_KEY, id);
     const h = '#/chat/' + id.slice(4);
     window.history.replaceState(null, '', h); // never push: a swipe from the left edge must open the drawer, not go back
-    setCurrent(id); setShowList(false);
+    setCurrent(id); setShowList(false); setSwipedId(null);
   };
-  useEffect(() => { if (!current && webChats.length) select(webChats[0].id, true); }, [webChats.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!webChats.length) return;
+    if (!current || (chats.data && !webChats.some((c) => c.id === current))) select(webChats[0].id, true);
+  }, [webChats.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (current) {
+      store.set(LAST_CHAT_KEY, current);
+      if (window.location.hash === '#/chat' || window.location.hash === '' || window.location.hash === '#/') {
+        window.history.replaceState(null, '', '#/chat/' + current.slice(4));
+      }
+    }
+  }, [current]);
   useEffect(() => {
     const onHash = () => { const id = chatFromHash(); if (id) setCurrent(id); };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  // History + live events of the selected conversation.
+  // History + live events of the selected conversation (local-first: hydrate from cache immediately).
   useEffect(() => {
     if (!current) return undefined;
     let closed = false;
-    setMessages([]); setLive(null); setLoadErr(null); setChatInfo(null); setQueuedAhead(0); setMsgSearch(''); setShowMsgSearch(false);
+    const msgKey = '/bridge/web/' + current.slice(4) + '/messages';
+    const cached = localCache.get(msgKey);
+    setMessages(cached?.messages || []); setChatInfo(cached?.chat || null);
+    setLive(null); setLoadErr(null); setQueuedAhead(0); setMsgSearch(''); setShowMsgSearch(false);
     const load = () => bridge.messages(current)
       .then((r) => { if (!closed) { setMessages(r.messages); setChatInfo(r.chat); } })
       .catch((e) => !closed && setLoadErr(e.message));
@@ -728,8 +795,16 @@ export default function Chat({ openMore, me }) {
             <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
             <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
             {filteredChats.map((c) => (
-              <div key={c.id} className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}>
-                <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => select(c.id)}>
+              <SwipeChatRow
+                key={c.id}
+                isOpen={swipedId === c.id}
+                onOpen={() => setSwipedId(c.id)}
+                onClose={() => setSwipedId((s) => (s === c.id ? null : s))}
+                onRename={() => setRenaming({ id: c.id, title: c.title })}
+                onDelete={() => remove(c.id)}
+                className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}
+              >
+                <button className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => { if (swipedId === c.id) { setSwipedId(null); return; } select(c.id); }}>
                   <span className="chat-title">
                     {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
                     <span className="ellipsis">{c.title}</span>
@@ -744,7 +819,7 @@ export default function Chat({ openMore, me }) {
                   <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
                   <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
                 </div>
-              </div>
+              </SwipeChatRow>
             ))}
             {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
             {(archivedCount > 0 || showArchived) && (

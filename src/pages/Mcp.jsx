@@ -79,7 +79,7 @@ function AddMcp({ provider, onClose, onDone }) {
 export default function Mcp() {
   const t = useT();
   const confirm = useConfirm();
-  const mcp = useLoad(() => bridge.mcp(), []);
+  const mcp = useLoad(() => bridge.mcp(), [], { cacheKey: '/bridge/mcp' });
   const [status, setStatus] = useState(null);
   const [agyStatus, setAgyStatus] = useState(null);
   const [adding, setAdding] = useState(null);

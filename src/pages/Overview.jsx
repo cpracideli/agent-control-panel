@@ -13,9 +13,9 @@ export default function Overview() {
   const t = useT();
   const f = useFmt();
   const confirm = useConfirm();
-  const app = useLoad(() => coolify.status(), [], { interval: 20000 });
-  const ov = useLoad(() => bridge.overview(), [], { interval: 10000 });
-  const chats = useLoad(() => bridge.chats(), [], { interval: 20000 });
+  const app = useLoad(() => coolify.status(), [], { interval: 20000, cacheKey: '/coolify/status' });
+  const ov = useLoad(() => bridge.overview(), [], { interval: 10000, cacheKey: '/bridge/overview' });
+  const chats = useLoad(() => bridge.chats(), [], { interval: 20000, cacheKey: '/bridge/chats' });
   const [busy, run] = useAction();
   const [to, setTo] = useState('');
   const [msg, setMsg] = useState('');

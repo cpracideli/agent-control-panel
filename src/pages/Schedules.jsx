@@ -156,9 +156,9 @@ export default function Schedules() {
   const t = useT();
   const f = useFmt();
   const confirm = useConfirm();
-  const sch = useLoad(() => bridge.schedules(), [], { interval: 30000 });
-  const chats = useLoad(() => bridge.chats(), []);
-  const bots = useLoad(() => bridge.bots(), []);
+  const sch = useLoad(() => bridge.schedules(), [], { interval: 30000, cacheKey: '/bridge/schedules' });
+  const chats = useLoad(() => bridge.chats(), [], { cacheKey: '/bridge/chats' });
+  const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const toast = useToast();
   const [form, setForm] = useState(null);
   const [runsOf, setRunsOf] = useState(null);

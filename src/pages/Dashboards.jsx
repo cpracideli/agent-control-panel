@@ -147,8 +147,8 @@ export default function Dashboards() {
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
-  const pages = useLoad(() => bridge.pages(), [], { interval: 20000 });
-  const bots = useLoad(() => bridge.bots(), []);
+  const pages = useLoad(() => bridge.pages(), [], { interval: 20000, cacheKey: '/bridge/pages' });
+  const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [viewer, setViewer] = useState(null);
   const [form, setForm] = useState(null);
   const [history, setHistory] = useState(null);

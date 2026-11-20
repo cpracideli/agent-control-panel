@@ -50,7 +50,7 @@ const ICONS = { send: Send, 'send-file': FileText, 'schedule-add': CalendarPlus,
 function Audit() {
   const t = useT();
   const f = useFmt();
-  const a = useLoad(() => bridge.audit(300), [], { interval: 30000 });
+  const a = useLoad(() => bridge.audit(300), [], { interval: 30000, cacheKey: '/bridge/audit?n=300' });
   const [q, setQ] = useState('');
   const [kind, setKind] = useState('all');
   const list = (a.data || []).filter((e) => {

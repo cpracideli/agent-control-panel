@@ -115,8 +115,8 @@ function TicketDetail({ ticket, onClose, onEdit, onChanged }) {
 export default function Board() {
   const t = useT();
   const f = useFmt();
-  const tickets = useLoad(() => bridge.tickets(), [], { interval: 10000 });
-  const bots = useLoad(() => bridge.bots(), []);
+  const tickets = useLoad(() => bridge.tickets(), [], { interval: 10000, cacheKey: '/bridge/tickets' });
+  const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [form, setForm] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [busy, run] = useAction();

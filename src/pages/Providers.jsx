@@ -14,7 +14,7 @@ const isSecret = (k) => /TOKEN|KEY/.test(k);
 
 function Credentials() {
   const t = useT();
-  const envs = useLoad(() => coolify.envs(), []);
+  const envs = useLoad(() => coolify.envs(), [], { cacheKey: '/coolify/envs' });
   const [edit, setEdit] = useState(null);
   const [val, setVal] = useState('');
   const [busy, run] = useAction();
@@ -54,7 +54,7 @@ function Credentials() {
 
 function ChatOverrides({ providers }) {
   const t = useT();
-  const chats = useLoad(() => bridge.chats(), []);
+  const chats = useLoad(() => bridge.chats(), [], { cacheKey: '/bridge/chats' });
   const [, run] = useAction();
   const wa = (chats.data || []).filter((c) => c.kind === 'whatsapp');
   const change = (id, b) => run(id, () => bridge.patchChat(id, b), t('common.updated')).then(() => chats.reload(true));
@@ -93,7 +93,7 @@ function ChatOverrides({ providers }) {
 
 export default function Providers() {
   const t = useT();
-  const p = useLoad(() => bridge.providers(), []);
+  const p = useLoad(() => bridge.providers(), [], { cacheKey: '/bridge/providers' });
   const [busy, run] = useAction();
   const save = (b) => run('settings', () => bridge.settings(b), t('pr.defaultUpdated')).then(() => p.reload(true));
   const data = p.data;

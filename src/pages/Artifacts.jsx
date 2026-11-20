@@ -14,7 +14,7 @@ export default function Artifacts() {
   const t = useT();
   const f = useFmt();
   const confirm = useConfirm();
-  const arts = useLoad(() => bridge.artifacts(), [], { interval: 30000 });
+  const arts = useLoad(() => bridge.artifacts(), [], { interval: 30000, cacheKey: '/bridge/artifacts' });
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [busy, run] = useAction();
