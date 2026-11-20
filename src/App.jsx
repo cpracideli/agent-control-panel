@@ -92,6 +92,38 @@ function useInstall() {
   return evt ? async () => { evt.prompt(); await evt.userChoice; setEvt(null); } : null;
 }
 
+// Keyboard open (a text field focused on a phone): flag <html class="kb-open"> so the dock gets out of
+// the way. Uses focus plus visualViewport (iOS keeps the layout viewport and shrinks the visual one;
+// Android with interactive-widget=resizes-content resizes the layout instead).
+function useKeyboardFlag() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const isField = (el) => el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable ||
+      (el.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|file|color)$/i.test(el.type)));
+    const mobile = () => window.matchMedia('(max-width: 820px)').matches;
+    const vv = window.visualViewport;
+    let baseH = window.innerHeight;
+    const update = () => {
+      // the on-screen keyboard only exists while a field has focus; a smaller viewport alone (rotation,
+      // split screen) must not hide the dock
+      const focused = isField(document.activeElement);
+      root.classList.toggle('kb-open', mobile() && focused);
+      root.classList.toggle('kb-shrunk', Boolean(vv) && focused && vv.height < baseH * 0.78);
+      if (vv) root.style.setProperty('--vv-h', Math.round(vv.height) + 'px');
+    };
+    const onFocusOut = () => setTimeout(update, 60); // focus may be moving to another field
+    const onResize = () => { if (!isField(document.activeElement)) baseH = Math.max(baseH, window.innerHeight); update(); };
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', onFocusOut);
+    vv?.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', () => { baseH = window.innerHeight; });
+    return () => {
+      document.removeEventListener('focusin', update); document.removeEventListener('focusout', onFocusOut);
+      vv?.removeEventListener('resize', onResize); root.classList.remove('kb-open', 'kb-shrunk');
+    };
+  }, []);
+}
+
 function useOnline() {
   const [on, setOn] = useState(navigator.onLine);
   useEffect(() => {
@@ -170,6 +202,7 @@ export default function App() {
   const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
+  useKeyboardFlag();
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
 
   useEffect(() => {
