@@ -3,6 +3,7 @@ import express from 'express';
 import http from 'node:http';
 import net from 'node:net';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -269,6 +270,24 @@ app.all('/api/bridge/*', auth, async (req, res) => {
 // ---------- frontend ----------
 const dist = path.join(__dirname, 'dist');
 const noCache = /(^|\/)(sw\.js|workbox-[^/]+\.js|manifest\.webmanifest|index\.html)$/;
+// The web manifest's background/theme colors paint the Android splash and the installed app's title bar,
+// so they follow the theme the user picked (acp_theme cookie, set by the page) or, for "system", the
+// Sec-CH-Prefers-Color-Scheme client hint.
+const THEME_BG = { light: '#f2f2f7', dark: '#000000', terminal: '#141413' };
+let manifestCache = null;
+app.get('/manifest.webmanifest', (req, res, next) => {
+  try {
+    if (!manifestCache) manifestCache = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.webmanifest'), 'utf8'));
+    const theme = cookieOf(req).acp_theme;
+    const sys = String(req.headers['sec-ch-prefers-color-scheme'] || '').includes('dark') ? 'dark' : 'light';
+    const color = THEME_BG[theme] || THEME_BG[sys];
+    res.setHeader('Content-Type', 'application/manifest+json');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Vary', 'Cookie, Sec-CH-Prefers-Color-Scheme');
+    res.send(JSON.stringify({ ...manifestCache, background_color: color, theme_color: color }));
+  } catch { next(); }
+});
+app.use((req, res, next) => { res.setHeader('Accept-CH', 'Sec-CH-Prefers-Color-Scheme'); next(); });
 app.use(express.static(dist, {
   index: false,
   setHeaders: (res, file) => res.setHeader('Cache-Control', noCache.test(file) ? 'no-cache' : file.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'),

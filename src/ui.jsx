@@ -20,6 +20,7 @@ export function ThemeProvider({ children }) {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, [theme]);
+  useEffect(() => { try { document.cookie = 'acp_theme=' + theme + '; path=/; max-age=31536000; SameSite=Lax'; } catch { /* cookies off */ } }, [theme]);
   const setTheme = useCallback((t) => { store.set('acp_theme', t); setThemeState(t); }, []);
   return <ThemeCtx.Provider value={{ theme, setTheme }}>{children}</ThemeCtx.Provider>;
 }

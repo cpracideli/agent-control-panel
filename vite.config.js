@@ -37,6 +37,7 @@ export default defineConfig({
       workbox: {
         // App shell only: API calls (incl. the SSE stream) always go to the network.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: ['splash/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
