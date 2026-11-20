@@ -284,33 +284,55 @@ export function useFmt() {
   };
 }
 
-export function confirmAsk(text) { return window.confirm(text); }
+// Light haptic tap (Android/Chrome; iOS Safari ignores navigator.vibrate). Respects reduced motion.
+export function haptic(pattern = 8) {
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    navigator.vibrate?.(pattern);
+  } catch { /* not supported */ }
+}
 
+// confirm(text, { danger }) -> Promise<boolean>. Rendered as an iOS-style action sheet:
+// message + wide action button in one group, Cancel in a separate group below
+// (bottom of the screen on phones, centered alert-like card on desktop).
 const ConfirmCtx = createContext(() => Promise.resolve(false));
 export const useConfirm = () => useContext(ConfirmCtx);
 export function ConfirmProvider({ children }) {
   const t = useT();
   const [req, setReq] = useState(null);
+  const [leaving, setLeaving] = useState(false);
   const ask = useCallback((text, opts = {}) => new Promise((resolve) => {
-    setReq({ text, danger: opts.danger !== false, resolve });
+    setLeaving(false);
+    setReq({ text, danger: opts.danger !== false, label: opts.label, resolve });
   }), []);
-  const close = (ok) => {
-    req?.resolve(ok);
-    setReq(null);
-  };
+  const close = useCallback((ok) => {
+    if (!req || leaving) return;
+    if (ok) haptic(req.danger ? [10, 30, 10] : 8);
+    setLeaving(true);
+    const done = () => { req.resolve(ok); setReq(null); setLeaving(false); };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) done(); else setTimeout(done, 200);
+  }, [req, leaving]);
+  useEffect(() => {
+    if (!req) return undefined;
+    const k = (e) => { if (e.key === 'Escape') close(false); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [req, close]);
   return (
     <ConfirmCtx.Provider value={ask}>
       {children}
       {req && (
-        <Modal title={t('common.confirm')} onClose={() => close(false)}>
-          <div className="stack">
-            <p>{req.text}</p>
-            <div className="row end">
-              <button type="button" className="ghost" onClick={() => close(false)}>{t('common.cancel')}</button>
-              <button type="button" autoFocus className={req.danger ? 'danger' : ''} onClick={() => close(true)}>{t('common.confirm')}</button>
+        <div className={'asheet-bg' + (leaving ? ' leaving' : '')} onMouseDown={(e) => e.target === e.currentTarget && close(false)}>
+          <div className="asheet" role="alertdialog" aria-modal="true" aria-labelledby="asheet-msg">
+            <div className="asheet-group">
+              <p id="asheet-msg" className="asheet-msg">{req.text}</p>
+              <button type="button" autoFocus className={'asheet-btn' + (req.danger ? ' destructive' : '')} onClick={() => close(true)}>{req.label || t('common.confirm')}</button>
+            </div>
+            <div className="asheet-group">
+              <button type="button" className="asheet-btn cancel" onClick={() => close(false)}>{t('common.cancel')}</button>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
     </ConfirmCtx.Provider>
   );

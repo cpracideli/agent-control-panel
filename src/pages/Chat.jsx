@@ -5,7 +5,7 @@ import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, Be
 import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
-import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
+import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
@@ -45,7 +45,7 @@ function SwipeChatRow({ isOpen, onOpen, onClose, onRename, onDelete, className, 
     if (!s) return;
     if (s.dragging) {
       e.stopPropagation();
-      if (dx < -MAX / 2) onOpen(); else onClose();
+      if (dx < -MAX / 2) { if (!isOpen) haptic(10); onOpen(); } else onClose();
     }
     st.current = null;
     setDx(0);
@@ -637,6 +637,7 @@ export default function Chat({ openMore, me }) {
     const pending = overrideText !== undefined ? [] : files;
     if (!msg && !pending.length && !voice) return;
     unlockSpeech();
+    if (!voice) haptic(8); // voice notes already buzz on release
     let id = current;
     setSending(true);
     try {

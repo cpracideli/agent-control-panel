@@ -3,7 +3,7 @@ import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronRight, Downlo
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
-import { IconButton, Sheet, useTheme } from './ui.jsx';
+import { IconButton, Sheet, haptic, useTheme } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
@@ -226,6 +226,16 @@ export default function App() {
   const Page = PAGES.find((p) => p.id === page).el;
   // Replace instead of push: in the installed app an edge swipe is "back", and the history would fight the drawer gesture.
   const go = (id) => { window.history.replaceState(null, '', '#/' + id); setPage(id); };
+  // Dock tap: switching tabs gives a light haptic; tapping the active tab scrolls it back to the top (like a native tab bar).
+  const tapTab = (id) => {
+    if (id === page) {
+      // the chat keeps its position (scrolling a long conversation to its first message would be a surprise)
+      if (id !== 'chat') document.querySelector('main.main')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      return;
+    }
+    haptic(8);
+    go(id);
+  };
   const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setAuthed(false); };
   const dockIndex = DOCK.includes(page) ? DOCK.indexOf(page) : 4;
 
@@ -275,12 +285,12 @@ export default function App() {
             const { icon: Icon } = PAGES.find((p) => p.id === id);
             const dot = (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn')) || (id === 'overview' && navStatus.offline && 'err');
             return (
-              <button key={id} className={id === page ? 'active' : ''} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
+              <button key={id} className={id === page ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === page ? 'page' : undefined}>
                 <span className="dock-ic"><Icon size={21} strokeWidth={id === page ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
               </button>
             );
           })}
-          <button className={dockIndex === 4 ? 'active' : ''} onClick={() => setMore(true)}>
+          <button className={dockIndex === 4 ? 'active' : ''} onClick={() => { haptic(8); setMore(true); }}>
             <LayoutGrid size={21} strokeWidth={dockIndex === 4 ? 2.3 : 1.9} /><span>{t('nav.more')}</span>
           </button>
         </div>
