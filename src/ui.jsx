@@ -235,9 +235,48 @@ function useSwipeDismiss(onClose, bodySel) {
   return { bgRef, panelRef, close: animateOut };
 }
 
+// Forms open as sheets. On phones the header follows iOS: "Cancel" on the left, the title in the
+// middle and the primary action on the right. The primary action is adopted from the form's own
+// footer (a `.row.end` holding a ghost Cancel + one primary button), so pages keep their markup and
+// desktop keeps the footer. Its label and disabled state are mirrored live.
+function useAdoptedFooter(bodyRef) {
+  const [primary, setPrimary] = useState(null); // { label, disabled }
+  const btnRef = useRef(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return undefined;
+    let mo2 = null;
+    const scan = () => {
+      const feet = [...body.querySelectorAll('form > .row.end:last-child')];
+      const foot = feet.find((f) => {
+        const bs = [...f.children].filter((c) => c.tagName === 'BUTTON');
+        return bs.length === 2 && f.children.length === 2 && bs[0].classList.contains('ghost') && !bs[1].classList.contains('ghost');
+      });
+      const btn = foot ? foot.children[1] : null;
+      if (btn === btnRef.current) return;
+      btnRef.current?.closest('.row.end')?.classList.remove('adopted-foot');
+      mo2?.disconnect(); mo2 = null;
+      btnRef.current = btn;
+      if (!btn) { setPrimary(null); return; }
+      foot.classList.add('adopted-foot');
+      const sync = () => setPrimary({ label: btn.textContent.trim(), disabled: btn.disabled });
+      sync();
+      mo2 = new MutationObserver(sync);
+      mo2.observe(btn, { attributes: true, attributeFilter: ['disabled'], childList: true, subtree: true, characterData: true });
+    };
+    scan();
+    const mo = new MutationObserver(scan);
+    mo.observe(body, { childList: true, subtree: true });
+    return () => { mo.disconnect(); mo2?.disconnect(); };
+  }, [bodyRef]);
+  return [primary, () => btnRef.current?.click()];
+}
+
 export function Modal({ title, onClose, children, wide }) {
   const t = useT();
-  const { bgRef, panelRef, close } = useSwipeDismiss(onClose);
+  const { bgRef, panelRef, close } = useSwipeDismiss(onClose, '.modal-body');
+  const bodyRef = useRef(null);
+  const [primary, firePrimary] = useAdoptedFooter(bodyRef);
   useEffect(() => {
     const k = (e) => e.key === 'Escape' && close();
     window.addEventListener('keydown', k);
@@ -245,9 +284,17 @@ export function Modal({ title, onClose, children, wide }) {
   }, [close]);
   return (
     <div ref={bgRef} className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div ref={panelRef} className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label={title}>
-        <header className="card-h"><h3>{title}</h3><IconButton icon={X} label={t('common.close')} onClick={close} /></header>
-        {children}
+      <div ref={panelRef} className={'modal' + (wide ? ' wide' : '') + (primary ? ' has-primary' : '')} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="sheet-grab modal-grab" aria-hidden />
+        <header className="card-h modal-h">
+          <button type="button" className="modal-cancel" onClick={close}>{t('common.cancel')}</button>
+          <h3>{title}</h3>
+          {primary
+            ? <button type="button" className="modal-primary" disabled={primary.disabled} onClick={firePrimary}>{primary.label}</button>
+            : <span className="modal-h-spacer" aria-hidden />}
+          <IconButton icon={X} className="ghost modal-x" label={t('common.close')} onClick={close} />
+        </header>
+        <div className="modal-body" ref={bodyRef}>{children}</div>
       </div>
     </div>
   );

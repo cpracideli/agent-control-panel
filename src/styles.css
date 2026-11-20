@@ -1414,3 +1414,41 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 @media (max-width: 820px) and (display-mode: standalone) {
   .topbar { padding-top: var(--top-safe); min-height: calc(52px + var(--top-safe)); }
 }
+
+/* (c) sheets with a fixed header (Cancel · title · Save on phones) and a scrolling body */
+.modal { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.modal-h { flex: none; margin: 0; padding: 18px 20px 10px; flex-wrap: nowrap; }
+.modal-h h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 20px 20px; }
+.modal-cancel, .modal-primary, .modal-h-spacer, .modal-grab { display: none; }
+@media (max-width: 820px) {
+  .modal, .modal.wide { padding: 0 !important; }
+  .modal-grab { display: block; margin: 8px auto 0; }
+  .modal-h { display: grid; grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr); align-items: center; gap: 8px; padding: 6px 8px 8px; }
+  .modal-h h3 { font-size: 17px; font-weight: 600; text-align: center; justify-self: center; max-width: 100%; }
+  .modal-cancel, .modal-primary { display: inline-flex; background: transparent; color: var(--accent); font-size: 17px; padding: 10px 12px; min-height: 44px; border-radius: 12px; }
+  .modal-cancel { justify-self: start; font-weight: 400; }
+  .modal-primary { justify-self: end; font-weight: 600; }
+  .modal-primary:disabled { color: var(--muted); opacity: .6; }
+  .modal-h-spacer { display: block; }
+  .modal-x { display: none !important; }
+  .modal .adopted-foot { display: none !important; }
+  .modal-body { padding: 6px 16px calc(24px + env(safe-area-inset-bottom)); }
+
+  /* Fields with a single-line control become inset-grouped rows: label on the left, value on the right.
+     Consecutive rows join into one rounded group, like Settings. Textareas and rich fields stay stacked. */
+  .modal .field:has(> select, > input:not([type="checkbox"]):not([type="range"]):not([type="file"])):not(:has(> textarea, > div, > small)) {
+    display: grid; grid-template-columns: minmax(88px, auto) 1fr; align-items: center; gap: 10px;
+    background: var(--card); padding: 2px 4px 2px 16px; min-height: 48px; border-radius: 12px; margin: 0;
+  }
+  .modal .field:has(> select, > input:not([type="checkbox"]):not([type="range"]):not([type="file"])):not(:has(> textarea, > div, > small)) > span {
+    font-size: 16px; color: var(--text); font-weight: 400; padding: 0;
+  }
+  .modal .field:has(> select, > input:not([type="checkbox"]):not([type="range"]):not([type="file"])):not(:has(> textarea, > div, > small)) > :is(select, input) {
+    background-color: transparent !important; text-align: right; text-align-last: right; padding-right: 30px; min-width: 0; color: var(--muted); box-shadow: none !important;
+  }
+  .modal .field:has(> select:focus-visible, > input:focus-visible) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .modal .field:has(> input:not([type="checkbox"]):not([type="range"]):not([type="file"])):not(:has(> select, > textarea, > div, > small)) > input { padding-right: 12px; color: var(--text); }
+}
+:root[data-theme="dark"] .modal .field, :root[data-theme="terminal"] .modal .field { --card: #2c2c2e; }
+@media (max-width: 820px) and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .modal .field { --card: #2c2c2e; } }
