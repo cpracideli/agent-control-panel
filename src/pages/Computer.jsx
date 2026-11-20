@@ -3,6 +3,7 @@ import { AlertTriangle, Camera, Check, ExternalLink, Eye, Globe, GraduationCap, 
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useLoad, useToast } from '../ui.jsx';
+import { imageLink } from '../viewer.jsx';
 
 function TeachModal({ currentUrl, onClose }) {
   const t = useT();
@@ -142,7 +143,7 @@ export default function Computer() {
               <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={d?.currentUrl || 'https://...'} />
             </label>
             <Btn icon={ExternalLink} className="ghost small" type="submit" disabled={busy === 'open' || !url.trim()}>{t('comp.go')}</Btn>
-            <a className="btn ghost small" href={bridge.computerScreenshotUrl()} target="_blank" rel="noreferrer"><Camera size={14} /> {t('comp.screenshot')}</a>
+            <a className="btn ghost small" {...imageLink(bridge.computerScreenshotUrl(), t('comp.screenshot'))}><Camera size={14} /> {t('comp.screenshot')}</a>
             <Btn icon={RefreshCw} type="button" className="ghost small" onClick={() => setViewerKey((k) => k + 1)}>{t('comp.reconnect')}</Btn>
             <Btn icon={Maximize2} type="button" className="ghost small" onClick={fullscreen}>{t('pg.full')}</Btn>
           </form>

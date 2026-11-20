@@ -5,6 +5,7 @@ import { api, bridge, setUnauthorizedHandler } from './api.js';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
 import { ContextMenuHost, PullToRefresh } from './native.jsx';
+import { ViewerHost } from './viewer.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
 import Bots from './pages/Bots.jsx';
@@ -306,6 +307,7 @@ export default function App() {
       </nav>
 
       <ContextMenuHost />
+      <ViewerHost />
       {more && <MoreSheet me={me} page={page} go={go} install={install} logout={logout} onClose={() => setMore(false)} />}
     </div>
   );

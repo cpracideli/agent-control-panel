@@ -8,6 +8,7 @@ import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canR
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
+import { openDocument, openImage } from '../viewer.jsx';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
 const chatFromHash = () => {
@@ -66,6 +67,16 @@ function SwipeChatRow({ isOpen, onOpen, onClose, onRename, onDelete, className, 
 }
 const provName = (p) => (p === 'antigravity' ? 'Antigravity' : 'Claude');
 
+// Links in answers: our own files/pages open in the in-app viewer; other sites open in a new tab.
+function MdLink({ node, href, children, ...p }) {
+  let local = false;
+  try { local = Boolean(href) && new URL(href, window.location.href).origin === window.location.origin && !String(href).startsWith('#'); } catch { /* bad url */ }
+  if (!local) return <a {...p} href={href} target="_blank" rel="noreferrer">{children}</a>;
+  const name = decodeURIComponent(String(href).split('?')[0].split('/').pop() || '') || String(children);
+  const img = /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+  return <a {...p} href={href} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); img ? openImage(href, name) : openDocument(href, name); }}>{children}</a>;
+}
+
 function CodeBlock({ children, ...props }) {
   const t = useT();
   const [ok, setOk] = useState(false);
@@ -88,7 +99,7 @@ function CodeBlock({ children, ...props }) {
 
 const Md = ({ text }) => (
   <div className="md">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (p) => <a {...p} target="_blank" rel="noreferrer" />, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div>, pre: CodeBlock }}>{text || ''}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: MdLink, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div>, pre: CodeBlock }}>{text || ''}</ReactMarkdown>
   </div>
 );
 

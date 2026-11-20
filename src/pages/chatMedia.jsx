@@ -3,6 +3,7 @@
 // replies generated on the bridge (~/bin/falar) with the browser's speechSynthesis only as a fallback.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Pause, Play, X } from 'lucide-react';
+import { docLink, imageLink } from '../viewer.jsx';
 import { bridge } from '../api.js';
 import { store } from '../i18n.jsx';
 
@@ -281,10 +282,10 @@ export function MessageFiles({ files, transcript, engine, pending, pendingLabel 
     <div className="msg-files">
       {files.map((f) => {
         const url = bridge.fileUrl(f.file);
-        if (f.type.startsWith('image/')) return <a key={f.file} href={url} target="_blank" rel="noreferrer" className="msg-img"><img src={url} alt={f.name} loading="lazy" /></a>;
+        if (f.type.startsWith('image/')) return <a key={f.file} {...imageLink(url, f.name)} className="msg-img"><img src={url} alt={f.name} loading="lazy" /></a>;
         if (f.type.startsWith('audio/') || f.voice) return <VoiceNote key={f.file} url={url} transcript={transcript} engine={engine} pending={pending} pendingLabel={pendingLabel} />;
         if (f.type.startsWith('video/')) return <video key={f.file} src={url} controls playsInline className="msg-video" />;
-        return <a key={f.file} href={url} target="_blank" rel="noreferrer" className="msg-file"><FileText size={18} /><span>{f.name}<small>{fmtSize(f.size)}</small></span></a>;
+        return <a key={f.file} {...docLink(url, f.name, f.type)} className="msg-file"><FileText size={18} /><span>{f.name}<small>{fmtSize(f.size)}</small></span></a>;
       })}
     </div>
   );

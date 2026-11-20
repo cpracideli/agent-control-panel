@@ -3,6 +3,7 @@ import { Download, FileText, FolderArchive, Image as ImageIcon, MessageSquare, M
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Card, ErrorBox, IconButton, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { docLink, imageLink } from '../viewer.jsx';
 
 function kindOf(a) {
   if (a.type?.startsWith('image/')) return 'image';
@@ -47,7 +48,7 @@ export default function Artifacts() {
             return (
               <div key={a.name} className="bot-card">
                 {k === 'image' && (
-                  <a href={url} target="_blank" rel="noreferrer" className="art-thumb-wrap">
+                  <a {...imageLink(url, a.origName)} className="art-thumb-wrap">
                     <img src={url} alt={a.origName} className="art-thumb" loading="lazy" />
                   </a>
                 )}
@@ -68,7 +69,7 @@ export default function Artifacts() {
                     <a className="btn ghost small" href={'#/chat/' + a.chatId.slice(4)}><MessageSquare size={14} /> {t('art.openChat')}</a>
                   )}
                   <span className="grow" />
-                  <a className="btn ghost small" href={url} download={a.origName} target="_blank" rel="noreferrer"><Download size={14} /></a>
+                  <a className="btn ghost small" {...(k === 'image' ? imageLink(url, a.origName) : docLink(url, a.origName, a.type))} aria-label={a.origName}><Download size={14} /></a>
                   <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} disabled={busy === 'd' + a.name}
                     onClick={async () => (await confirm(t('art.removeConfirm', { n: a.origName }))) && run('d' + a.name, () => bridge.deleteArtifact(a.name), t('common.removed')).then(() => arts.reload(true))} />
                 </div>

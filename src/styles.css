@@ -1578,3 +1578,23 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .errbox svg.errbox-ic { margin-top: 0; flex: none; }
 .errbox .grow { min-width: 0; }
 .errbox-retry { flex: none; background: var(--err); color: #fff; gap: 5px; padding: 7px 12px; }
+
+/* (i) in-app image viewer and document sheet */
+.iv-bg { position: fixed; inset: 0; z-index: 90; background: #000; display: grid; place-items: center; touch-action: none; animation: fade 200ms ease-out; overflow: hidden; }
+.iv-bg.leaving { opacity: 0; transition: opacity 200ms ease-in; }
+.iv-img { max-width: 100%; max-height: 100%; object-fit: contain; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; will-change: transform; animation: iv-in 280ms cubic-bezier(.22, 1, .36, 1); }
+@keyframes iv-in { from { transform: scale(.92); opacity: 0; } }
+.iv-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 10px 10px; background: linear-gradient(180deg, rgba(0,0,0,.6), transparent); color: #fff; }
+.iv-name { flex: 1; text-align: center; font-size: 15px; font-weight: 600; min-width: 0; }
+.iv-btn { width: 44px; height: 44px; min-width: 44px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; background: rgba(255,255,255,.16); color: #fff; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.doc-bg { position: fixed; inset: 0; z-index: 85; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; padding-top: calc(env(safe-area-inset-top) + 18px); animation: fade 200ms ease-out; }
+.doc-bg.leaving { opacity: 0; transition: opacity 240ms ease-in; }
+.doc-bg.leaving .doc-sheet { transform: translateY(100%); transition: transform 240ms cubic-bezier(.4, 0, 1, 1); }
+.doc-sheet { width: 100%; height: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; background: var(--bg); border-radius: 16px 16px 0 0; overflow: hidden; animation: rise 340ms cubic-bezier(.22, 1, .36, 1); box-shadow: 0 -10px 40px -10px rgba(0,0,0,.3); }
+.doc-h { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: .5px solid var(--sep); }
+.doc-h > b { font-size: 16px; text-align: center; min-width: 0; }
+.doc-h .doc-close { display: inline-flex; justify-self: start; background: transparent; color: var(--accent); font-size: 17px; padding: 10px 8px; }
+.doc-h-actions { justify-self: end; display: flex; gap: 6px; }
+.doc-icon { background: var(--sunken); color: var(--accent); width: 38px; height: 38px; min-width: 38px; }
+.doc-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.doc-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }

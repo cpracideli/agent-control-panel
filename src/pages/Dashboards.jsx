@@ -3,6 +3,7 @@ import { Code, Copy, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, P
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { docLink } from '../viewer.jsx';
 
 const SAMPLE_HTML = `<!doctype html>
 <html lang="pt-BR">
@@ -102,7 +103,7 @@ function PageViewer({ page, onClose, onEdit }) {
           <span className="grow" />
           <IconButton icon={RefreshCw} label="Reload" onClick={() => setRev((n) => n + 1)} />
           <Btn icon={Pencil} className="ghost small" onClick={() => { onClose(); onEdit(page); }}>{t('common.edit')}</Btn>
-          <a className="btn ghost small" href={rawUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> {t('pg.full')}</a>
+          <a className="btn ghost small" {...docLink(rawUrl, page.title, 'text/html')}><ExternalLink size={14} /> {t('pg.full')}</a>
           {pubUrl && (
             <Btn icon={Copy} className="small" onClick={() => { navigator.clipboard.writeText(pubUrl); toast(t('common.copied')); }}>{t('pg.copyLink')}</Btn>
           )}
@@ -192,7 +193,7 @@ export default function Dashboards() {
                 )}
                 <div className="row bot-actions">
                   <Btn icon={Maximize2} className="small" onClick={() => setViewer(p)}>{t('pg.open')}</Btn>
-                  <a className="btn ghost small" href={bridge.pageRawUrl(p.id)} target="_blank" rel="noreferrer"><ExternalLink size={14} /></a>
+                  <a className="btn ghost small" {...docLink(bridge.pageRawUrl(p.id), p.title, 'text/html')} aria-label={t('pg.full')}><ExternalLink size={14} /></a>
                   <span className="grow" />
                   <IconButton icon={ p.public ? Globe : Lock } label={t('pg.public')} disabled={busy === 'pub' + p.id}
                     onClick={() => run('pub' + p.id, () => bridge.patchPage(p.id, { public: !p.public }), t('pg.saved')).then(() => pages.reload(true))} />
