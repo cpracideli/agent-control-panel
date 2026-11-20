@@ -1675,3 +1675,37 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .group-form { padding: 14px 16px; }
 .logs-mobile { margin: 0; border-radius: 18px; max-height: 60vh; }
 .seg.seg-full-w { display: flex; width: 100%; } .seg.seg-full-w button { flex: 1; justify-content: center; }
+
+/* ===================== Barra inferior configurável ===================== */
+.ic-dock { background: var(--teal); }
+.ic-more { background: var(--gray); }
+.nav-user-btn { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 4px; margin: -4px 0 -4px -4px; background: transparent; color: inherit; border-radius: 10px; text-align: left; }
+@media (hover: hover) { .nav-user-btn:hover { background: var(--hover); } }
+.dock-cfg { display: flex; flex-direction: column; gap: 12px; }
+.dock-cfg .group-label { margin: 4px 4px -4px; }
+.dock-preview-wrap { padding: 4px 0 2px; }
+.dock-preview-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 6px; border-radius: 999px; background: var(--card); border: .5px solid var(--sep); box-shadow: 0 6px 20px -8px rgba(0, 0, 0, .2); }
+.dock-preview-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 44px; padding: 4px 2px; border-radius: 999px; font-size: 10.5px; font-weight: 500; color: var(--text); min-width: 0; }
+.dock-preview-slot.empty { border: 1.5px dashed var(--sep); color: var(--muted); }
+.dock-preview-slot.fixed { color: var(--muted); }
+.dock-preview-slot span { max-width: 100%; }
+.dock-slot-num { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dock-sel-list { position: relative; }
+.dock-sel-row { gap: 10px; padding-left: 8px; padding-right: 12px; transition: box-shadow 160ms ease, background 160ms ease; }
+.dock-sel-row.dragging { position: relative; z-index: 4; background: var(--card-2, var(--card)); border-radius: 12px; box-shadow: 0 12px 30px -6px rgba(0, 0, 0, .28); opacity: .96; }
+.dock-fixed-row { gap: 10px; padding-left: 8px; padding-right: 14px; opacity: .78; }
+.dock-drag-handle { display: grid; place-items: center; width: 38px; height: 44px; padding: 0; background: transparent; color: var(--muted); cursor: grab; touch-action: none; flex: none; border-radius: 10px; }
+.dock-drag-handle:active { cursor: grabbing; color: var(--text); }
+.dock-drag-spacer { width: 38px; flex: none; }
+.dock-act-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; flex: none; }
+.dock-act-btn.remove { background: var(--err); color: #fff; }
+.dock-act-btn.add { background: var(--ok); color: #fff; }
+.dock-cfg .group-row:disabled { opacity: .45; }
+.dock-cfg .group-row:disabled .dock-act-btn.add { background: var(--gray); }
+.dock-hint { margin: -4px 4px 2px; font-size: 12.5px; line-height: 1.35; }
+.dock-hint.warn-text { color: var(--accent); font-weight: 500; }
+:root[data-theme="dark"] .modal .group, :root[data-theme="dark"] .modal .dock-preview-bar { background: #2c2c2e; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) .modal .group,
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) .modal .dock-preview-bar { background: #2c2c2e; }
+}

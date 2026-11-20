@@ -15,9 +15,14 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
  * initial: screen id from the URL.
  */
 export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const tabOfRef = useRef(tabOf);
+  tabOfRef.current = tabOf;
   const build = (id) => {
-    const stacks = Object.fromEntries(tabs.map((t) => [t, [t]]));
-    const tab = tabOf(id);
+    const curTabs = tabsRef.current;
+    const stacks = Object.fromEntries(curTabs.map((t) => [t, [t]]));
+    const tab = tabOfRef.current(id);
     if (id !== tab) stacks[tab] = [tab, id];
     return { tab, stacks, visited: [tab], anim: null };
   };
@@ -26,8 +31,41 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
   navRef.current = nav;
   const pushed = useRef(0);      // history entries we created with pushState
   const ignoreUntil = useRef(0); // our own history.back() fires popstate/hashchange: ignore them
+  const tabsKey = tabs.join(',');
+  const prevTabsKey = useRef(tabsKey);
 
-  const top = (n = navRef.current) => n.stacks[n.tab][n.stacks[n.tab].length - 1];
+  // Reconcile per-tab stacks whenever the user customizes the bottom bar tabs.
+  useEffect(() => {
+    if (prevTabsKey.current === tabsKey) return;
+    prevTabsKey.current = tabsKey;
+    setNav((n) => {
+      const curStack = n.stacks[n.tab] || [n.tab];
+      const curTop = curStack[curStack.length - 1];
+      const curTabs = tabsRef.current;
+      const curTabOf = tabOfRef.current;
+      const stacks = {};
+      for (const tb of curTabs) {
+        if (n.stacks[tb]) {
+          const kept = n.stacks[tb].filter((id, idx) => idx === 0 || curTabOf(id) === tb);
+          stacks[tb] = kept.length ? kept : [tb];
+        } else {
+          stacks[tb] = [tb];
+        }
+      }
+      const nextTab = curTabOf(curTop);
+      if (curTop !== nextTab) {
+        const base = stacks[nextTab] || [nextTab];
+        stacks[nextTab] = base[base.length - 1] === curTop ? base : [nextTab, curTop];
+      }
+      const visited = [...new Set([...n.visited.filter((tb) => curTabs.includes(tb)), nextTab])];
+      return { tab: nextTab, stacks, visited, anim: null };
+    });
+  }, [tabsKey]);
+
+  const top = (n = navRef.current) => {
+    const st = n.stacks[n.tab];
+    return st && st.length ? st[st.length - 1] : n.tab;
+  };
   const writeHash = (id, push) => {
     const h = hashOf(id);
     if (window.location.hash === h || (id === 'chat' && window.location.hash.startsWith('#/chat'))) return;
@@ -46,17 +84,18 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
     if (n.anim) return;
     if (tab === n.tab) return;
     haptic(8);
-    const next = { ...n, tab, visited: n.visited.includes(tab) ? n.visited : [...n.visited, tab] };
+    const stacks = n.stacks[tab] ? n.stacks : { ...n.stacks, [tab]: [tab] };
+    const next = { ...n, tab, stacks, visited: n.visited.includes(tab) ? n.visited : [...n.visited, tab] };
     commit(next, { transition: true });
-    writeHash(next.stacks[tab][next.stacks[tab].length - 1], false);
+    writeHash(stacks[tab][stacks[tab].length - 1], false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const push = useCallback((id) => {
     const n = navRef.current;
     if (n.anim) return;
-    const tab = tabOf(id);
+    const tab = tabOfRef.current(id);
     if (id === tab) { switchTab(tab); return; }
-    const stack = n.stacks[tab];
+    const stack = n.stacks[tab] || [tab];
     if (stack[stack.length - 1] === id && n.tab === tab) return;
     if (n.tab !== tab) {
       // coming from another tab (dock, links, avatar sheet): land straight on the screen, no slide
@@ -72,11 +111,11 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
   }, [switchTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // finish a pop: drop the top screen once the slide is over
-  const finishPop = (tab) => setNav((m) => ({ ...m, anim: null, stacks: { ...m.stacks, [tab]: m.stacks[tab].slice(0, -1) } }));
+  const finishPop = (tab) => setNav((m) => ({ ...m, anim: null, stacks: { ...m.stacks, [tab]: (m.stacks[tab] || [tab]).slice(0, -1) } }));
 
   const pop = useCallback(({ fromHistory = false, animated = true } = {}) => {
     const n = navRef.current;
-    const stack = n.stacks[n.tab];
+    const stack = n.stacks[n.tab] || [n.tab];
     if (stack.length < 2 || (n.anim && n.anim.kind !== 'gesture')) return false;
     if (!fromHistory && pushed.current > 0) { pushed.current -= 1; ignoreUntil.current = Date.now() + 500; window.history.back(); }
     else if (fromHistory) pushed.current = Math.max(0, pushed.current - 1);
@@ -89,8 +128,9 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
 
   const popToRoot = useCallback((tab) => {
     const n = navRef.current;
-    if (n.stacks[tab].length < 2) return false;
-    if (n.tab === tab && n.stacks[tab].length === 2) return pop();
+    const stack = n.stacks[tab] || [tab];
+    if (stack.length < 2) return false;
+    if (n.tab === tab && stack.length === 2) return pop();
     setNav({ ...n, stacks: { ...n.stacks, [tab]: [tab] } });
     writeHash(tab, false);
     return true;
@@ -99,10 +139,10 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
   // URL-driven navigation (links like #/chat/<id>, #/computer) and the system back button
   const go = useCallback((id) => {
     const n = navRef.current;
-    const tab = tabOf(id);
+    const tab = tabOfRef.current(id);
     if (id === tab) {
       if (n.tab !== tab) switchTab(tab);
-      else if (tab === 'more' && n.stacks.more.length > 1) pop();
+      else if (tab === 'more' && (n.stacks.more?.length || 0) > 1) pop();
       return;
     }
     push(id);
@@ -114,7 +154,7 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
     const onPop = () => {
       if (Date.now() < ignoreUntil.current) return;
       const n = navRef.current;
-      const stack = n.stacks[n.tab];
+      const stack = n.stacks[n.tab] || [n.tab];
       if (stack.length > 1 && parseHash() === stack[stack.length - 2]) { ignoreUntil.current = Date.now() + 300; pop({ fromHistory: true }); }
     };
     window.addEventListener('popstate', onPop);

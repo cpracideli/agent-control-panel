@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { api, bridge, setUnauthorizedHandler } from './api.js';
+import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
+import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
 import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
@@ -144,8 +145,15 @@ function takeAuthParams() {
   return { code, error };
 }
 
-const DOCK = ['chat', 'bots', 'usage', 'overview'];
-const MORE = PAGES.filter((p) => !DOCK.includes(p.id));
+const PAGE_IDS = PAGES.map((p) => p.id);
+const readCachedDock = (key) => {
+  try {
+    const raw = store.get(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length === 4 ? normalizeDock(parsed, PAGE_IDS) : null;
+  } catch { return null; }
+};
 
 function Avatar({ me, size = 34 }) {
   const pic = me?.picture;
@@ -158,13 +166,13 @@ function Avatar({ me, size = 34 }) {
 }
 
 // Pages + appearance + account. Root of the "Mais" tab, and also the sheet behind the avatar.
-function MoreList({ me, page, go, install, logout, onClose }) {
+function MoreList({ me, page, go, install, logout, onClose, dock, morePages, openDockSettings }) {
   const { t } = useI18n();
   return (
     <>
       <div className="group-label">{t('nav.pages')}</div>
       <div className="group">
-        {MORE.map(({ id, icon: Icon }) => (
+        {morePages.map(({ id, icon: Icon }) => (
           <button key={id} className={'group-row press' + (id === page ? ' on' : '')} onClick={() => { go(id); onClose?.(); }}>
             <span className={'row-ic ic-' + id}><Icon size={17} /></span>
             <span className="grow">{t('nav.' + id)}</span>
@@ -176,6 +184,14 @@ function MoreList({ me, page, go, install, logout, onClose }) {
       <div className="group">
         <div className="group-row"><span className="row-ic ic-theme"><Moon size={17} /></span><span className="grow">{t('theme.label')}</span><ThemeSwitch labels /></div>
         <div className="group-row"><span className="row-ic ic-lang"><Languages size={17} /></span><span className="grow">{t('lang.label')}</span><LangSelect bare /></div>
+        <button type="button" className="group-row press" onClick={() => { onClose?.(); openDockSettings(); }}>
+          <span className="row-ic ic-dock"><PanelBottom size={17} /></span>
+          <span className="grow">
+            <span>{t('dock.title')}</span>
+            <small className="muted ellipsis">{dock.map((id) => t('nav.' + id)).join(' · ')}</small>
+          </span>
+          <ChevronRight size={17} className="chev" />
+        </button>
       </div>
       <div className="group-label">{t('nav.account')}</div>
       <div className="group">
@@ -195,8 +211,6 @@ function MoreSheet(props) {
   return <Sheet title={t('nav.more')} onClose={props.onClose}><MoreList {...props} /></Sheet>;
 }
 
-const TABS = [...DOCK, 'more'];
-const tabOf = (id) => (DOCK.includes(id) ? id : 'more');
 const hashOf = (id) => '#/' + id;
 
 // One screen of a navigation stack: its own nav bar (back button, collapsing title, actions slot),
@@ -259,7 +273,12 @@ export default function App() {
   const [authed, setAuthed] = useState(null);
   const [me, setMe] = useState(null);
   const [authError, setAuthError] = useState(null);
-  const stackNav = useNavStack({ tabs: TABS, tabOf, initial: pageFromHash(), hashOf, parseHash: pageFromHash });
+  const [dock, setDock] = useState(() => readCachedDock('acp_dock:last') || [...DEFAULT_DOCK]);
+  const [dockModal, setDockModal] = useState(false);
+  const tabs = useMemo(() => [...dock, 'more'], [dock]);
+  const tabOf = useCallback((id) => (dock.includes(id) ? id : 'more'), [dock]);
+  const morePages = useMemo(() => PAGES.filter((p) => !dock.includes(p.id)), [dock]);
+  const stackNav = useNavStack({ tabs, tabOf, initial: pageFromHash(), hashOf, parseHash: pageFromHash });
   const stackNavRef = useRef(stackNav);
   stackNavRef.current = stackNav;
   const { nav } = stackNav;
@@ -270,6 +289,23 @@ export default function App() {
   const online = useOnline();
   useKeyboardFlag();
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+
+  const userKey = (me?.email || 'password').toLowerCase();
+  useEffect(() => {
+    if (!authed) return undefined;
+    let stop = false;
+    const cached = readCachedDock('acp_dock:' + userKey);
+    if (cached) setDock((cur) => (isSameList(cur, cached) ? cur : cached));
+    prefs.get().then((r) => {
+      if (stop || !r || !r.synced) return;
+      const next = r.dock ? normalizeDock(r.dock, PAGE_IDS) : [...DEFAULT_DOCK];
+      setDock((cur) => (isSameList(cur, next) ? cur : next));
+      const serialized = JSON.stringify(next);
+      store.set('acp_dock:' + userKey, serialized);
+      store.set('acp_dock:last', serialized);
+    }).catch(() => {});
+    return () => { stop = true; };
+  }, [authed, userKey]);
 
   useEffect(() => {
     if (!authed) return undefined;
@@ -337,14 +373,27 @@ export default function App() {
     // the chat keeps its position (scrolling a long conversation to its first message would be a surprise)
     if (tab !== 'chat') document.querySelector('.tab-layer.active > .screen.top')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   };
-  const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setAuthed(false); };
-  const dockIndex = TABS.indexOf(nav.tab);
-  const moreProps = { me, page, go, install, logout };
+  const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setDockModal(false); setAuthed(false); };
+  const saveDock = async (nextList) => {
+    const clean = normalizeDock(nextList, PAGE_IDS);
+    const isDef = isSameList(clean, DEFAULT_DOCK);
+    setDock(clean);
+    const serialized = JSON.stringify(clean);
+    store.set('acp_dock:' + userKey, serialized);
+    store.set('acp_dock:last', serialized);
+    return prefs.save({ dock: isDef ? null : clean });
+  };
+  const dockIndex = Math.max(0, tabs.indexOf(nav.tab));
+  const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true) };
   const renderScreen = (id, depth, isTop, cls, prev) => (
     <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
       backLabel={prev ? t('nav.' + prev) : ''} onBack={() => stackNav.pop()}
       me={me} openMore={() => setMore(true)} banners={banners} moreProps={moreProps} />
   );
+  const dockDot = (id) =>
+    (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn'))
+    || (id === 'computer' && (navStatus.computerNeedsHuman ? 'err' : navStatus.computerRunning && 'ok'))
+    || (id === 'overview' && navStatus.offline && 'err');
 
   return (
     <div className={'shell' + (page === 'chat' ? ' on-chat' : '') + (nav.anim ? ' navigating' : '')}>
@@ -369,16 +418,18 @@ export default function App() {
           {install && <button className="nav-item" onClick={install}><Download size={17} />{t('pwa.install')}</button>}
           <div className="row between"><ThemeSwitch /><LangSelect compact /></div>
           <div className="nav-user">
-            <Avatar me={me} size={30} />
-            <span className="grow ellipsis small">{me?.email || t('nav.signedPwd')}</span>
+            <button type="button" className="nav-user-btn" onClick={() => setMore(true)} aria-label={t('nav.settings')} title={t('nav.settings')}>
+              <Avatar me={me} size={30} />
+              <span className="grow ellipsis small">{me?.email || t('nav.signedPwd')}</span>
+            </button>
             <IconButton icon={LogOut} className="ghost bare" label={t('nav.logout')} onClick={logout} />
           </div>
         </div>
       </aside>
 
       <main className="main">
-        {TABS.filter((tab) => nav.visited.includes(tab) || tab === nav.tab).map((tab) => (
-          <TabLayer key={tab} tab={tab} stack={nav.stacks[tab]} active={tab === nav.tab} anim={nav.anim}
+        {tabs.filter((tab) => nav.visited.includes(tab) || tab === nav.tab).map((tab) => (
+          <TabLayer key={tab} tab={tab} stack={nav.stacks[tab] || [tab]} active={tab === nav.tab} anim={nav.anim}
             onPop={() => stackNav.pop({ animated: false })} renderScreen={renderScreen} />
         ))}
       </main>
@@ -386,9 +437,9 @@ export default function App() {
       <nav className="dock" aria-label={t('nav.menu')}>
         <div className="dock-capsule">
           <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>
-          {DOCK.map((id) => {
+          {dock.map((id) => {
             const { icon: Icon } = PAGES.find((p) => p.id === id);
-            const dot = (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn')) || (id === 'overview' && navStatus.offline && 'err');
+            const dot = dockDot(id);
             return (
               <button key={id} className={id === nav.tab ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === nav.tab ? 'page' : undefined}>
                 <span className="dock-ic"><Icon size={21} strokeWidth={id === nav.tab ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
@@ -403,7 +454,8 @@ export default function App() {
 
       <ContextMenuHost />
       <ViewerHost />
-      {more && <MoreSheet me={me} page={page} go={go} install={install} logout={logout} onClose={() => setMore(false)} />}
+      {more && <MoreSheet {...moreProps} onClose={() => setMore(false)} />}
+      {dockModal && <DockSettingsModal pages={PAGES} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
     </div>
   );
 }
