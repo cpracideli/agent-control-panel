@@ -390,6 +390,38 @@ function LiveRun({ live, bot, botsById, term, onPromptAnswered }) {
   );
 }
 
+function BotPicker({ bots, value, onChange, label, hint }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const cur = bots.find((b) => b.id === value) || bots[0];
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (e.type === 'keydown' ? e.key === 'Escape' : !ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, [open]);
+  if (!cur) return null;
+  return (
+    <div className="bot-picker" ref={ref}>
+      <button type="button" className="bot-picker-btn" aria-label={label} title={hint} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <BotAvatar bot={cur} size={20} /><span className="ellipsis">{cur.name}</span>
+      </button>
+      {open && (
+        <ul className="bot-picker-menu" role="listbox" aria-label={label}>
+          {bots.map((b) => (
+            <li key={b.id} role="option" aria-selected={b.id === cur.id}>
+              <button type="button" className={'bot-picker-item' + (b.id === cur.id ? ' on' : '')} onClick={() => { setOpen(false); if (b.id !== cur.id) onChange(b.id); }}>
+                <BotAvatar bot={b} size={24} /><span className="grow ellipsis">{b.name}</span>{b.id === cur.id && <Check size={15} className="bot-picker-chk" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ChatSettings({ chat, providers, bots, onChange }) {
   const t = useT();
   if (!chat || !providers) return null;
@@ -399,11 +431,7 @@ function ChatSettings({ chat, providers, bots, onChange }) {
   const efforts = agy ? (agyModel ? agyModel.efforts : []) : prov.efforts;
   return (
     <div className="chat-settings">
-      {bots?.length > 1 && (
-        <select value={chat.bot || 'default'} onChange={(e) => onChange({ bot: e.target.value })} aria-label={t('bots.label')} title={t('bots.switchHint')}>
-          {bots.map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-        </select>
-      )}
+      {bots?.length > 1 && <BotPicker bots={bots} value={chat.bot || 'default'} onChange={(id) => onChange({ bot: id })} label={t('bots.label')} hint={t('bots.switchHint')} />}
       <select value={chat.provider} onChange={(e) => onChange({ provider: e.target.value })} aria-label={t('chat.provider')}>
         {providers.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.installed}>{p.name}{p.installed ? '' : ' (' + t('common.notInstalled') + ')'}</option>)}
       </select>
@@ -1138,7 +1166,7 @@ export default function Chat({ openMore, me }) {
       {showOpts && info && (
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
-          <div className="group pad"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
+          <div className="group pad group-open"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
           {(botsL.data || []).length > 1 && (
             <div className="group pad stack">
               <div className="row spread">
@@ -1159,7 +1187,7 @@ export default function Chat({ openMore, me }) {
                           const next = e.target.checked ? [...info.members, b.id] : info.members.filter((x) => x !== b.id);
                           change({ members: next });
                         }} />
-                        {(b.emoji ? b.emoji + ' ' : '') + b.name}
+                        <BotAvatar bot={b} size={18} />{b.name}
                       </label>
                     );
                   })}
