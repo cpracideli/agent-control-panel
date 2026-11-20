@@ -3,6 +3,7 @@ import { Bot, CalendarMinus, CalendarPlus, Circle, Copy, Download, FileCode2, Fi
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Card, ErrorBox, IconButton, useFmt, useLoad, useToast } from '../ui.jsx';
+import { ListGroup, Row, useIsMobile } from '../native.jsx';
 
 function ContainerLogs() {
   const t = useT();
@@ -24,6 +25,34 @@ function ContainerLogs() {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  const mobile = useIsMobile();
+  const body = (
+    <pre ref={ref} className={'logs' + (mobile ? ' logs-mobile' : '')}>
+      {shown
+        ? rawLines.map((line, i) => {
+            const cls = /\b(ERROR|ERR|FATAL|Unhandled)\b/i.test(line) ? 'log-err' : /\bWARN\b/i.test(line) ? 'log-warn' : undefined;
+            return <div key={i} className={cls}>{line}</div>;
+          })
+        : (logs.loading ? <span className="skel skel-logs" aria-busy="true">{[70, 92, 55, 84, 63, 77].map((w, i) => <span key={i} className="skel-box skel-line" style={{ width: w + '%' }} />)}</span> : t('common.empty'))}
+    </pre>
+  );
+  if (mobile) {
+    return (
+      <>
+        <label className="search search-native"><Search size={16} /><input placeholder={t('common.filter')} value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
+        <ListGroup title={t('logs.tools')}>
+          <Row icon={Terminal} tint="ic-plain" label={t('logs.linesLbl')}>
+            <select value={lines} onChange={(e) => setLines(Number(e.target.value))} aria-label={t('logs.linesLbl')}>{[100, 300, 1000, 2000].map((n) => <option key={n} value={n}>{t('logs.lines', { n })}</option>)}</select>
+          </Row>
+          <label className="group-row vrow"><span className="row-ic ic-chat"><Circle size={15} /></span><span className="grow vrow-label">{t('logs.live')}</span><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /></label>
+          <Row icon={Copy} tint="ic-plain" label={t('logs.copy')} kind="accent" disabled={!shown} onClick={() => { navigator.clipboard.writeText(shown); toast(t('common.copied')); }} />
+          <Row icon={Download} tint="ic-plain" label={t('logs.download')} kind="accent" disabled={!shown} onClick={download} />
+        </ListGroup>
+        <ErrorBox error={logs.error} onRetry={() => logs.reload()} />
+        {body}
+      </>
+    );
+  }
   return (
     <Card title={t('logs.container')} icon={Terminal} actions={<>
       <label className="search"><Search size={14} /><input placeholder={t('common.filter')} value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
@@ -33,14 +62,7 @@ function ContainerLogs() {
       <IconButton icon={Download} label={t('logs.download')} disabled={!shown} onClick={download} />
     </>}>
       <ErrorBox error={logs.error} onRetry={() => logs.reload()} />
-      <pre ref={ref} className="logs">
-        {shown
-          ? rawLines.map((line, i) => {
-              const cls = /\b(ERROR|ERR|FATAL|Unhandled)\b/i.test(line) ? 'log-err' : /\bWARN\b/i.test(line) ? 'log-warn' : undefined;
-              return <div key={i} className={cls}>{line}</div>;
-            })
-          : (logs.loading ? <span className="skel skel-logs" aria-busy="true">{[70, 92, 55, 84, 63, 77].map((w, i) => <span key={i} className="skel-box skel-line" style={{ width: w + '%' }} />)}</span> : t('common.empty'))}
-      </pre>
+      {body}
     </Card>
   );
 }
@@ -59,6 +81,37 @@ function Audit() {
     const s = [e.action, e.to, e.name, e.description, e.preview, e.file, e.id].filter(Boolean).join(' ').toLowerCase();
     return s.includes(q.trim().toLowerCase());
   });
+  const mobile = useIsMobile();
+  if (mobile) {
+    return (
+      <>
+        <label className="search search-native"><Search size={16} /><input placeholder={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)} /></label>
+        <ListGroup>
+          <Row icon={ShieldCheck} tint="ic-plain" label={t('logs.auditTitle')}>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label={t('logs.allActions')}>
+              <option value="all">{t('logs.allActions')}</option>
+              {Object.keys(ICONS).map((k) => <option key={k} value={k}>{t('logs.a.' + k)}</option>)}
+            </select>
+          </Row>
+        </ListGroup>
+        <ErrorBox error={a.error} onRetry={() => a.reload()} />
+        {a.data && !list.length && <p className="muted empty-note">{t('logs.nothing')}</p>}
+        {list.length > 0 && (
+          <ListGroup>
+            {list.map((e, i) => {
+              const Icon = ICONS[e.action] || Circle;
+              return (
+                <Row key={i} icon={Icon} tint={e.ok === false ? 'ic-logout' : 'ic-plain'}
+                  label={<>{ICONS[e.action] ? t('logs.a.' + e.action) : (e.action || t('logs.a.event'))}{e.ok === false && <span className="danger-text"> {t('logs.failed')}</span>}</>}
+                  sub={[e.to && t('logs.to', { n: e.to.split('@')[0] }), e.name, e.description, e.preview && '"' + e.preview + '"', e.file, e.id && '#' + e.id].filter(Boolean).join(' · ')}
+                  value={<small>{f.date(e.at)}</small>} />
+              );
+            })}
+          </ListGroup>
+        )}
+      </>
+    );
+  }
   return (
     <Card title={t('logs.auditTitle')} icon={ShieldCheck} actions={<>
       <label className="search"><Search size={14} /><input placeholder={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)} /></label>
@@ -88,9 +141,10 @@ function Audit() {
 export default function Logs() {
   const t = useT();
   const [tab, setTab] = useState('container');
+  const mobile = useIsMobile();
   return (
-    <div className="page">
-      <div className="seg big" role="tablist">
+    <div className={'page' + (mobile ? ' page-list' : '')}>
+      <div className={'seg big' + (mobile ? ' seg-full-w' : '')} role="tablist">
         <button role="tab" aria-selected={tab === 'container'} className={tab === 'container' ? 'on' : ''} onClick={() => setTab('container')}><Terminal size={15} />{t('logs.container')}</button>
         <button role="tab" aria-selected={tab === 'audit'} className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}><ShieldCheck size={15} />{t('logs.audit')}</button>
       </div>
