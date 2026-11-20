@@ -108,12 +108,12 @@ app.get('/api/me', (req, res) => {
 });
 
 // ---------- per-user preferences (persisted in the bridge's settings.json) ----------
-const VALID_DOCK_PAGES = new Set(['chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs']);
+const VALID_DOCK_PAGES = new Set(['chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs', 'more']);
 function parseDockPref(raw) {
   if (raw === null || raw === undefined) return null;
-  if (!Array.isArray(raw) || raw.length !== 4) return undefined;
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 5) return undefined;
   const clean = raw.map((x) => String(x || '').trim());
-  if (clean.some((x) => !VALID_DOCK_PAGES.has(x)) || new Set(clean).size !== 4) return undefined;
+  if (clean.some((x) => !VALID_DOCK_PAGES.has(x)) || new Set(clean).size !== clean.length) return undefined;
   return clean;
 }
 const prefUserOf = (req) => String(session(req)?.email || 'password').trim().toLowerCase();
@@ -139,7 +139,7 @@ app.put('/api/prefs', auth, async (req, res) => {
   const body = req.body || {};
   if (!('dock' in body)) return res.status(400).json({ error: 'Campo dock é obrigatório' });
   const dock = parseDockPref(body.dock);
-  if (dock === undefined) return res.status(400).json({ error: 'Escolha exatamente 4 páginas válidas e diferentes' });
+  if (dock === undefined) return res.status(400).json({ error: 'Escolha entre 1 e 5 páginas válidas e diferentes' });
   if (!BRIDGE_TOKEN) return res.json({ ok: true, dock, synced: false });
   const user = prefUserOf(req);
   try {

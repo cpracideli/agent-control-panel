@@ -145,13 +145,14 @@ function takeAuthParams() {
   return { code, error };
 }
 
-const PAGE_IDS = PAGES.map((p) => p.id);
+const DOCK_OPTIONS = [...PAGES, { id: 'more', icon: LayoutGrid }];
+const DOCK_IDS = DOCK_OPTIONS.map((p) => p.id);
 const readCachedDock = (key) => {
   try {
     const raw = store.get(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length === 4 ? normalizeDock(parsed, PAGE_IDS) : null;
+    return Array.isArray(parsed) && parsed.length >= 1 && parsed.length <= 5 ? normalizeDock(parsed, DOCK_IDS) : null;
   } catch { return null; }
 };
 
@@ -275,7 +276,9 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [dock, setDock] = useState(() => readCachedDock('acp_dock:last') || [...DEFAULT_DOCK]);
   const [dockModal, setDockModal] = useState(false);
-  const tabs = useMemo(() => [...dock, 'more'], [dock]);
+  // Keep 'more' as an internal overflow tab even when the user removes it from the bottom bar,
+  // so pages opened via the top-right user icon still push cleanly onto a stack.
+  const tabs = useMemo(() => (dock.includes('more') ? dock : [...dock, 'more']), [dock]);
   const tabOf = useCallback((id) => (dock.includes(id) ? id : 'more'), [dock]);
   const morePages = useMemo(() => PAGES.filter((p) => !dock.includes(p.id)), [dock]);
   const stackNav = useNavStack({ tabs, tabOf, initial: pageFromHash(), hashOf, parseHash: pageFromHash });
@@ -298,7 +301,7 @@ export default function App() {
     if (cached) setDock((cur) => (isSameList(cur, cached) ? cur : cached));
     prefs.get().then((r) => {
       if (stop || !r || !r.synced) return;
-      const next = r.dock ? normalizeDock(r.dock, PAGE_IDS) : [...DEFAULT_DOCK];
+      const next = r.dock ? normalizeDock(r.dock, DOCK_IDS) : [...DEFAULT_DOCK];
       setDock((cur) => (isSameList(cur, next) ? cur : next));
       const serialized = JSON.stringify(next);
       store.set('acp_dock:' + userKey, serialized);
@@ -375,7 +378,7 @@ export default function App() {
   };
   const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setDockModal(false); setAuthed(false); };
   const saveDock = async (nextList) => {
-    const clean = normalizeDock(nextList, PAGE_IDS);
+    const clean = normalizeDock(nextList, DOCK_IDS);
     const isDef = isSameList(clean, DEFAULT_DOCK);
     setDock(clean);
     const serialized = JSON.stringify(clean);
@@ -383,7 +386,7 @@ export default function App() {
     store.set('acp_dock:last', serialized);
     return prefs.save({ dock: isDef ? null : clean });
   };
-  const dockIndex = Math.max(0, tabs.indexOf(nav.tab));
+  const dockIndex = dock.indexOf(nav.tab);
   const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true) };
   const renderScreen = (id, depth, isTop, cls, prev) => (
     <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
@@ -434,11 +437,11 @@ export default function App() {
         ))}
       </main>
 
-      <nav className="dock" aria-label={t('nav.menu')}>
+      <nav className="dock" style={{ '--dock-n': dock.length }} aria-label={t('nav.menu')}>
         <div className="dock-capsule">
-          <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>
+          {dockIndex >= 0 && <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>}
           {dock.map((id) => {
-            const { icon: Icon } = PAGES.find((p) => p.id === id);
+            const { icon: Icon } = DOCK_OPTIONS.find((p) => p.id === id);
             const dot = dockDot(id);
             return (
               <button key={id} className={id === nav.tab ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === nav.tab ? 'page' : undefined}>
@@ -446,16 +449,13 @@ export default function App() {
               </button>
             );
           })}
-          <button className={dockIndex === 4 ? 'active' : ''} onClick={() => tapTab('more')} aria-current={nav.tab === 'more' ? 'page' : undefined}>
-            <LayoutGrid size={21} strokeWidth={dockIndex === 4 ? 2.3 : 1.9} /><span>{t('nav.more')}</span>
-          </button>
         </div>
       </nav>
 
       <ContextMenuHost />
       <ViewerHost />
       {more && <MoreSheet {...moreProps} onClose={() => setMore(false)} />}
-      {dockModal && <DockSettingsModal pages={PAGES} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
+      {dockModal && <DockSettingsModal pages={DOCK_OPTIONS} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
     </div>
   );
 }

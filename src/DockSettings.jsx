@@ -1,16 +1,17 @@
 import { useRef, useState } from 'react';
-import { GripVertical, LayoutGrid, Lock, Minus, Plus, RotateCcw } from 'lucide-react';
+import { GripVertical, Minus, Plus, RotateCcw } from 'lucide-react';
 import { useI18n } from './i18n.jsx';
 import { Modal, haptic, useToast } from './ui.jsx';
 
-export const DEFAULT_DOCK = ['chat', 'bots', 'usage', 'overview'];
-export const DOCK_SIZE = 4;
+export const DEFAULT_DOCK = ['chat', 'bots', 'usage', 'overview', 'more'];
+export const MIN_DOCK = 1;
+export const MAX_DOCK = 5;
 
 export function normalizeDock(list, validIds) {
-  if (!Array.isArray(list) || list.length !== DOCK_SIZE) return [...DEFAULT_DOCK];
+  if (!Array.isArray(list) || list.length < MIN_DOCK || list.length > MAX_DOCK) return [...DEFAULT_DOCK];
   const valid = new Set(validIds);
   const clean = list.map((x) => String(x || '').trim());
-  if (clean.some((x) => !valid.has(x)) || new Set(clean).size !== DOCK_SIZE) return [...DEFAULT_DOCK];
+  if (clean.some((x) => !valid.has(x)) || new Set(clean).size !== clean.length) return [...DEFAULT_DOCK];
   return clean;
 }
 
@@ -31,15 +32,17 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
   const available = pages.filter((p) => !draft.includes(p.id));
   const isDefault = isSameList(draft, DEFAULT_DOCK);
   const dirty = !isSameList(draft, dock);
-  const canSave = draft.length === DOCK_SIZE && dirty && !saving;
+  const canSave = draft.length >= MIN_DOCK && draft.length <= MAX_DOCK && dirty && !saving;
+  const hasMore = draft.includes('more');
 
   const remove = (id) => {
+    if (draft.length <= MIN_DOCK) return;
     haptic(6);
-    setDraft((prev) => prev.filter((x) => x !== id));
+    setDraft((prev) => (prev.length <= MIN_DOCK ? prev : prev.filter((x) => x !== id)));
   };
 
   const add = (id) => {
-    if (draft.length >= DOCK_SIZE || draft.includes(id)) return;
+    if (draft.length >= MAX_DOCK || draft.includes(id)) return;
     haptic(8);
     setDraft((prev) => [...prev, id]);
   };
@@ -63,6 +66,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
 
   // Pointer drag-and-drop reorder inside the selected group (works for both touch and mouse).
   const onHandleDown = (id, e) => {
+    if (draft.length < 2) return;
     if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
     e.preventDefault();
     e.stopPropagation();
@@ -146,21 +150,18 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
     <Modal title={t('dock.title')} onClose={onClose}>
       <form className="dock-cfg" onSubmit={submit}>
         <div className="dock-preview-wrap" aria-label={t('dock.preview')}>
-          <div className="dock-preview-bar">
-            {Array.from({ length: DOCK_SIZE }, (_, i) => {
-              const id = draft[i];
-              const pg = id ? pageMap.get(id) : null;
-              const Icon = pg?.icon;
+          <div className="dock-preview-bar" style={{ '--dock-n': draft.length }}>
+            {draft.map((id) => {
+              const pg = pageMap.get(id);
+              if (!pg) return null;
+              const Icon = pg.icon;
               return (
-                <div key={i} className={'dock-preview-slot' + (pg ? '' : ' empty')}>
-                  {pg ? <><Icon size={18} strokeWidth={2} /><span className="ellipsis">{t('nav.' + id)}</span></> : <span className="dock-slot-num">{i + 1}</span>}
+                <div key={id} className="dock-preview-slot">
+                  <Icon size={18} strokeWidth={2} />
+                  <span className="ellipsis">{t('nav.' + id)}</span>
                 </div>
               );
             })}
-            <div className="dock-preview-slot fixed">
-              <LayoutGrid size={18} strokeWidth={2} />
-              <span className="ellipsis">{t('nav.more')}</span>
-            </div>
           </div>
         </div>
 
@@ -181,6 +182,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
                 <button
                   type="button"
                   className="dock-drag-handle"
+                  disabled={draft.length < 2}
                   aria-label={`${t('nav.' + id)} — ${t('dock.dragHint')}`}
                   onPointerDown={(e) => onHandleDown(id, e)}
                   onPointerMove={onHandleMove}
@@ -198,6 +200,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
                 <button
                   type="button"
                   className="dock-act-btn remove press"
+                  disabled={draft.length <= MIN_DOCK}
                   aria-label={`${t('dock.remove')}: ${t('nav.' + id)}`}
                   onClick={() => remove(id)}
                 >
@@ -206,18 +209,10 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
               </div>
             );
           })}
-          <div className="group-row dock-fixed-row">
-            <span className="dock-drag-spacer" aria-hidden />
-            <span className="row-ic ic-more"><LayoutGrid size={17} /></span>
-            <span className="grow">
-              <b>{t('nav.more')}</b>
-              <small className="muted">{t('dock.moreFixed')}</small>
-            </span>
-            <Lock size={15} className="muted" aria-hidden />
-          </div>
         </div>
-        <p className={'dock-hint ' + (draft.length < DOCK_SIZE ? 'warn-text' : 'muted')}>
-          {draft.length < DOCK_SIZE ? t('dock.pickHint', { n: DOCK_SIZE - draft.length }) : t('dock.dragHint')}
+        <p className="dock-hint muted">
+          {draft.length <= MIN_DOCK ? t('dock.minHint') : t('dock.dragHint')}
+          {!hasMore && (' ' + t('dock.noMoreHint'))}
         </p>
 
         <div className="group">
@@ -228,14 +223,14 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
         </div>
 
         <div className="group-label">{t('dock.available')}</div>
-        {draft.length >= DOCK_SIZE && <p className="dock-hint muted">{t('dock.fullHint')}</p>}
+        {draft.length >= MAX_DOCK && <p className="dock-hint muted">{t('dock.fullHint')}</p>}
         <div className="group">
           {available.map(({ id, icon: Icon }) => (
             <button
               key={id}
               type="button"
               className="group-row press"
-              disabled={draft.length >= DOCK_SIZE}
+              disabled={draft.length >= MAX_DOCK}
               onClick={() => add(id)}
             >
               <span className={'row-ic ic-' + id}><Icon size={17} /></span>
