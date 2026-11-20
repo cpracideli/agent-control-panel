@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Search, Shield, Trash2 } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Skeleton, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
 
@@ -133,7 +133,7 @@ export default function Envs() {
             <Btn icon={RefreshCw} className="warn small" disabled={!!busy} onClick={applyRestart}>{t('env.apply')}</Btn>
           </>}>
             <ErrorBox error={envs.error} onRetry={() => envs.reload()} />
-            {envs.loading && !envs.data && <p className="muted">{t('common.loading')}</p>}
+            {envs.loading && !envs.data && <Skeleton rows={4} lines={1} avatar={false} />}
             {list.map((e) => <EnvRow key={e.uuid + (e.value || '')} e={e} onSaved={() => { setPendingRestart(true); envs.reload(true); }} />)}
           </Card>
           <Card title={t('env.new')} icon={Plus}>

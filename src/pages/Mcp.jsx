@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity, Eye, Plug, Plus, Server, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useLoad } from '../ui.jsx';
 import { AddButton, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const PRESETS = [
@@ -142,7 +142,7 @@ export default function Mcp() {
           ]} />
         </HeaderActions>
         <ErrorBox error={mcp.error} onRetry={() => mcp.reload()} />
-        {mcp.loading && !c && <p className="muted">{t('common.loading')}</p>}
+        {mcp.loading && !c && <Skeleton rows={3} />}
         <ListGroup title="Claude Code">{c && !rows.length ? <p className="muted nlist-empty">{t('mcp.none')}</p> : claudeRows}</ListGroup>
         {testRow('status', check)}
         {status?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{status.output}</pre></Disclosure>}
@@ -166,7 +166,7 @@ export default function Mcp() {
         <Btn icon={Activity} className="ghost small" disabled={busy === 'status'} onClick={check}>{busy === 'status' ? t('mcp.testing') : t('mcp.test')}</Btn>
         <Btn icon={Plus} className="small" onClick={() => setAdding('claude')}>{t('common.add')}</Btn>
       </>}>
-        {mcp.loading && !c && <p className="muted">{t('common.loading')}</p>}
+        {mcp.loading && !c && <Skeleton rows={3} />}
         {c && !rows.length && <p className="muted">{t('mcp.none')}</p>}
         {rows.map(({ n, cfg, scope }) => {
           const h = health[n];

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react';
 import { localCache } from './api.js';
 import { store, useI18n, useT } from './i18n.jsx';
 
@@ -118,7 +118,29 @@ export const Badge = ({ kind = 'muted', children }) => <span className={'badge '
 export function ErrorBox({ error, onRetry }) {
   const t = useT();
   if (!error) return null;
-  return <div className="errbox"><AlertTriangle size={16} /><span>{error}</span>{onRetry && <button className="link" onClick={onRetry}>{t('common.retry')}</button>}</div>;
+  return (
+    <div className="errbox" role="alert">
+      <AlertTriangle size={18} className="errbox-ic" />
+      <span className="grow">{error}</span>
+      {onRetry && <button type="button" className="errbox-retry small" onClick={onRetry}><RotateCcw size={14} /> {t('common.retryBtn')}</button>}
+    </div>
+  );
+}
+
+// Placeholder rows that shimmer while a list loads (instead of "Loading…").
+export function Skeleton({ rows = 3, lines = 2, avatar = true, className = '' }) {
+  return (
+    <div className={'skel ' + className} aria-busy="true" aria-label="…">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skel-row">
+          {avatar && <span className="skel-box skel-av" />}
+          <span className="skel-lines">
+            {Array.from({ length: lines }, (_, j) => <span key={j} className="skel-box skel-line" style={{ width: j ? 45 + ((i * 17 + j * 23) % 35) + '%' : 60 + ((i * 13) % 30) + '%' }} />)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ---------- swipe-to-dismiss for bottom sheets (iOS-like) ----------

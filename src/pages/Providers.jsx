@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyRound, Pencil, RefreshCw, RotateCcw, SlidersHorizontal, Smartphone, Sparkles } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad } from '../ui.jsx';
 
 const CRED_KEYS = [
   { key: 'CLAUDE_CODE_OAUTH_TOKEN', id: 'oauth' },
@@ -101,7 +101,7 @@ export default function Providers() {
   return (
     <div className="page">
       <ErrorBox error={p.error} onRetry={() => p.reload()} />
-      {p.loading && !data && <p className="muted">{t('common.loading')}</p>}
+      {p.loading && !data && <Skeleton rows={3} />}
       {data && (
         <>
           <Card title={t('pr.globals')} icon={SlidersHorizontal}>

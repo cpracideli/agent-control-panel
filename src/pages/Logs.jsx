@@ -39,7 +39,7 @@ function ContainerLogs() {
               const cls = /\b(ERROR|ERR|FATAL|Unhandled)\b/i.test(line) ? 'log-err' : /\bWARN\b/i.test(line) ? 'log-warn' : undefined;
               return <div key={i} className={cls}>{line}</div>;
             })
-          : (logs.loading ? t('common.loading') : t('common.empty'))}
+          : (logs.loading ? <span className="skel skel-logs" aria-busy="true">{[70, 92, 55, 84, 63, 77].map((w, i) => <span key={i} className="skel-box skel-line" style={{ width: w + '%' }} />)}</span> : t('common.empty'))}
       </pre>
     </Card>
   );
