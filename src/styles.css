@@ -1379,3 +1379,16 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 :root[data-theme="dark"] .asheet-group, :root[data-theme="terminal"] .asheet-group { background: #2c2c2e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .asheet-group { background: #2c2c2e; } }
 @media (prefers-reduced-transparency: reduce) { .asheet-group { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }
+
+/* ===================== UX nativa · fase 2 ===================== */
+
+/* (a) drag the conversation left to reveal each message's date/time */
+.chat-scroll { overflow-x: hidden; }
+.chat-scroll .msg { position: relative; }
+/* transform only while dragging/settling, so fixed-position children are never trapped in a containing block */
+.chat-scroll.revealing .msg, .chat-scroll.settling .msg { transform: translateX(var(--reveal, 0px)); }
+.chat-scroll.settling .msg { transition: transform 380ms cubic-bezier(.22, 1.1, .36, 1); }
+.msg-time { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 10px; width: 66px; display: flex; flex-direction: column; align-items: flex-start; color: var(--muted); font-size: 12px; line-height: 1.25; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; -webkit-user-select: none; user-select: none; }
+.msg-time span { font-size: 11px; opacity: .8; }
+.msg.bot .msg-time { top: 14px; transform: none; }
+@media (prefers-reduced-motion: reduce) { .chat-scroll.settling .msg { transition: none; } }

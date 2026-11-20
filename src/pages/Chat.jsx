@@ -278,13 +278,26 @@ function PromptList({ prompts, term, onAnswered }) {
   );
 }
 
+// Sent/received time shown when the conversation is dragged to the left (like iMessage).
+function MsgTime({ at, lang }) {
+  if (!at) return null;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+  const day = sameDay ? '' : d.toLocaleDateString(lang, { day: '2-digit', month: '2-digit', ...(d.getFullYear() !== today.getFullYear() ? { year: '2-digit' } : {}) });
+  return <time className="msg-time" dateTime={d.toISOString()} aria-hidden="true">{day && <span>{day}</span>}{time}</time>;
+}
+
 function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
   if (m.role === 'user') {
     return (
-      <div className="msg user">
+      <div className="msg user" title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
+        <MsgTime at={m.at} lang={lang} />
         <div className="user-col">
           <MessageFiles files={m.files} transcript={m.transcript} engine={m.transcriptEngine} pendingLabel={t('chat.transcribing')}
             pending={!m.transcript && !m.transcriptFailed && Date.now() - new Date(m.at).getTime() < 180000} />
@@ -300,7 +313,8 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
     );
   }
   return (
-    <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')}>
+    <div className={'msg bot' + (m.error ? ' error' : '') + (m.stopped ? ' stopped' : '')} title={m.at ? new Date(m.at).toLocaleString(lang) : undefined}>
+      <MsgTime at={m.at} lang={lang} />
       {bot && (bot.id !== 'default' || bot.avatar) ? <BotAvatar bot={bot} size={30} /> : <div className="avatar" aria-hidden><Bot size={16} /></div>}
       <div className="msg-body">
         <DelegationList delegations={m.delegations} botsById={botsById} term={term} />
@@ -617,6 +631,51 @@ export default function Chat({ openMore, me }) {
     return () => {
       root.removeEventListener('touchstart', start); root.removeEventListener('touchmove', move);
       root.removeEventListener('touchend', end); root.removeEventListener('touchcancel', end);
+    };
+  }, []);
+  // Drag the conversation to the LEFT to peek at every message's date and time; it springs back on release.
+  // Only leftward drags are taken, so the drawer (opened by dragging right / from the left edge) is untouched.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const MAX = 76;
+    let s = null, settle;
+    const set = (x) => el.style.setProperty('--reveal', x + 'px');
+    const start = (e) => {
+      if (e.touches.length !== 1 || openRef.current) { s = null; return; }
+      const p = e.touches[0];
+      if (p.clientX < 24 || e.target.closest?.('.table-wrap, .pending-files, pre, textarea, input, .rec-body, .mic-hold, .vn, .msg-img')) { s = null; return; }
+      s = { x: p.clientX, y: p.clientY, drag: false };
+    };
+    const move = (e) => {
+      if (!s) return;
+      const p = e.touches[0];
+      const dx = p.clientX - s.x, dy = p.clientY - s.y;
+      if (!s.drag) {
+        if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { s = null; return; }
+        if (dx > -8) { if (dx > 8) s = null; return; }
+        s.drag = true; s.x = p.clientX; clearTimeout(settle); el.classList.remove('settling'); el.classList.add('revealing');
+      }
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      const d = Math.min(0, p.clientX - s.x);
+      set(d > -MAX ? d : -MAX - Math.pow(-d - MAX, 0.6)); // rubber band past the time column
+    };
+    const end = () => {
+      if (!s) return;
+      const was = s.drag; s = null;
+      if (!was) return;
+      el.classList.add('settling'); el.classList.remove('revealing');
+      requestAnimationFrame(() => set(0));
+      clearTimeout(settle); settle = setTimeout(() => el.classList.remove('settling'), 420);
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); clearTimeout(settle);
     };
   }, []);
   const toBottom = (smooth) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
