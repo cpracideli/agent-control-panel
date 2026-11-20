@@ -161,6 +161,10 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [page, setPage] = useState(pageFromHash);
   const [more, setMore] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  // a new screen starts at the top with the large title showing
+  useEffect(() => { const m = document.querySelector('main.main'); if (m) m.scrollTop = 0; setCollapsed(false); }, [page]);
+  const onMainScroll = (e) => { const c = e.currentTarget.scrollTop > 40; if (c !== collapsed) setCollapsed(c); };
   const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
@@ -269,11 +273,14 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={'main' + (page === 'chat' ? ' main-chat' : '')}>
-        <header className="topbar">
-          <h1 className="large-title serif-title grow ellipsis">{t('nav.' + page)}</h1>
-          <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={38} /></button>
+      <main className={'main' + (page === 'chat' ? ' main-chat' : '')} onScroll={page === 'chat' ? undefined : onMainScroll}>
+        {/* iOS-style navigation bar: compact title fades in over glass once the large title scrolls away */}
+        <header className={'topbar' + (collapsed ? ' collapsed' : '')}>
+          <span className="topbar-title ellipsis" aria-hidden={!collapsed}>{t('nav.' + page)}</span>
+          <div className="topbar-actions" id="topbar-actions" />
+          <button className="avatar-btn press" aria-label={t('nav.settings')} onClick={() => setMore(true)}><Avatar me={me} size={34} /></button>
         </header>
+        <h1 className="large-title serif-title ellipsis page-title">{t('nav.' + page)}</h1>
         {banners}
         <Page openMore={() => setMore(true)} me={me} />
       </main>
