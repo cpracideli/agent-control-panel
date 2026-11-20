@@ -368,3 +368,26 @@ export function PullToRefresh({ enabled, onRefresh, scrollEl }) {
     </div>
   );
 }
+
+/**
+ * Settings-style row for dashboards: tinted icon, label (+ subtitle), value on the right and an optional
+ * chevron. With onClick it is a button (action row); `kind="danger"` / `"accent"` colors the label.
+ */
+export function Row({ icon: Icon, tint = 'ic-plain', label, sub, value, onClick, chevron, kind, disabled, children, className = '' }) {
+  const inner = (
+    <>
+      {Icon && <span className={'row-ic ' + tint}><Icon size={17} /></span>}
+      <span className="grow vrow-text">
+        <span className="vrow-label">{label}</span>
+        {sub && <small className="muted vrow-sub">{sub}</small>}
+      </span>
+      {value != null && value !== false && <span className="vrow-value">{value}</span>}
+      {children}
+      {chevron && <ChevronRight size={17} className="chev" />}
+    </>
+  );
+  const cls = 'group-row vrow' + (kind ? ' vrow-' + kind : '') + (onClick ? ' press' : '') + (className ? ' ' + className : '');
+  return onClick
+    ? <button type="button" className={cls} disabled={disabled} onClick={onClick}>{inner}</button>
+    : <div className={cls}>{inner}</div>;
+}

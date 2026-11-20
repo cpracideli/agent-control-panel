@@ -1642,3 +1642,33 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 @media (min-width: 821px) {
   .nav-back { display: none; }
 }
+
+/* ===================== UX nativa · fase 4: dashboards as grouped lists (phones) ===================== */
+.vrow { min-height: 52px; }
+.vrow-text { min-width: 0; gap: 1px; }
+.vrow-label { overflow: hidden; text-overflow: ellipsis; }
+.vrow-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow-value { flex: none; max-width: 52%; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow-value b { color: var(--text); font-weight: 600; }
+.vrow-accent { color: var(--accent); }
+.vrow-danger { color: var(--err); }
+.vrow-warn .vrow-label { color: var(--warn-ink, #c93400); }
+.vrow .badge { flex: none; }
+.group.pad-row { padding: 12px 16px; }
+.group .meter { padding: 12px 16px; margin: 0; }
+.group .meter + .meter { border-top: .5px solid var(--sep); }
+.dash-hero { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 2px; text-align: center; }
+.dash-hero b { font-size: 34px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.dash-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--sep); }
+.dash-tile { background: var(--card); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dash-tile small { color: var(--muted); font-size: 12.5px; }
+.dash-tile b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-seg { display: flex; gap: 8px; }
+.dash-seg .seg { flex: 1; display: flex; }
+.dash-seg .seg button { flex: 1; }
+.vrow select { width: auto; max-width: 50%; background-color: transparent; text-align: right; text-align-last: right; color: var(--muted); padding-right: 26px; }
+.vrow .search { flex: 1; }
+.group .computer-screen { border-radius: 0; margin: 0; }
+.group-form { padding: 14px 16px; }
+.logs-mobile { margin: 0; border-radius: 18px; max-height: 60vh; }
+.seg.seg-full-w { display: flex; width: 100%; } .seg.seg-full-w button { flex: 1; justify-content: center; }
