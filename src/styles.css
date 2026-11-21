@@ -1809,3 +1809,6 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 @keyframes cc-breathe { 50% { box-shadow: 0 0 0 1px var(--bot), 0 0 32px color-mix(in srgb, var(--bot) 60%, transparent); } }
 @media (max-width: 560px) { .cc-head { grid-template-columns: 1fr 1fr 1fr; } .cc-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .cc-bot.on, .cc-ev { animation: none; } }
+.tool { transition: background .2s; border-radius: 10px; }
+.tool-chip { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok-ink); }
+.tool-chip.bad { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }

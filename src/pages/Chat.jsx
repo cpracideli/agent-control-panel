@@ -148,6 +148,7 @@ function ToolList({ tools, term }) {
           <div className="tool-h">
             <b>{x.name}</b>
             {x.result === undefined && <span className="spin" />}
+            {x.result !== undefined && <span className={'tool-chip ' + (x.isError ? 'bad' : 'ok')}>{x.isError ? 'erro' : 'ok'}{x.ms != null ? ' · ' + (x.ms < 1000 ? x.ms + ' ms' : (x.ms / 1000).toFixed(1) + ' s') : ''}</span>}
             {x.result !== undefined && <IconButton icon={Copy} size={12} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(x.result || ''); toast(t('common.copied')); }} />}
           </div>
           <pre>{x.input}</pre>
@@ -1286,8 +1287,8 @@ export default function Chat({ openMore, me }) {
       else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], prompts: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); notifyNav(); }
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
-      else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input }] });
-      else if (ev.type === 'tool_result') setLive((l) => l && { ...l, tools: l.tools.map((x) => (x.id === ev.id ? { ...x, result: ev.text, isError: ev.isError } : x)) });
+      else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input, t0: Date.now() }] });
+      else if (ev.type === 'tool_result') setLive((l) => l && { ...l, tools: l.tools.map((x) => (x.id === ev.id ? { ...x, result: ev.text, isError: ev.isError, ms: x.t0 ? Date.now() - x.t0 : undefined } : x)) });
       else if (ev.type === 'delegation') setLive((l) => l && { ...l, delegations: (l.delegations || []).some((d) => d.id === ev.ask.id) ? l.delegations.map((d) => (d.id === ev.ask.id ? ev.ask : d)) : [...(l.delegations || []), ev.ask] });
       else if (ev.type === 'prompt') {
         setLive((l) => l && { ...l, prompts: (l.prompts || []).some((p) => p.id === ev.prompt.id) ? l.prompts.map((p) => (p.id === ev.prompt.id ? ev.prompt : p)) : [...(l.prompts || []), ev.prompt] });
