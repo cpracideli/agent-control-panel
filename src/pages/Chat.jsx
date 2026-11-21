@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
-import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
+import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, readAsBase64, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
@@ -213,107 +213,260 @@ function DelegationList({ delegations, botsById, term }) {
   );
 }
 
-function LiveVoiceCallModal({ chatId, botName, lang, onClose, onSentText }) {
+function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) {
   const toast = useToast();
-  const [status, setStatus] = useState('listening'); // listening | thinking | speaking | muted
+  const [status, setStatus] = useState('idle'); // listening | sending | thinking | speaking | muted | idle
   const [muted, setMuted] = useState(false);
+  const [handsFree, setHandsFree] = useState(true);
+  const [heardSpeech, setHeardSpeech] = useState(false);
+  const [level, setLevel] = useState(0);
+  const [err, setErr] = useState('');
   const [transcript, setTranscript] = useState('');
   const [lastReply, setLastReply] = useState('');
   const [typed, setTyped] = useState('');
-  const recRef = useRef(null);
-  const mutedRef = useRef(false);
+  const [recStarted, setRecStarted] = useState(null);
+
   const activeRef = useRef(true);
+  const mutedRef = useRef(false);
+  const handsFreeRef = useRef(true);
+  const messagesRef = useRef(messages || []);
+  const notifyMsgRef = useRef(null);
+  const recCtxRef = useRef(null);
+  const turnIdRef = useRef(0);
+  const sendingRecRef = useRef(false);
+
   mutedRef.current = muted;
+  handsFreeRef.current = handsFree;
+  messagesRef.current = messages || [];
+  useEffect(() => { notifyMsgRef.current?.(); }, [messages]);
 
-  const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  // Stops MediaRecorder + AudioContext + all mic tracks so iOS switches audio back to loudspeaker before TTS plays.
+  const cleanupRecorder = (keep) => new Promise((resolve) => {
+    const ctx = recCtxRef.current;
+    recCtxRef.current = null;
+    setRecStarted(null);
+    setLevel(0);
+    setHeardSpeech(false);
+    if (!ctx) return resolve(null);
+    if (ctx.vadTimer) { clearInterval(ctx.vadTimer); ctx.vadTimer = null; }
+    if (ctx.audioCtx) { try { ctx.audioCtx.close(); } catch {} ctx.audioCtx = null; }
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(stopFallback);
+      try { ctx.stream.getTracks().forEach((tr) => tr.stop()); } catch {}
+      if (!keep) return resolve(null);
+      const type = (ctx.rec?.mimeType || ctx.mime || 'audio/webm').split(';')[0];
+      const blob = new Blob(ctx.chunks, { type });
+      resolve(blob.size ? { blob, type } : null);
+    };
+    const stopFallback = setTimeout(done, keep ? 1500 : 0);
+    if (!keep || !ctx.rec || ctx.rec.state === 'inactive') return done();
+    ctx.rec.onstop = done;
+    ctx.rec.onerror = done;
+    try { ctx.rec.stop(); } catch { done(); }
+  });
 
-  const startListening = () => {
-    if (!activeRef.current || mutedRef.current || !SR) return;
+  const runTurn = async ({ text, audio }) => {
+    const cleanText = String(text || '').trim();
+    if (!cleanText && !audio) return;
+    const myTurn = ++turnIdRef.current;
+    stopSpeaking();
+    setErr('');
+    setStatus(audio ? 'sending' : 'thinking');
+    setTranscript(cleanText || '🎤 Enviando e transcrevendo áudio…');
+
     try {
-      if (recRef.current) { try { recRef.current.stop(); } catch {} }
-      const r = new SR();
-      r.lang = lang === 'en' ? 'en-US' : lang === 'es' ? 'es-ES' : 'pt-BR';
-      r.interimResults = true;
-      r.continuous = false;
-      let finalStr = '';
-      r.onstart = () => setStatus('listening');
-      r.onresult = (ev) => {
-        let interim = '';
-        for (let i = ev.resultIndex; i < ev.results.length; i++) {
-          const txt = ev.results[i][0].transcript;
-          if (ev.results[i].isFinal) finalStr += txt + ' ';
-          else interim += txt;
-        }
-        setTranscript((finalStr + interim).trim());
-      };
-      r.onend = () => {
-        const spoken = finalStr.trim();
-        if (spoken && activeRef.current) {
-          sendTurn(spoken);
-        } else if (activeRef.current && !mutedRef.current) {
-          setTimeout(startListening, 350);
+      const seenIds = new Set((messagesRef.current || []).map((m) => m.id));
+      const payload = [];
+      if (audio) {
+        const rawExt = (audio.type.split('/')[1] || 'webm').replace(/[^a-z0-9]/gi, '') || 'webm';
+        const b64 = await readAsBase64(audio.blob);
+        if (!activeRef.current || turnIdRef.current !== myTurn) return;
+        payload.push({ name: 'voz.' + rawExt, type: audio.type, data: b64, voice: true });
+      }
+      await bridge.send(chatId, cleanText, payload, '');
+      if (!activeRef.current || turnIdRef.current !== myTurn) return;
+      setStatus('thinking');
+
+      // Wait for the NEW assistant reply (reactive to Chat SSE messages + 2.5s fallback poll).
+      let replyMsg = null;
+      const waitStart = Date.now();
+      const scan = (list) => {
+        for (const m of (list || [])) {
+          if (seenIds.has(m.id)) continue;
+          if (m.role === 'user' && m.transcript) setTranscript(m.transcript);
+          if (m.role === 'assistant') replyMsg = m;
         }
       };
-      r.onerror = () => {
-        if (activeRef.current && !mutedRef.current) setTimeout(startListening, 900);
-      };
-      recRef.current = r;
-      r.start();
+      while (activeRef.current && turnIdRef.current === myTurn && Date.now() - waitStart < 180000) {
+        scan(messagesRef.current);
+        if (replyMsg) break;
+        const timedOut = await new Promise((res) => {
+          const timer = setTimeout(() => { notifyMsgRef.current = null; res(true); }, 2500);
+          notifyMsgRef.current = () => { clearTimeout(timer); notifyMsgRef.current = null; res(false); };
+        });
+        if (!activeRef.current || turnIdRef.current !== myTurn) return;
+        if (timedOut) {
+          const fetched = await bridge.messages(chatId).catch(() => null);
+          if (fetched?.messages) scan(fetched.messages);
+        } else {
+          scan(messagesRef.current);
+        }
+        if (replyMsg) break;
+      }
+      if (!activeRef.current || turnIdRef.current !== myTurn) return;
+
+      if (!replyMsg) {
+        setErr('Tempo esgotado aguardando resposta do bot.');
+        setStatus('idle');
+        return;
+      }
+
+      const replyText = String(replyMsg.text || '').trim();
+      setLastReply(replyText);
+      if (replyText && !replyMsg.error && !replyMsg.stopped) {
+        setStatus('speaking');
+        await speakAndWait(replyMsg.id, replyText, lang, chatId, replyMsg.tts);
+      }
+    } catch (e) {
+      if (activeRef.current && turnIdRef.current === myTurn) {
+        const msg = e?.message || 'Erro durante a ligação';
+        setErr(msg);
+        toast(msg, 'err');
+      }
+    }
+
+    if (!activeRef.current || turnIdRef.current !== myTurn) return;
+    if (mutedRef.current) {
+      setStatus('muted');
+    } else if (handsFreeRef.current) {
+      setTimeout(() => {
+        if (activeRef.current && turnIdRef.current === myTurn && !mutedRef.current) startListening();
+      }, 350);
+    } else {
+      setStatus('idle');
+    }
+  };
+
+  const sendRecordedTurn = async () => {
+    if (sendingRecRef.current) return;
+    sendingRecRef.current = true;
+    unlockSpeech();
+    try {
+      const audio = await cleanupRecorder(true);
+      if (!activeRef.current) return;
+      if (!audio) {
+        if (!mutedRef.current) setStatus('idle');
+        return;
+      }
+      await runTurn({ audio });
+    } finally {
+      sendingRecRef.current = false;
+    }
+  };
+
+  const startListening = async () => {
+    if (!activeRef.current || mutedRef.current) return;
+    if (!canRecord()) {
+      setErr('Este navegador não suporta gravação de áudio. Use o campo de texto abaixo.');
+      setStatus('idle');
+      return;
+    }
+    await cleanupRecorder(false);
+    stopSpeaking();
+    setErr('');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (e) {
+      const denied = e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError';
+      setErr(denied
+        ? 'Microfone bloqueado. Libere a permissão do microfone no navegador/iPhone e toque em "Tocar para falar".'
+        : ('Não foi possível abrir o microfone' + (e?.message ? ': ' + e.message : '.')));
+      setStatus('idle');
+      return;
+    }
+    if (!activeRef.current || mutedRef.current) {
+      try { stream.getTracks().forEach((tr) => tr.stop()); } catch {}
+      return;
+    }
+    const mime = pickAudioMime();
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    rec.start(250);
+
+    const ctx = { stream, rec, mime, chunks, audioCtx: null, vadTimer: null };
+    recCtxRef.current = ctx;
+    setRecStarted(Date.now());
+    setHeardSpeech(false);
+    setStatus('listening');
+
+    // Web Audio RMS level meter + automatic end-of-speech detection (hands-free mode).
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const audioCtx = new AC();
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        ctx.audioCtx = audioCtx;
+        const buf = new Uint8Array(analyser.fftSize);
+        const startedAt = Date.now();
+        let speechMs = 0;
+        let hasSpoken = false;
+        let lastVoiceAt = 0;
+        const SPEECH_RMS = 0.022;
+        const MIN_SPEECH_MS = 280;
+        const SILENCE_MS = 1500;
+        const MAX_TURN_MS = 60000;
+        ctx.vadTimer = setInterval(() => {
+          if (recCtxRef.current !== ctx || !activeRef.current) return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const v = (buf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / buf.length);
+          setLevel(Math.min(1, rms * 6));
+          const now = Date.now();
+          if (rms >= SPEECH_RMS) {
+            speechMs += 80;
+            lastVoiceAt = now;
+            if (!hasSpoken && speechMs >= MIN_SPEECH_MS) {
+              hasSpoken = true;
+              setHeardSpeech(true);
+            }
+          }
+          if (handsFreeRef.current && ((hasSpoken && now - lastVoiceAt >= SILENCE_MS) || (hasSpoken && now - startedAt >= MAX_TURN_MS))) {
+            sendRecordedTurn();
+          }
+        }, 80);
+      }
     } catch {}
   };
 
-  const sendTurn = async (text) => {
-    if (!text.trim()) return;
-    stopSpeaking();
-    setStatus('thinking');
-    setTranscript(text);
-    try {
-      await bridge.send(chatId, text, [], '');
-      onSentText?.();
-      // Wait for assistant reply to land in messages
-      const startTs = Date.now();
-      while (activeRef.current && Date.now() - startTs < 90000) {
-        await new Promise((r) => setTimeout(r, 900));
-        const res = await bridge.messages(chatId).catch(() => null);
-        const last = (res?.messages || []).at(-1);
-        if (last && last.role === 'assistant' && !res?.chat?.running) {
-          const replyText = String(last.text || '').trim();
-          setLastReply(replyText);
-          setStatus('speaking');
-          await new Promise((done) => {
-            try {
-              const u = new SpeechSynthesisUtterance(replyText.replace(/[#*_`>]/g, ' ').slice(0, 1200));
-              u.lang = lang === 'en' ? 'en-US' : lang === 'es' ? 'es-ES' : 'pt-BR';
-              u.onend = done;
-              u.onerror = done;
-              window.speechSynthesis.cancel();
-              window.speechSynthesis.speak(u);
-            } catch { done(); }
-          });
-          break;
-        }
-      }
-    } catch (e) {
-      toast(e.message, 'err');
-    }
-    if (activeRef.current && !mutedRef.current) startListening();
-    else if (activeRef.current) setStatus('muted');
-  };
-
   useEffect(() => {
-    unlockSpeech();
+    activeRef.current = true;
     startListening();
     return () => {
       activeRef.current = false;
-      try { recRef.current?.stop(); } catch {}
+      turnIdRef.current++;
+      notifyMsgRef.current = null;
+      cleanupRecorder(false);
       stopSpeaking();
-      try { window.speechSynthesis?.cancel(); } catch {}
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bargeIn = () => {
+    turnIdRef.current++;
+    unlockSpeech();
     stopSpeaking();
-    try { window.speechSynthesis?.cancel(); } catch {}
     setMuted(false);
     mutedRef.current = false;
     startListening();
@@ -324,31 +477,90 @@ function LiveVoiceCallModal({ chatId, botName, lang, onClose, onSentText }) {
     setMuted(next);
     mutedRef.current = next;
     if (next) {
-      try { recRef.current?.stop(); } catch {}
+      cleanupRecorder(false);
       setStatus('muted');
     } else {
+      unlockSpeech();
       startListening();
     }
   };
 
+  const submitTyped = async (e) => {
+    e.preventDefault();
+    const v = typed.trim();
+    if (!v || status === 'sending' || status === 'thinking') return;
+    unlockSpeech();
+    setTyped('');
+    await cleanupRecorder(false);
+    runTurn({ text: v });
+  };
+
+  const activeTool = status === 'thinking' && live?.tools?.length ? live.tools[live.tools.length - 1].name : '';
+  const orbScale = status === 'listening' ? 1 + level * 0.22 : 1;
+  const statusLabel = status === 'listening'
+    ? (heardSpeech ? (handsFree ? 'Ouvindo você… (envia ao pausar)' : 'Gravando sua fala…') : 'Pode falar…')
+    : status === 'sending' ? 'Enviando áudio…'
+    : status === 'thinking' ? (activeTool ? `Executando: ${activeTool}…` : 'Pensando…')
+    : status === 'speaking' ? 'Falando resposta…'
+    : status === 'muted' ? 'Microfone mudo'
+    : 'Pronto para falar';
+
   return (
     <Modal title={`📞 Ligação ao vivo · ${botName || 'Agent'}`} onClose={onClose}>
-      <div className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: '12px 4px' }}>
-        <div className="hero-ic" style={{ width: 68, height: 68, borderRadius: '50%', background: status === 'listening' ? 'var(--ok, #30d158)22' : status === 'speaking' ? 'var(--accent, #0a84ff)22' : 'var(--bg-soft)' }}>
-          {status === 'muted' ? <MicOff size={28} /> : status === 'speaking' ? <Volume2 size={28} /> : <AudioLines size={28} />}
+      <div className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: '12px 4px', gap: 10 }}>
+        <div
+          className="hero-ic"
+          style={{
+            width: 72, height: 72, borderRadius: '50%',
+            transition: 'transform 100ms ease, background 150ms ease',
+            transform: `scale(${orbScale.toFixed(3)})`,
+            background: status === 'listening'
+              ? (heardSpeech ? 'rgba(48, 209, 88, 0.28)' : 'rgba(48, 209, 88, 0.14)')
+              : status === 'speaking' ? 'rgba(10, 132, 255, 0.22)'
+              : status === 'thinking' || status === 'sending' ? 'rgba(255, 159, 10, 0.18)'
+              : 'var(--bg-soft)',
+          }}
+        >
+          {status === 'muted' ? <MicOff size={28} />
+            : status === 'speaking' ? <Volume2 size={28} />
+            : status === 'thinking' || status === 'sending' ? <span className="spin" />
+            : <AudioLines size={28} />}
         </div>
-        <b>{status === 'listening' ? 'Ouvindo você falar…' : status === 'thinking' ? 'Pensando / executando ferramentas…' : status === 'speaking' ? 'Falando (toque em Falar para interromper)' : 'Microfone mudo'}</b>
-        {!SR && <p className="muted small">Este navegador não expõe SpeechRecognition; use o campo abaixo para conversar durante a chamada.</p>}
+        <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
+          <b>{statusLabel}</b>
+          {status === 'listening' && recStarted && <RecordingTimer started={recStarted} />}
+        </div>
+        {err && <ErrorBox error={err} />}
         {transcript && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left' }}><b>Você:</b> {transcript}</div>}
         {lastReply && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left', maxHeight: 160, overflow: 'auto' }}><b>{botName || 'Bot'}:</b> {lastReply}</div>}
-        <form className="row" style={{ width: '100%' }} onSubmit={(e) => { e.preventDefault(); if (typed.trim()) { const v = typed.trim(); setTyped(''); sendTurn(v); } }}>
+
+        <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
+          {status === 'listening' && (
+            <Btn icon={ArrowUp} onClick={sendRecordedTurn}>Enviar fala agora</Btn>
+          )}
+          {status === 'speaking' && (
+            <Btn icon={Mic} onClick={bargeIn}>Interromper e falar</Btn>
+          )}
+          {(status === 'idle' || status === 'muted') && (
+            <Btn icon={Mic} onClick={() => { unlockSpeech(); setMuted(false); mutedRef.current = false; startListening(); }}>Tocar para falar</Btn>
+          )}
+          {(status === 'sending' || status === 'thinking') && (
+            <Btn icon={Square} className="ghost small" onClick={() => bridge.stopChat(chatId).catch(() => {})}>Interromper resposta</Btn>
+          )}
+        </div>
+
+        <form className="row" style={{ width: '100%' }} onSubmit={submitTyped}>
           <input className="grow" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Ou digite durante a chamada…" />
-          <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || status === 'thinking'}>Enviar</Btn>
+          <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || status === 'sending' || status === 'thinking'}>Enviar</Btn>
         </form>
-        <div className="row wrap" style={{ marginTop: 6 }}>
+
+        <div className="row wrap" style={{ justifyContent: 'center', gap: 8, marginTop: 2 }}>
+          <label className="check small" style={{ marginRight: 4 }}>
+            <input type="checkbox" checked={handsFree} onChange={(e) => setHandsFree(e.target.checked)} />
+            <span>Auto-enviar ao pausar</span>
+          </label>
           <Btn icon={muted ? Mic : MicOff} className="ghost small" onClick={toggleMute}>{muted ? 'Ativar mic' : 'Mutar'}</Btn>
-          {status === 'speaking' && <Btn icon={Mic} className="small" onClick={bargeIn}>Interromper e falar</Btn>}
-          <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar ligação</Btn>
+          <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar</Btn>
         </div>
       </div>
     </Modal>
@@ -741,8 +953,8 @@ export default function Chat({ openMore, me }) {
   const rec = useRecorder(lang);
   const fileRef = useRef(null);
   // Read inside the SSE handler, which is created once per conversation.
-  const speakRef = useRef({ voiceMode, lastVoice: false, lang });
-  speakRef.current.voiceMode = voiceMode; speakRef.current.lang = lang;
+  const speakRef = useRef({ voiceMode, lastVoice: false, lang, liveCall: false });
+  speakRef.current.voiceMode = voiceMode; speakRef.current.lang = lang; speakRef.current.liveCall = liveCallOpen;
   const scrollRef = useRef(null);
   const composerRef = useRef(null);
   const mainRef = useRef(null);
@@ -813,7 +1025,7 @@ export default function Chat({ openMore, me }) {
         setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
         const sp = speakRef.current;
         if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped) {
-          if (sp.voiceMode || sp.lastVoice) speak(ev.message.id, ev.message.text, sp.lang, current);
+          if (!sp.liveCall && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
           notifyBrowser('Agent Control', ev.message.text);
         }
       }
@@ -1216,6 +1428,7 @@ export default function Chat({ openMore, me }) {
           {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
+            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { unlockSpeech(); setLiveCallOpen(true); }} />}
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
             <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
           </div>
@@ -1226,7 +1439,7 @@ export default function Chat({ openMore, me }) {
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
-          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => setLiveCallOpen(true)} />}
+          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { unlockSpeech(); setLiveCallOpen(true); }} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {typeof Notification !== 'undefined' && (
             <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
@@ -1435,6 +1648,16 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           <div className="group">
+            <button className="group-row press" onClick={() => { unlockSpeech(); setShowOpts(false); setLiveCallOpen(true); }}>
+              <span className="row-ic ic-chat"><Phone size={17} /></span>
+              <span className="grow"><b>Ligação de voz ao vivo</b><small className="muted">Conversa por voz em tempo real</small></span>
+            </button>
+            <button className="group-row press" onClick={() => { setShowOpts(false); setNewTaskOpen(true); }}>
+              <span className="row-ic ic-schedules"><Layers size={17} /></span>
+              <span className="grow"><b>Nova tarefa paralela</b><small className="muted">Roda em segundo plano sem travar o chat</small></span>
+            </button>
+          </div>
+          <div className="group">
             <button className="group-row press" onClick={() => { setShowOpts(false); setShowMsgSearch(true); }}>
               <span className="row-ic ic-chat"><Search size={17} /></span>
               <span className="grow"><b>{t('chat.searchMsgs')}</b></span>
@@ -1468,7 +1691,7 @@ export default function Chat({ openMore, me }) {
       )}
       {liveCallOpen && current && (
         <LiveVoiceCallModal chatId={current} botName={botsById[info?.bot || 'default']?.name || 'Agent'} lang={lang}
-          onClose={() => setLiveCallOpen(false)} onSentText={() => loadMessages(current)} />
+          messages={messages} live={live} onClose={() => setLiveCallOpen(false)} />
       )}
       {newTaskOpen && current && (
         <ParallelTaskModal chatId={current} bots={botsL.data} onClose={() => setNewTaskOpen(false)} onStarted={() => chatTasks.reload(true)} />

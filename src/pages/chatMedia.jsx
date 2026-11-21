@@ -20,12 +20,13 @@ export const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' :
 const fmtClock = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 
 // ---------- recording ----------
-const pickMime = () => {
+export const pickAudioMime = () => {
   if (typeof MediaRecorder === 'undefined') return '';
   // Safari records AAC in MP4, which plays everywhere; Chrome/Firefox fall through to WebM/Opus.
   for (const m of ['audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus']) if (MediaRecorder.isTypeSupported?.(m)) return m;
   return '';
 };
+const pickMime = pickAudioMime;
 export const canRecord = () => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
 
 export function useRecorder(lang) {
@@ -193,7 +194,7 @@ function ttsEl() {
   ttsAudio.preload = 'auto';
   ttsAudio.onplay = () => { if (ttsAudio.src !== SILENT) claim(ttsAudio); };
   const done = () => { if (speakState && !speakState.loading && !speakState.browser) { speakState = null; notify(); } };
-  ttsAudio.onpause = done; ttsAudio.onended = done;
+  ttsAudio.onpause = done; ttsAudio.onended = done; ttsAudio.onerror = done;
   return ttsAudio;
 }
 
@@ -233,6 +234,17 @@ export async function speak(id, text, lang, chatId, file) {
   } catch {
     if (speakState?.id === id) speakBrowser(id, text, lang);
   }
+}
+export async function speakAndWait(id, text, lang, chatId, file) {
+  await speak(id, text, lang, chatId, file);
+  if (!speakState || speakState.id !== id) return;
+  await new Promise((resolve) => {
+    if (!speakState || speakState.id !== id) return resolve();
+    const fn = (st) => {
+      if (!st || st.id !== id) { subs.delete(fn); resolve(); }
+    };
+    subs.add(fn);
+  });
 }
 export function stopSpeaking() {
   const was = speakState;
