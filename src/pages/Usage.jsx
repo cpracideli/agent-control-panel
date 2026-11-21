@@ -169,14 +169,15 @@ export default function Usage() {
     const fmtDay = (s, o) => new Date(s + 'T12:00:00').toLocaleDateString(lang, o);
     if (range === 'day') {
       const days = d.days.slice(-14);
-      return days.map((x) => ({ key: x.date, label: fmtDay(x.date, { weekday: 'short', day: '2-digit', month: '2-digit' }), short: fmtDay(x.date, { day: 'numeric' }), c: x.claude, a: x.antigravity }));
+      return days.map((x) => ({ key: x.date, label: fmtDay(x.date, { weekday: 'short', day: '2-digit', month: '2-digit' }), short: fmtDay(x.date, { day: 'numeric' }), c: x.claude, a: x.antigravity, cp: x.copilot || { tokens: 0, runs: 0 } }));
     }
     const weeks = new Map();
     for (const x of d.days) {
       const k = weekStart(x.date);
-      const w = weeks.get(k) || { key: k, c: { tokens: 0, msgs: 0, runs: 0, cost: 0 }, a: { tokens: 0, runs: 0, cost: 0 } };
+      const w = weeks.get(k) || { key: k, c: { tokens: 0, msgs: 0, runs: 0, cost: 0 }, a: { tokens: 0, runs: 0, cost: 0 }, cp: { tokens: 0, runs: 0 } };
       for (const f of ['tokens', 'msgs', 'runs', 'cost']) w.c[f] += x.claude[f] || 0;
       for (const f of ['tokens', 'runs', 'cost']) w.a[f] += x.antigravity[f] || 0;
+      for (const f of ['tokens', 'runs']) w.cp[f] += (x.copilot && x.copilot[f]) || 0;
       weeks.set(k, w);
     }
     return [...weeks.values()].slice(-8).map((w) => ({ ...w, label: t('use.weekOf', { d: fmtDay(w.key, { day: '2-digit', month: '2-digit' }) }), short: fmtDay(w.key, { day: 'numeric', month: 'numeric' }) }));
@@ -209,6 +210,9 @@ export default function Usage() {
         fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
         render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
         empty={t('use.agyEmpty')} />
+      <BarChart title="GitHub Copilot" color="var(--chart-3, #6366f1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.cp.tokens, raw: r.cp }))}
+        render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+        empty="Sem chamadas do Copilot registradas no período." />
     </div>
   );
   const note = d && <>{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</>;
@@ -236,6 +240,8 @@ export default function Usage() {
             <Row icon={Gauge} tint="ic-overview" label={'Claude · ' + t('use.last7')} sub={t('use.msgs', { n: sum(7, (x) => x.claude.msgs) })} value={<b>{tok(sum(7, (x) => x.claude.tokens))}</b>} />
             <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.today')} sub={t('use.runs', { n: today.antigravity.runs })} value={<b>{tok(today.antigravity.tokens)}</b>} />
             <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.last7')} sub={t('use.runs', { n: sum(7, (x) => x.antigravity.runs) })} value={<b>{tok(sum(7, (x) => x.antigravity.tokens))}</b>} />
+            <Row icon={Gauge} tint="ic-providers" label={'GitHub Copilot · ' + t('use.today')} sub={t('use.runs', { n: today.copilot?.runs || 0 })} value={<b>{tok(today.copilot?.tokens || 0)}</b>} />
+            <Row icon={Gauge} tint="ic-providers" label={'GitHub Copilot · ' + t('use.last7')} sub={t('use.runs', { n: sum(7, (x) => x.copilot?.runs || 0) })} value={<b>{tok(sum(7, (x) => x.copilot?.tokens || 0))}</b>} />
           </ListGroup>
         )}
         <ListGroup title={t('use.history')} footer={note}>
@@ -272,6 +278,8 @@ export default function Usage() {
           <div className="stat"><small>Claude · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.claude.tokens))}</b><small>{t('use.msgs', { n: sum(7, (x) => x.claude.msgs) })}</small></div>
           <div className="stat"><small>Antigravity · {t('use.today')}</small><b>{tok(today.antigravity.tokens)}</b><small>{t('use.runs', { n: today.antigravity.runs })}</small></div>
           <div className="stat"><small>Antigravity · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.antigravity.tokens))}</b><small>{t('use.runs', { n: sum(7, (x) => x.antigravity.runs) })}</small></div>
+          <div className="stat"><small>GitHub Copilot · {t('use.today')}</small><b>{tok(today.copilot?.tokens || 0)}</b><small>{t('use.runs', { n: today.copilot?.runs || 0 })}</small></div>
+          <div className="stat"><small>GitHub Copilot · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.copilot?.tokens || 0))}</b><small>{t('use.runs', { n: sum(7, (x) => x.copilot?.runs || 0) })}</small></div>
         </div>
       )}
 
@@ -294,6 +302,9 @@ export default function Usage() {
               fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
               render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
               empty={t('use.agyEmpty')} />
+            <BarChart title="GitHub Copilot" color="var(--chart-3, #6366f1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.cp.tokens, raw: r.cp }))}
+              render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+              empty="Sem chamadas do Copilot registradas no período." />
             <p className="muted small">{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</p>
           </div>
         )}
