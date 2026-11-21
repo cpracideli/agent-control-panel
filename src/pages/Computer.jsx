@@ -1,10 +1,95 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Camera, Check, ExternalLink, Eye, Globe, GraduationCap, Hand, Maximize2, Monitor, Play, Power, RefreshCw, SkipForward } from 'lucide-react';
+import { AlertTriangle, Camera, Check, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Maximize2, Monitor, PenTool, Play, Power, RefreshCw, Send, SkipForward } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useFmt, useLoad, useToast } from '../ui.jsx';
 import { imageLink, openImage } from '../viewer.jsx';
 import { ListGroup, Row, useIsMobile } from '../native.jsx';
+
+function AnnotateModal({ currentUrl, onClose }) {
+  const toast = useToast();
+  const chats = useLoad(() => bridge.chats(), [], { cacheKey: '/bridge/chats' });
+  const webChats = (chats.data || []).filter((c) => c.kind === 'web' && !c.archived);
+  const [chatId, setChatId] = useState('');
+  const [note, setNote] = useState('');
+  const [rect, setRect] = useState(null);
+  const [drag, setDrag] = useState(null);
+  const [imgSrc] = useState(() => bridge.computerScreenshotUrl());
+  const imgRef = useRef(null);
+  const [busy, run] = useAction();
+
+  useEffect(() => { if (!chatId && webChats.length) setChatId(webChats[0].id); }, [webChats, chatId]);
+
+  const toRel = (e) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)), y: Math.max(0, Math.min(1, (e.clientY - box.top) / box.height)) };
+  };
+  const onDown = (e) => { const p = toRel(e); setDrag(p); setRect({ x: p.x, y: p.y, w: 0, h: 0 }); };
+  const onMove = (e) => {
+    if (!drag) return;
+    const p = toRel(e);
+    setRect({ x: Math.min(drag.x, p.x), y: Math.min(drag.y, p.y), w: Math.abs(p.x - drag.x), h: Math.abs(p.y - drag.y) });
+  };
+  const onUp = () => setDrag(null);
+
+  const sendAnnotated = async (e) => {
+    e.preventDefault();
+    const targetId = chatId || webChats[0]?.id;
+    if (!targetId) return toast('Crie uma conversa web primeiro', 'err');
+    const img = imgRef.current;
+    if (!img) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || 1280;
+    canvas.height = img.naturalHeight || 800;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (rect && rect.w > 0.01 && rect.h > 0.01) {
+      ctx.strokeStyle = '#ff375f';
+      ctx.lineWidth = Math.max(4, Math.round(canvas.width / 250));
+      ctx.strokeRect(rect.x * canvas.width, rect.y * canvas.height, rect.w * canvas.width, rect.h * canvas.height);
+      ctx.fillStyle = 'rgba(255,55,95,0.14)';
+      ctx.fillRect(rect.x * canvas.width, rect.y * canvas.height, rect.w * canvas.width, rect.h * canvas.height);
+    }
+    const dataUrl = canvas.toDataURL('image/png');
+    const b64 = dataUrl.split(',')[1] || '';
+    const msg = `[Anotação na tela do Computador${currentUrl ? ' (' + currentUrl + ')' : ''}]\n${note.trim() || 'Veja a área destacada em vermelho nesta tela.'}`;
+    const r = await run('send', () => bridge.send(targetId, msg, [{ name: 'tela-anotada.png', type: 'image/png', data: b64 }]), 'Anotação enviada ao chat');
+    if (r) { onClose(); window.location.hash = '#/chat/' + targetId.slice(4); }
+  };
+
+  return (
+    <Modal title="Anotar tela e enviar ao chat" onClose={onClose} wide>
+      <form className="stack" onSubmit={sendAnnotated}>
+        <p className="muted small" style={{ margin: 0 }}>Arraste sobre a captura para destacar a área desejada, adicione seu comentário e envie direto para o bot.</p>
+        <div style={{ position: 'relative', userSelect: 'none', cursor: 'crosshair', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
+          <img ref={imgRef} src={imgSrc} alt="Tela" style={{ width: '100%', display: 'block' }} crossOrigin="anonymous" />
+          {rect && rect.w > 0.005 && (
+            <div style={{
+              position: 'absolute', left: (rect.x * 100) + '%', top: (rect.y * 100) + '%',
+              width: (rect.w * 100) + '%', height: (rect.h * 100) + '%',
+              border: '2px solid #ff375f', background: 'rgba(255,55,95,0.16)', pointerEvents: 'none',
+            }} />
+          )}
+        </div>
+        <div className="form-grid">
+          <Field label="Enviar para conversa">
+            <select value={chatId} onChange={(e) => setChatId(e.target.value)}>
+              {webChats.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+          </Field>
+          <Field label="Instrução / comentário">
+            <input required value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: Clique neste botão ou corrija este valor" />
+          </Field>
+        </div>
+        <div className="row end">
+          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+          <Btn icon={Send} disabled={busy === 'send' || !webChats.length}>Enviar anotação ao chat</Btn>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function TeachModal({ currentUrl, onClose }) {
   const t = useT();
@@ -45,11 +130,17 @@ function TeachModal({ currentUrl, onClose }) {
 
 export default function Computer() {
   const t = useT();
+  const f = useFmt();
   const toast = useToast();
   const st = useLoad(() => bridge.computerStatus(), [], { interval: 5000, cacheKey: '/bridge/computer/status' });
+  const tl = useLoad(() => bridge.computerTimeline(), [], { interval: 15000 });
+  const secs = useLoad(() => bridge.secrets(), [], { cacheKey: '/bridge/secrets' });
+  const loginSecrets = (secs.data || []).filter((s) => s.kind === 'login' || s.username || s.domain);
   const [url, setUrl] = useState('');
+  const [loginPick, setLoginPick] = useState('');
   const [viewerKey, setViewerKey] = useState(0);
   const [teaching, setTeaching] = useState(false);
+  const [annotating, setAnnotating] = useState(false);
   const [busy, run] = useAction();
   const frameRef = useRef(null);
   const wrapRef = useRef(null);
@@ -208,16 +299,32 @@ export default function Computer() {
         </div>
       }>
         {running && (
-          <form className="row wrap computer-bar" onSubmit={openUrl}>
-            <label className="search grow">
-              <Globe size={14} />
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={d?.currentUrl || 'https://...'} />
-            </label>
-            <Btn icon={ExternalLink} className="ghost small" type="submit" disabled={busy === 'open' || !url.trim()}>{t('comp.go')}</Btn>
-            <a className="btn ghost small" {...imageLink(bridge.computerScreenshotUrl(), t('comp.screenshot'))}><Camera size={14} /> {t('comp.screenshot')}</a>
-            <Btn icon={RefreshCw} type="button" className="ghost small" onClick={() => setViewerKey((k) => k + 1)}>{t('comp.reconnect')}</Btn>
-            <Btn icon={Maximize2} type="button" className="ghost small" onClick={fullscreen}>{t('pg.full')}</Btn>
-          </form>
+          <div className="stack" style={{ gap: 8, marginBottom: 8 }}>
+            <form className="row wrap computer-bar" onSubmit={openUrl} style={{ marginBottom: 0 }}>
+              <label className="search grow">
+                <Globe size={14} />
+                <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={d?.currentUrl || 'https://...'} />
+              </label>
+              <Btn icon={ExternalLink} className="ghost small" type="submit" disabled={busy === 'open' || !url.trim()}>{t('comp.go')}</Btn>
+              <Btn icon={PenTool} type="button" className="ghost small" onClick={() => setAnnotating(true)}>Anotar</Btn>
+              <a className="btn ghost small" {...imageLink(bridge.computerScreenshotUrl(), t('comp.screenshot'))}><Camera size={14} /> {t('comp.screenshot')}</a>
+              <Btn icon={RefreshCw} type="button" className="ghost small" onClick={() => setViewerKey((k) => k + 1)}>{t('comp.reconnect')}</Btn>
+              <Btn icon={Maximize2} type="button" className="ghost small" onClick={fullscreen}>{t('pg.full')}</Btn>
+            </form>
+            {loginSecrets.length > 0 && (
+              <div className="row wrap small">
+                <KeyRound size={14} className="muted" />
+                <select value={loginPick} onChange={(e) => setLoginPick(e.target.value)} style={{ maxWidth: 260 }}>
+                  <option value="">Preencher login do cofre (cego)...</option>
+                  {loginSecrets.map((s) => <option key={s.name} value={s.name}>{s.label || s.name}{s.domain ? ' · ' + s.domain : ''}{s.hasTotp ? ' (+2FA)' : ''}</option>)}
+                </select>
+                <Btn icon={KeyRound} type="button" className="ghost small" disabled={!loginPick || busy === 'fill'}
+                  onClick={() => run('fill', () => bridge.computerFillLogin({ name: loginPick }), 'Credenciais preenchidas sem expor ao modelo').then(() => tl.reload(true))}>
+                  Preencher
+                </Btn>
+              </div>
+            )}
+          </div>
         )}
 
         <div ref={wrapRef} className={'computer-screen' + (human ? ' human' : '')}>
@@ -248,7 +355,25 @@ export default function Computer() {
         )}
       </Card>
 
+      <Card title={`Linha do tempo (${(tl.data || []).length})`} icon={History} actions={
+        running && <Btn icon={Camera} className="ghost small" disabled={busy === 'cap'} onClick={() => run('cap', () => bridge.computerCaptureTimeline('manual'), 'Frame salvo').then(() => tl.reload(true))}>Capturar agora</Btn>
+      }>
+        {!(tl.data || []).length && <p className="muted small">Os snapshots automáticos aparecem aqui conforme o bot navega, faz login ou pede ajuda.</p>}
+        {(tl.data || []).length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
+            {(tl.data || []).slice(0, 12).map((fr) => (
+              <a key={fr.id} {...imageLink(bridge.computerTimelineFrameUrl(fr.id), fr.label + ' · ' + f.date(fr.at))} className="bot-card" style={{ padding: 6, textDecoration: 'none', color: 'inherit' }}>
+                <img src={bridge.computerTimelineFrameUrl(fr.id)} alt={fr.label} loading="lazy" style={{ width: '100%', height: 96, objectFit: 'cover', borderRadius: 6 }} />
+                <div className="small ellipsis" style={{ marginTop: 4 }}><b>{fr.label}</b></div>
+                <div className="muted small">{f.ago(fr.at)}</div>
+              </a>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {teaching && <TeachModal currentUrl={d?.currentUrl} onClose={() => setTeaching(false)} />}
+      {annotating && <AnnotateModal currentUrl={d?.currentUrl} onClose={() => setAnnotating(false)} />}
     </div>
   );
 }

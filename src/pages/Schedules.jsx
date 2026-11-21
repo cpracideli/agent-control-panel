@@ -6,7 +6,7 @@ import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useCon
 import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const hookUrl = (s) => window.location.origin + '/hooks/' + s.id + '/' + s.hookToken;
-const STATUS_KIND = { ok: 'ok', quiet: 'muted', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
+const STATUS_KIND = { ok: 'ok', quiet: 'muted', skipped: 'muted', deferred: 'warn', budget_paused: 'err', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
 
 const CRON_HELP = [['0 8 * * *', 'daily'], ['0 9 * * 1-5', 'weekdays'], ['*/30 * * * *', '30'], ['0 18 * * 5', 'fri']];
 const ChatIc = ({ id }) => (id.startsWith('web:') ? <Globe size={13} /> : <Smartphone size={13} />);
@@ -57,9 +57,12 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
   const toast = useToast();
   const editing = Boolean(initial?.id);
   const [f, setF] = useState(() => ({ chatId: chats[0]?.id || '', kind: 'cron', cron: '0 8 * * *', at: '', description: '', prompt: '', bot: '', webhook: false, quiet: false,
+    readOnly: false, respectQuietHours: false, urgent: false, triage: false, nudge: false,
     watchOn: false, watchCommand: '', watchEvery: 30, ...initial,
     ...(initial?.id ? { kind: initial.cron ? 'cron' : initial.at ? 'at' : 'none', at: toLocalInput(initial.at), cron: initial.cron || '0 8 * * *', bot: initial.bot || '',
-      webhook: Boolean(initial.webhook), quiet: Boolean(initial.quiet), watchOn: Boolean(initial.watch), watchCommand: initial.watch?.command || '', watchEvery: initial.watch?.every || 30 } : {}) }));
+      webhook: Boolean(initial.webhook), quiet: Boolean(initial.quiet), readOnly: Boolean(initial.readOnly), respectQuietHours: Boolean(initial.respectQuietHours),
+      urgent: Boolean(initial.urgent), triage: Boolean(initial.triage), nudge: Boolean(initial.nudge),
+      watchOn: Boolean(initial.watch), watchCommand: initial.watch?.command || '', watchEvery: initial.watch?.every || 30 } : {}) }));
   const [busy, run] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const nextAt = f.kind === 'cron' ? nextCronRun(f.cron) : null;
@@ -69,6 +72,7 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
     e.preventDefault();
     if (f.kind === 'none' && !f.webhook && !f.watchOn) return toast(t('sch.needTrigger'), 'err');
     const body = { description: f.description, prompt: f.prompt, bot: f.bot || '', webhook: f.webhook, quiet: f.quiet,
+      readOnly: f.readOnly, respectQuietHours: f.respectQuietHours, urgent: f.urgent, triage: f.triage, nudge: f.nudge,
       watch: f.watchOn ? { command: f.watchCommand, every: Number(f.watchEvery) } : null,
       ...(f.kind === 'cron' ? { cron: f.cron } : f.kind === 'at' ? { at: new Date(f.at).toISOString() } : editing ? { cron: '', at: '' } : {}) };
     const r = editing
@@ -122,6 +126,11 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
           )}
           {editing && initial.watchError && <p className="err small">{t('sch.watchError', { e: initial.watchError })}</p>}
           <label className="check"><input type="checkbox" checked={f.quiet} onChange={set('quiet')} /><span><b>{t('sch.quiet')}</b> · {t('sch.quietHint')}</span></label>
+          <label className="check"><input type="checkbox" checked={f.readOnly} onChange={set('readOnly')} /><span><b>Somente leitura (Read-Only)</b> · Bloqueia envios e alterações em código (ideal para pesquisa proativa)</span></label>
+          <label className="check"><input type="checkbox" checked={f.respectQuietHours} onChange={set('respectQuietHours')} /><span><b>Respeitar horário de silêncio</b> · Adia execuções fora do expediente e roda em lote ao encerrar</span></label>
+          <label className="check"><input type="checkbox" checked={f.triage} onChange={set('triage')} /><span><b>Triagem rápida prévia</b> · Usa modelo leve para filtrar ruído antes do modelo principal</span></label>
+          <label className="check"><input type="checkbox" checked={f.nudge} onChange={set('nudge')} /><span><b>Modo Nudge</b> · Envia sugestão com 1 clique / votação no WhatsApp em vez de agir sozinho</span></label>
+          <label className="check"><input type="checkbox" checked={f.urgent} onChange={set('urgent')} /><span><b>Urgente</b> · Ignora horário de silêncio e pausa por teto mensal</span></label>
         </div>
         <Field label={t('sch.description')}><input required value={f.description} onChange={set('description')} placeholder={t('sch.descPh')} /></Field>
         <Field label={t('sch.prompt')} hint={t('sch.promptHint')}><textarea required rows={5} value={f.prompt} onChange={set('prompt')} /></Field>
@@ -266,7 +275,11 @@ export default function Schedules() {
                 <div className="row wrap"><b>#{s.id} · {s.description}</b>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}
                   {s.webhook && <Badge kind="muted">webhook</Badge>}{s.watch && <Badge kind="muted">{t('sch.watchBadge', { n: s.watch.every })}</Badge>}
                   {s.quiet && <Badge kind="muted">{t('sch.quietBadge')}</Badge>}
-                  {s.lastRunInfo && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status)}</Badge>}</div>
+                  {s.readOnly && <Badge kind="ok">read-only</Badge>}
+                  {s.nudge && <Badge kind="muted">nudge</Badge>}
+                  {s.respectQuietHours && <Badge kind="muted">silêncio</Badge>}
+                  {s.deferred && <Badge kind="warn">adiada</Badge>}
+                  {s.lastRunInfo && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status) || s.lastRunInfo.status}</Badge>}</div>
                 <div className="muted small with-ic">
                   {(s.cron || s.at) && <><span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span> · </>}<ChatIc id={s.chatId} />{s.chatTitle}{s.botName && ' · ' + s.botName}
                   {nextAt && ' · ' + t('sch.nextRun', { d: f.date(nextAt) })}

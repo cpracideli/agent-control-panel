@@ -1,9 +1,9 @@
 // Usage: plan limits right now (Claude session/week, Antigravity quota pools) and token history per day/week.
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, Gauge, Sparkles } from 'lucide-react';
+import { AlertTriangle, BarChart3, Download, Gauge, Save, Sparkles, Wallet } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
-import { Badge, Card, ErrorBox, Skeleton, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, Skeleton, useAction, useFmt, useLoad } from '../ui.jsx';
 import { ListGroup, Row, useIsMobile } from '../native.jsx';
 
 const compact = (lang, n) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: n >= 1e6 ? 1 : 0 }).format(n || 0);
@@ -97,6 +97,61 @@ function BarChart({ title, rows, color, render, empty }) {
   );
 }
 
+function SpendingCard({ spending, routineForecasts, onSaved }) {
+  const f = useFmt();
+  const [monthlyLimitUsd, setMonthly] = useState(spending?.monthlyLimitUsd ?? 0);
+  const [taskAlertUsd, setAlert] = useState(spending?.taskAlertUsd ?? 5);
+  const [pauseRoutinesOnLimit, setPause] = useState(Boolean(spending?.pauseRoutinesOnLimit));
+  const [busy, run] = useAction();
+  const pct = spending?.monthlyLimitUsd > 0 ? Math.min(100, Math.round((spending.monthSpendUsd / spending.monthlyLimitUsd) * 100)) : 0;
+  const save = async (e) => {
+    e.preventDefault();
+    const r = await run('sp', () => bridge.settings({ spending: { monthlyLimitUsd: Number(monthlyLimitUsd) || 0, taskAlertUsd: Number(taskAlertUsd) || 0, pauseRoutinesOnLimit } }), 'Orçamento atualizado');
+    if (r) onSaved?.();
+  };
+  return (
+    <Card title="Orçamento mensal & Auditoria" icon={Wallet} actions={
+      <a className="btn ghost small" href={bridge.auditCsvUrl(1000)} download="agent-control-audit.csv">
+        <Download size={14} /> Exportar Auditoria CSV
+      </a>
+    }>
+      <div className="stack">
+        <div className="stats">
+          <div className="stat"><small>Gasto no mês ({spending?.month})</small><b>{f.usd(spending?.monthSpendUsd || 0)}</b><small>{spending?.monthRuns || 0} execuções</small></div>
+          <div className="stat"><small>Projeção do mês</small><b>{f.usd(spending?.monthForecastUsd || 0)}</b><small>{spending?.monthlyLimitUsd > 0 ? `Teto: ${f.usd(spending.monthlyLimitUsd)} (${pct}%)` : 'Sem teto definido'}</small></div>
+        </div>
+        {spending?.limitReached && (
+          <div className="banner warn" style={{ borderRadius: 10 }}>
+            <AlertTriangle size={15} /><span>Teto mensal atingido ({f.usd(spending.monthSpendUsd)} / {f.usd(spending.monthlyLimitUsd)}).</span>
+          </div>
+        )}
+        <form className="stack" onSubmit={save}>
+          <div className="form-grid">
+            <Field label="Teto mensal (USD)" hint="0 = sem limite"><input type="number" step="0.5" min="0" value={monthlyLimitUsd} onChange={(e) => setMonthly(e.target.value)} /></Field>
+            <Field label="Alerta por tarefa (USD)" hint="Avisa se uma tarefa passar deste valor"><input type="number" step="0.5" min="0" value={taskAlertUsd} onChange={(e) => setAlert(e.target.value)} /></Field>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={pauseRoutinesOnLimit} onChange={(e) => setPause(e.target.checked)} />
+            <span>Pausar rotinas automáticas não urgentes ao atingir o teto mensal</span>
+          </label>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'sp'}>Salvar orçamento</Btn></div>
+        </form>
+        {routineForecasts?.some((r) => r.projectedMonthlyUsd > 0) && (
+          <div className="stack">
+            <b className="small muted">Projeção mensal por rotina</b>
+            {routineForecasts.filter((r) => r.projectedMonthlyUsd > 0).map((r) => (
+              <div key={r.id} className="list-row">
+                <div className="grow"><b>#{r.id} · {r.description}</b><div className="muted small">~{r.estMonthlyRuns} exec/mês · média {f.usd(r.avgCostUsd)}</div></div>
+                <Badge>{f.usd(r.projectedMonthlyUsd)}/mês</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export default function Usage() {
   const t = useT();
   const f = useFmt();
@@ -180,6 +235,7 @@ export default function Usage() {
         <ListGroup title={t('use.history')} footer={note}>
           <div className="group-form stack">{segs}{charts}</div>
         </ListGroup>
+        {d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />}
       </div>
     );
   }
@@ -233,6 +289,7 @@ export default function Usage() {
           </div>
         )}
       </Card>
+      {d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />}
     </div>
   );
 }

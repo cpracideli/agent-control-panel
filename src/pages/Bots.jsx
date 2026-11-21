@@ -42,7 +42,7 @@ function resizeAvatar(file) {
 function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
   const t = useT();
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', approvalMode: 'auto', allowRules: '', blockRules: '', mcp: null, ...initial });
+  const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', approvalMode: 'auto', allowRules: '', blockRules: '', policyEnforce: false, mcp: null, ...initial });
   const [busy, run] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const pickAvatar = async (e) => {
@@ -63,7 +63,7 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
     e.preventDefault();
     const body = { name: f.name.trim(), emoji: f.emoji, avatar: f.avatar || '', color: f.color, description: f.description, instructions: f.instructions,
       provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory,
-      approvalMode: f.approvalMode || 'auto', allowRules: f.allowRules || '', blockRules: f.blockRules || '', mcp: f.mcp };
+      approvalMode: f.approvalMode || 'auto', allowRules: f.allowRules || '', blockRules: f.blockRules || '', policyEnforce: Boolean(f.policyEnforce), mcp: f.mcp };
     const r = editing ? await run('save', () => bridge.patchBot(f.id, body), t('bots.saved')) : await run('save', () => bridge.addBot(body), t('bots.created'));
     if (r) { onSaved(r); onClose(); }
   };
@@ -123,15 +123,23 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
           <Field label={t('bots.approval')} hint={t('bots.approvalHint')}>
             <select value={f.approvalMode || 'auto'} onChange={set('approvalMode')}>
               <option value="auto">{t('bots.appAuto')}</option>
+              <option value="when_asked">Só quando eu pedir</option>
               <option value="ask">{t('bots.appAsk')}</option>
+              <option value="handoff">Passar para mim (Handoff)</option>
               <option value="never">{t('bots.appNever')}</option>
             </select>
           </Field>
         </div>
         <Disclosure className="trigger-box" summary={<b className="with-ic"><ShieldCheck size={14} /> {t('bots.rulesTitle')}</b>}>
-          <div className="form-grid" style={{ marginTop: 10 }}>
-            <Field label={t('bots.allowRules')}><textarea rows={3} value={f.allowRules || ''} onChange={set('allowRules')} placeholder={t('bots.allowPh')} /></Field>
-            <Field label={t('bots.blockRules')}><textarea rows={3} value={f.blockRules || ''} onChange={set('blockRules')} placeholder={t('bots.blockPh')} /></Field>
+          <div className="stack" style={{ marginTop: 10 }}>
+            <label className="check">
+              <input type="checkbox" checked={Boolean(f.policyEnforce)} onChange={(e) => setF({ ...f, policyEnforce: e.target.checked })} />
+              <span><b>Aplicar regras no servidor (PreToolUse)</b> · Valida ferramentas fora do prompt do modelo</span>
+            </label>
+            <div className="form-grid">
+              <Field label={t('bots.allowRules')}><textarea rows={3} value={f.allowRules || ''} onChange={set('allowRules')} placeholder={t('bots.allowPh')} /></Field>
+              <Field label={t('bots.blockRules')}><textarea rows={3} value={f.blockRules || ''} onChange={set('blockRules')} placeholder={t('bots.blockPh')} /></Field>
+            </div>
           </div>
         </Disclosure>
         <Field label={t('bots.mcp')} hint={agy ? t('bots.mcpAgy') : t('bots.mcpHint')}>

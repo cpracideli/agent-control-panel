@@ -11,13 +11,24 @@ const PRIO_KIND = { low: 'muted', medium: 'ok', high: 'warn', urgent: 'err' };
 function TicketForm({ initial, bots, onClose, onSaved }) {
   const t = useT();
   const editing = Boolean(initial?.id);
-  const [f, setF] = useState({ title: '', description: '', status: 'todo', priority: 'medium', bot: '', ...initial });
+  const [f, setF] = useState({
+    title: '', description: '', status: 'todo', priority: 'medium', bot: '',
+    goal: false, doneCriteria: '', checkIntervalMin: 0, nextCheckAt: '', maxRuns: 0,
+    ...initial,
+    ...(initial?.nextCheckAt ? { nextCheckAt: initial.nextCheckAt.slice(0, 16) } : {}),
+  });
   const [busy, run] = useAction();
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();
-    const body = { title: f.title.trim(), description: f.description, status: f.status, priority: f.priority, bot: f.bot || '' };
+    const body = {
+      title: f.title.trim(), description: f.description, status: f.status, priority: f.priority, bot: f.bot || '',
+      goal: Boolean(f.goal), doneCriteria: f.doneCriteria || '',
+      checkIntervalMin: Number(f.checkIntervalMin) || 0,
+      maxRuns: Number(f.maxRuns) || 0,
+      nextCheckAt: f.nextCheckAt ? new Date(f.nextCheckAt).toISOString() : '',
+    };
     const r = editing
       ? await run('save', () => bridge.patchTicket(initial.id, body), t('bd.saved'))
       : await run('save', () => bridge.addTicket(body), t('bd.created'));
@@ -49,6 +60,20 @@ function TicketForm({ initial, bots, onClose, onSaved }) {
         <Field label={t('bd.desc')}>
           <textarea rows={6} value={f.description} onChange={set('description')} placeholder={t('bd.descPh')} />
         </Field>
+        <div className="trigger-box stack">
+          <label className="check">
+            <input type="checkbox" checked={Boolean(f.goal)} onChange={set('goal')} />
+            <span><b>🎯 Objetivo contínuo (Auto-Wake)</b> · O bot acompanha e acorda sozinho até cumprir o critério de conclusão</span>
+          </label>
+          {f.goal && (
+            <div className="form-grid">
+              <Field label="Critério de conclusão"><input value={f.doneCriteria || ''} onChange={set('doneCriteria')} placeholder="Ex.: Fatura paga ou PR aprovado" /></Field>
+              <Field label="Próximo despertar"><input type="datetime-local" value={f.nextCheckAt || ''} onChange={set('nextCheckAt')} /></Field>
+              <Field label="Intervalo padrão (min)" hint="0 = bot decide quando acordar"><input type="number" min={0} max={10080} value={f.checkIntervalMin || 0} onChange={set('checkIntervalMin')} /></Field>
+              <Field label="Máx. ciclos" hint="0 = ilimitado"><input type="number" min={0} max={200} value={f.maxRuns || 0} onChange={set('maxRuns')} /></Field>
+            </div>
+          )}
+        </div>
         <div className="row end">
           <button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button>
           <button disabled={busy === 'save'}>{t('common.save')}</button>
@@ -186,10 +211,11 @@ export default function Board() {
                   {col.map((tk) => (
                     <div key={tk.id} className="kanban-card press" onClick={() => setDetailId(tk.id)}>
                       <div className="row between" style={{ gap: 6 }}>
-                        <span className="mono muted small">#{tk.id}</span>
+                        <span className="mono muted small">#{tk.id}{tk.goal ? ' 🎯' : ''}</span>
                         <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>
                       </div>
                       <b className="kanban-title">{tk.title}</b>
+                      {tk.goal && tk.nextCheckAt && <div className="muted small">⏰ {f.date(tk.nextCheckAt)}</div>}
                       {tk.description && <div className="muted small ellipsis-2">{tk.description}</div>}
                       <div className="row between wrap" style={{ marginTop: 6 }}>
                         <span className="muted small">{tk.botName || t('bd.unassigned')}</span>

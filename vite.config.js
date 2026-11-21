@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
+      includeAssets: ['icon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'push-sw.js'],
       manifest: {
         id: '/',
         name: 'Agent Control',
@@ -38,6 +38,7 @@ export default defineConfig({
         // App shell only: API calls (incl. the SSE stream) always go to the network.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         globIgnores: ['splash/**'],
+        importScripts: ['/push-sw.js'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,

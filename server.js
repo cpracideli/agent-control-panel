@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import * as webpushMod from 'web-push';
+const webpush = webpushMod.default || webpushMod;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = process.env;
@@ -289,6 +291,111 @@ app.get('/api/bridge/web/files/:name', auth, async (req, res) => {
   }
 });
 
+// ---------- Web Push (VAPID keys & subscriptions persisted in the bridge's ~/.bridge/push.json) ----------
+let vapidCache = null;
+async function ensureVapid(panelOrigin = '') {
+  if (!BRIDGE_TOKEN) return null;
+  if (vapidCache) return vapidCache;
+  try {
+    const r = await fetch(`${BRIDGE_URL}/admin/push/config`, { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
+    if (r.ok) {
+      const cfg = await r.json();
+      if (cfg?.vapid?.publicKey && cfg?.vapid?.privateKey) {
+        vapidCache = cfg.vapid;
+        webpush.setVapidDetails('mailto:admin@agent-control.local', vapidCache.publicKey, vapidCache.privateKey);
+        return vapidCache;
+      }
+    }
+    const keys = webpush.generateVAPIDKeys();
+    const saveRes = await fetch(`${BRIDGE_URL}/admin/push/config`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vapid: keys, panelPushUrl: panelOrigin || PUBLIC_URL || '' }),
+    });
+    if (saveRes.ok) {
+      vapidCache = keys;
+      webpush.setVapidDetails('mailto:admin@agent-control.local', vapidCache.publicKey, vapidCache.privateKey);
+      return vapidCache;
+    }
+  } catch (e) {
+    console.warn('Web Push VAPID init skipped:', e.message);
+  }
+  return null;
+}
+async function sendPushToAll(payload, panelOrigin = '') {
+  const keys = await ensureVapid(panelOrigin);
+  if (!keys || !BRIDGE_TOKEN) return { sent: 0, failed: 0 };
+  const r = await fetch(`${BRIDGE_URL}/admin/push/subscriptions`, { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
+  if (!r.ok) return { sent: 0, failed: 0 };
+  const subs = await r.json().catch(() => []);
+  let sent = 0, failed = 0;
+  const msg = JSON.stringify({ title: payload.title || 'Agent Control', body: payload.body || '', chatId: payload.chatId || '', tag: payload.tag || 'agent-control', url: payload.url || '' });
+  for (const sub of (Array.isArray(subs) ? subs : [])) {
+    try {
+      await webpush.sendNotification(sub, msg);
+      sent += 1;
+    } catch (e) {
+      failed += 1;
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        fetch(`${BRIDGE_URL}/admin/push/subscriptions?endpoint=${encodeURIComponent(sub.endpoint)}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
+        }).catch(() => {});
+      }
+    }
+  }
+  return { sent, failed };
+}
+
+app.get('/api/push/key', auth, async (req, res) => {
+  try {
+    const keys = await ensureVapid(baseUrl(req));
+    if (!keys) return res.status(503).json({ error: 'Web Push indisponível (ponte sem token)' });
+    const cfg = await fetch(`${BRIDGE_URL}/admin/push/config`, { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } }).then((r) => r.json()).catch(() => ({}));
+    res.json({ publicKey: keys.publicKey, count: cfg.count || 0 });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    await ensureVapid(baseUrl(req));
+    const r = await fetch(`${BRIDGE_URL}/admin/push/subscriptions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: req.body?.subscription || req.body, panelPushUrl: baseUrl(req) }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: d.error || 'Falha ao salvar inscrição push' });
+    res.json(d);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post('/api/push/unsubscribe', auth, async (req, res) => {
+  try {
+    const ep = String(req.body?.endpoint || '');
+    const r = await fetch(`${BRIDGE_URL}/admin/push/subscriptions?endpoint=${encodeURIComponent(ep)}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
+    });
+    const d = await r.json().catch(() => ({}));
+    res.status(r.ok ? 200 : r.status).json(d);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post('/api/push/test', auth, async (req, res) => {
+  try {
+    const out = await sendPushToAll({ title: 'Agent Control', body: 'Notificações Web Push ativas neste dispositivo!', tag: 'push-test' }, baseUrl(req));
+    res.json(out);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post('/api/push/dispatch', async (req, res) => {
+  const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!BRIDGE_TOKEN || !safeEq(got, BRIDGE_TOKEN)) return res.status(401).json({ error: 'não autorizado' });
+  try {
+    const out = await sendPushToAll(req.body || {}, baseUrl(req));
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------- bridge /admin proxy (JSON and SSE) ----------
 app.all('/api/bridge/*', auth, async (req, res) => {
   if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
@@ -306,6 +413,8 @@ app.all('/api/bridge/*', auth, async (req, res) => {
     const type = r.headers.get('content-type') || 'application/json';
     res.status(r.status === 401 ? 502 : r.status); // a bridge 401 means a bad BRIDGE_ADMIN_TOKEN, not an expired panel session
     res.setHeader('Content-Type', type);
+    const disp = r.headers.get('content-disposition');
+    if (disp) res.setHeader('Content-Disposition', disp);
     if (type.includes('text/event-stream')) {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('X-Accel-Buffering', 'no');

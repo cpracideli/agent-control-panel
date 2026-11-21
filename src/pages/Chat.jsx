@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
-import { bridge, localCache } from '../api.js';
+import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
@@ -218,6 +218,7 @@ function PromptList({ prompts, term, onAnswered }) {
   const toast = useToast();
   const [notes, setNotes] = useState({});
   const [secretsVal, setSecretsVal] = useState({});
+  const [pins, setPins] = useState({});
   const [busy, setBusy] = useState(null);
   if (!prompts || !prompts.length) return null;
   const reply = async (p, ans, secretVal = '') => {
@@ -225,8 +226,9 @@ function PromptList({ prompts, term, onAnswered }) {
     if ((!val && !secretVal) || busy) return;
     setBusy(p.id);
     try {
-      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '', secretVal);
+      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '', secretVal, pins[p.id] || '');
       if (secretVal) setSecretsVal((s) => ({ ...s, [p.id]: '' }));
+      if (pins[p.id]) setPins((s) => ({ ...s, [p.id]: '' }));
       onAnswered?.(updated);
     } catch (e) { toast(e.message, 'err'); }
     finally { setBusy(null); }
@@ -260,6 +262,12 @@ function PromptList({ prompts, term, onAnswered }) {
                   </div>
                 ) : (
                   <>
+                    {p.requirePin && (
+                      <div className="row">
+                        <input type="password" value={pins[p.id] || ''} onChange={(e) => setPins({ ...pins, [p.id]: e.target.value })}
+                          placeholder="🔐 PIN de segurança obrigatório para aprovar" />
+                      </div>
+                    )}
                     <div className="row wrap">
                       {(p.options || []).map((opt) => (
                         <button key={opt} type="button" className="small" disabled={busy === p.id} onClick={() => reply(p, opt)}>{opt}</button>
@@ -515,14 +523,30 @@ export default function Chat({ openMore, me }) {
   const [pushOn, setPushState] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0');
   const togglePush = async () => {
     if (typeof Notification === 'undefined') return;
+    const ensureSub = async () => {
+      try {
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+          const { publicKey } = await webPush.key();
+          const pad = '='.repeat((4 - (publicKey.length % 4)) % 4);
+          const raw = window.atob((publicKey + pad).replace(/-/g, '+').replace(/_/g, '/'));
+          const key = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+          const reg = await navigator.serviceWorker.ready;
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+          await webPush.subscribe(sub.toJSON());
+        }
+      } catch {}
+    };
     if (Notification.permission !== 'granted') {
       const p = await Notification.requestPermission();
       if (p !== 'granted') return;
-      store.set('acp_push', '1'); setPushState(true); toast(t('chat.pushOn'));
+      store.set('acp_push', '1'); setPushState(true);
+      await ensureSub();
+      toast(t('chat.pushOn'));
     } else {
       const next = !pushOn;
       store.set('acp_push', next ? '1' : '0'); setPushState(next);
-      if (next) toast(t('chat.pushOn'));
+      if (next) { await ensureSub(); toast(t('chat.pushOn')); }
     }
   };
   const notifyBrowser = (title, body) => {

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Search, Shield, Trash2 } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Search, Shield, Trash2, Upload } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Skeleton, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
 
@@ -29,23 +29,44 @@ function EnvRow({ e, onSaved }) {
 function VaultTab() {
   const t = useT();
   const f = useFmt();
+  const toast = useToast();
   const confirm = useConfirm();
   const sec = useLoad(() => bridge.secrets(), [], { cacheKey: '/bridge/secrets' });
   const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
-  const [form, setForm] = useState({ name: '', label: '', value: '', scope: 'global', kind: 'api_key', note: '' });
+  const [form, setForm] = useState({ name: '', label: '', value: '', username: '', domain: '', totpSecret: '', scope: 'global', kind: 'api_key', note: '' });
   const [busy, run] = useAction();
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const save = async (e) => {
     e.preventDefault();
     const r = await run('add', () => bridge.addSecret(form), t('vlt.saved'));
-    if (r) { setForm({ name: '', label: '', value: '', scope: 'global', kind: 'api_key', note: '' }); sec.reload(true); }
+    if (r) { setForm({ name: '', label: '', value: '', username: '', domain: '', totpSecret: '', scope: 'global', kind: 'api_key', note: '' }); sec.reload(true); }
+  };
+
+  const onCsvFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const r = await run('csv', () => bridge.importSecretsCsv(String(reader.result || ''), form.scope || 'global'));
+      if (r) { toast(`${r.count} logins importados para o cofre criptografado`); sec.reload(true); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
     <>
-      <Card title={t('vlt.title', { n: sec.data?.length || 0 })} icon={Shield}>
-        <p className="muted small" style={{ marginTop: 0 }}>{t('vlt.intro')}</p>
+      <Card title={t('vlt.title', { n: sec.data?.length || 0 })} icon={Shield} actions={
+        <div className="row wrap">
+          <Badge kind="ok">AES-256-GCM</Badge>
+          <label className="btn ghost small" style={{ cursor: 'pointer' }}>
+            <Upload size={14} /> Importar CSV
+            <input type="file" accept=".csv,text/csv" hidden onChange={onCsvFile} disabled={busy === 'csv'} />
+          </label>
+        </div>
+      }>
+        <p className="muted small" style={{ marginTop: 0 }}>{t('vlt.intro')} Logins com domínio e 2FA (TOTP) podem ser preenchidos direto no Computador ao vivo sem o modelo ver a senha.</p>
         <ErrorBox error={sec.error} onRetry={() => sec.reload()} />
         {sec.data && !sec.data.length && <p className="muted">{t('vlt.none')}</p>}
         {(sec.data || []).map((s) => (
@@ -57,9 +78,12 @@ function VaultTab() {
                 <code className="mono muted small">{s.name}</code>
                 <Badge>{s.hint}</Badge>
                 <Badge kind="muted">{s.kind}</Badge>
+                {s.hasTotp && <Badge kind="ok">2FA/TOTP</Badge>}
                 {s.scope !== 'global' && <Badge kind="muted">{s.scope}</Badge>}
               </div>
-              <div className="muted small">{s.note ? s.note + ' · ' : ''}{f.ago(s.updated)}</div>
+              <div className="muted small">
+                {s.domain ? s.domain + ' · ' : ''}{s.username ? s.username + ' · ' : ''}{s.note ? s.note + ' · ' : ''}{f.ago(s.updated)}
+              </div>
             </div>
             <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} disabled={busy === 'd' + s.name}
               onClick={async () => (await confirm(t('vlt.removeConfirm', { n: s.name }))) && run('d' + s.name, () => bridge.deleteSecret(s.name), t('common.removed')).then(() => sec.reload(true))} />
@@ -70,12 +94,12 @@ function VaultTab() {
         <form className="stack" onSubmit={save}>
           <div className="form-grid">
             <Field label={t('vlt.name')}><input className="mono" required value={form.name} onChange={set('name')} placeholder="openai_api_key" /></Field>
-            <Field label={t('vlt.label')}><input value={form.label} onChange={set('label')} placeholder="Chave da API" /></Field>
+            <Field label={t('vlt.label')}><input value={form.label} onChange={set('label')} placeholder="Chave da API ou Login" /></Field>
             <Field label={t('vlt.kind')}>
               <select value={form.kind} onChange={set('kind')}>
                 <option value="api_key">API Key</option>
                 <option value="token">Token</option>
-                <option value="login">Login / Senha</option>
+                <option value="login">Login / Senha (+ 2FA)</option>
                 <option value="command">Variável de comando</option>
                 <option value="other">Outro</option>
               </select>
@@ -87,7 +111,14 @@ function VaultTab() {
               </select>
             </Field>
           </div>
-          <Field label={t('env.value')}><input type="password" required value={form.value} onChange={set('value')} placeholder="••••••••••••" /></Field>
+          {form.kind === 'login' && (
+            <div className="form-grid">
+              <Field label="Domínio do site" hint="Ex.: https://github.com (validado no preenchimento cego)"><input value={form.domain} onChange={set('domain')} placeholder="https://exemplo.com" /></Field>
+              <Field label="Usuário / E-mail"><input value={form.username} onChange={set('username')} placeholder="voce@dominio.com" /></Field>
+              <Field label="Chave 2FA / TOTP (opcional)" hint="Base32 ou link otpauth://totp/..."><input type="password" value={form.totpSecret} onChange={set('totpSecret')} placeholder="otpauth://totp/... ou JBSWY3DP..." /></Field>
+            </div>
+          )}
+          <Field label={form.kind === 'login' ? 'Senha' : t('env.value')}><input type="password" required value={form.value} onChange={set('value')} placeholder="••••••••••••" /></Field>
           <Field label={t('vlt.note')}><input value={form.note} onChange={set('note')} placeholder={t('vlt.notePh')} /></Field>
           <div className="row end"><Btn icon={Lock} disabled={busy === 'add' || !form.name.trim() || !form.value}>{t('vlt.saveBtn')}</Btn></div>
         </form>

@@ -79,6 +79,16 @@ function Editor({ initial, local, onSave, onClose }) {
             <Field label={t('mem.type')}>
               <select value={v.type} onChange={set('type')}>{['user', 'feedback', 'project', 'reference'].map((x) => <option key={x}>{x}</option>)}</select>
             </Field>
+            <Field label="Área (Nod)">
+              <select value={v.area || ''} onChange={set('area')}>
+                <option value="">Sem área</option>
+                <option value="about">about (quem você é)</option>
+                <option value="preferences">preferences (preferências)</option>
+                <option value="people">people (contatos)</option>
+                <option value="routines">routines (rotinas)</option>
+                <option value="lessons">lessons (lições aprendidas)</option>
+              </select>
+            </Field>
             <Field label={t('mem.body')}><textarea rows={10} value={v.body} onChange={set('body')} /></Field>
           </> : <Field label={t('mem.rawFile', { f: v.file })}><textarea className="mono" rows={18} value={v.raw} onChange={set('raw')} /></Field>
         ) : <>
@@ -202,13 +212,14 @@ function LocalMemory() {
   const confirm = useConfirm();
   const data = useLoad(() => mem.local(), [], { cacheKey: 'mem:local' });
   const [q, setQ] = useState('');
+  const [area, setArea] = useState('');
   const [open, setOpen] = useState(null);
   const [editing, setEditing] = useState(null);
   const [suggesting, setSuggesting] = useState(null);
-  const items = (data.data?.items || []).filter((x) => !q || (x.name + ' ' + x.description + ' ' + x.body).toLowerCase().includes(q.toLowerCase()));
+  const items = (data.data?.items || []).filter((x) => (!area || x.area === area) && (!q || (x.name + ' ' + x.description + ' ' + x.body).toLowerCase().includes(q.toLowerCase())));
   const save = async (v) => {
     try {
-      await mem.saveLocal(v.exists ? { file: v.file, raw: v.raw } : { name: v.name, title: v.title, description: v.description, type: v.type, body: v.body });
+      await mem.saveLocal(v.exists ? { file: v.file, raw: v.raw } : { name: v.name, title: v.title, description: v.description, type: v.type, area: v.area || '', body: v.body });
       toast(t('mem.saved')); setOpen(null); data.reload(true);
     } catch (e) { toast(e.message, 'err'); throw e; }
   };
@@ -220,8 +231,13 @@ function LocalMemory() {
     <>
       <div className="mem-toolbar">
         <span className="muted small ellipsis grow"><code>{data.data?.dir}</code></span>
+        <div className="seg">
+          {[['', 'Todas'], ['about', 'about'], ['preferences', 'pref'], ['people', 'people'], ['routines', 'routines'], ['lessons', 'lessons']].map(([k, lbl]) => (
+            <button key={k || 'all'} type="button" className={area === k ? 'on' : ''} onClick={() => setArea(k)}>{lbl}</button>
+          ))}
+        </div>
         <label className="mem-search"><Search size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('mem.search')} /></label>
-        <Btn icon={Plus} className="small" onClick={() => setEditing({ exists: false, name: '', title: '', description: '', type: 'project', body: '' })}>{t('mem.new')}</Btn>
+        <Btn icon={Plus} className="small" onClick={() => setEditing({ exists: false, name: '', title: '', description: '', type: 'project', area: area || '', body: '' })}>{t('mem.new')}</Btn>
       </div>
       <ErrorBox error={data.error} onRetry={() => data.reload()} />
       <Card>
@@ -233,7 +249,10 @@ function LocalMemory() {
               <div className="muted small mem-desc">{x.description}</div>
               <div className="muted small">{x.file} · {t('ov.ago', { t: f.ago(x.updated_at) })}{!x.indexed && <> · <span className="meter-err">{t('mem.notIndexed')}</span></>}</div>
             </div>
-            {x.type && <Badge>{x.type}</Badge>}
+            <div className="row" style={{ gap: 4 }}>
+              {x.area && <Badge kind="ok">{x.area}</Badge>}
+              {x.type && <Badge>{x.type}</Badge>}
+            </div>
           </button>
         ))}
       </Card>

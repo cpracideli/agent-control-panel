@@ -1,8 +1,158 @@
-import { useState } from 'react';
-import { KeyRound, Pencil, RefreshCw, RotateCcw, SlidersHorizontal, Smartphone, Sparkles } from 'lucide-react';
-import { bridge, coolify } from '../api.js';
+import { useEffect, useState } from 'react';
+import { Bell, KeyRound, Lock, Moon, Pencil, RefreshCw, RotateCcw, Save, Send, Shield, SlidersHorizontal, Smartphone, Sparkles } from 'lucide-react';
+import { bridge, coolify, webPush } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+function ProactivityAndChannelsCard({ providers }) {
+  const toast = useToast();
+  const cfg = useLoad(() => bridge.getSettings(), []);
+  const [busy, run] = useAction();
+  const [qh, setQh] = useState({ enabled: false, start: '22:00', end: '07:00' });
+  const [models, setModels] = useState({ triageProvider: '', triageModel: '', backgroundProvider: '', backgroundModel: '' });
+  const [pin, setPin] = useState('');
+  const [tg, setTg] = useState({ enabled: false, token: '', allowedUsers: '' });
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+
+  useEffect(() => {
+    const s = cfg.data;
+    if (!s) return;
+    if (s.proactivity?.quietHours) setQh(s.proactivity.quietHours);
+    if (s.proactivity) {
+      setModels({
+        triageProvider: s.proactivity.triageProvider || '',
+        triageModel: s.proactivity.triageModel || '',
+        backgroundProvider: s.proactivity.backgroundProvider || '',
+        backgroundModel: s.proactivity.backgroundModel || '',
+      });
+    }
+    if (s.telegram) setTg((cur) => ({ ...cur, enabled: Boolean(s.telegram.enabled), allowedUsers: s.telegram.allowedUsers || '' }));
+  }, [cfg.data]);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((sub) => setPushSubscribed(Boolean(sub))).catch(() => {});
+    }
+  }, []);
+
+  const savePro = () => run('pro', () => bridge.settings({ proactivity: { quietHours: qh, ...models } }), 'Proatividade salva').then(() => cfg.reload(true));
+  const savePin = (val) => run('pin', () => bridge.settings({ securityPin: val }), val ? 'PIN de segurança salvo' : 'PIN removido').then(() => { setPin(''); cfg.reload(true); });
+  const saveTg = () => run('tg', () => bridge.settings({ telegram: { enabled: tg.enabled, allowedUsers: tg.allowedUsers, ...(tg.token.trim() ? { token: tg.token.trim() } : {}) } }), 'Telegram atualizado').then(() => { setTg((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
+
+  const enableWebPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return toast('Navegador sem suporte a Web Push', 'err');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return toast('Permissão de notificação negada', 'err');
+    const r = await run('push', async () => {
+      const { publicKey } = await webPush.key();
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+      await webPush.subscribe(sub.toJSON());
+      setPushSubscribed(true);
+      return true;
+    }, 'Web Push ativado neste dispositivo');
+    if (r) cfg.reload(true);
+  };
+  const disableWebPush = async () => {
+    await run('push', async () => {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await webPush.unsubscribe(sub.endpoint); await sub.unsubscribe(); }
+      setPushSubscribed(false);
+    }, 'Web Push desativado');
+  };
+
+  const s = cfg.data || {};
+  return (
+    <div className="grid2">
+      <Card title="Proatividade & Horário de Silêncio" icon={Moon}>
+        <div className="stack">
+          <label className="check">
+            <input type="checkbox" checked={Boolean(qh.enabled)} onChange={(e) => setQh({ ...qh, enabled: e.target.checked })} />
+            <span><b>Ativar Horário de Silêncio (Quiet Hours)</b> · Adia rotinas não urgentes e dispara em lote depois</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Início (HH:MM)"><input type="time" value={qh.start} onChange={(e) => setQh({ ...qh, start: e.target.value })} /></Field>
+            <Field label="Fim (HH:MM)"><input type="time" value={qh.end} onChange={(e) => setQh({ ...qh, end: e.target.value })} /></Field>
+            <Field label="Provedor de triagem leve">
+              <select value={models.triageProvider} onChange={(e) => setModels({ ...models, triageProvider: e.target.value })}>
+                <option value="">Padrão</option>
+                {(providers?.providers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Modelo de triagem" hint="Ex.: haiku ou flash"><input value={models.triageModel} onChange={(e) => setModels({ ...models, triageModel: e.target.value })} placeholder="haiku" /></Field>
+            <Field label="Provedor background (rotinas)">
+              <select value={models.backgroundProvider} onChange={(e) => setModels({ ...models, backgroundProvider: e.target.value })}>
+                <option value="">Padrão</option>
+                {(providers?.providers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Modelo background"><input value={models.backgroundModel} onChange={(e) => setModels({ ...models, backgroundModel: e.target.value })} placeholder="sonnet" /></Field>
+          </div>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'pro'} onClick={savePro}>Salvar proatividade</Btn></div>
+        </div>
+      </Card>
+
+      <Card title="Segurança (PIN), Web Push & Telegram" icon={Shield}>
+        <div className="stack">
+          <div className="row wrap">
+            <Lock size={14} className="muted" />
+            <b>PIN para ações críticas</b>
+            <Badge kind={s.securityPinSet ? 'ok' : 'muted'}>{s.securityPinSet ? 'Ativo' : 'Desativado'}</Badge>
+          </div>
+          <div className="row wrap">
+            <input type="password" className="grow" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Novo PIN (4 a 32 caracteres)" />
+            <Btn icon={Lock} className="small" disabled={busy === 'pin' || pin.trim().length < 4} onClick={() => savePin(pin.trim())}>Definir PIN</Btn>
+            {s.securityPinSet && <button type="button" className="ghost small danger-text" disabled={busy === 'pin'} onClick={() => savePin('')}>Remover</button>}
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Bell size={14} className="muted" />
+            <b>Web Push (aba fechada / PWA)</b>
+            <Badge kind={pushSubscribed ? 'ok' : 'muted'}>{pushSubscribed ? 'Inscrito' : 'Inativo'}</Badge>
+            <span className="grow" />
+            {!pushSubscribed ? (
+              <Btn icon={Bell} className="small" disabled={busy === 'push'} onClick={enableWebPush}>Ativar Push</Btn>
+            ) : (
+              <>
+                <Btn icon={Send} className="ghost small" disabled={busy === 'ptest'} onClick={() => run('ptest', webPush.test, 'Push de teste enviado')}>Testar</Btn>
+                <button type="button" className="ghost small" disabled={busy === 'push'} onClick={disableWebPush}>Desativar</button>
+              </>
+            )}
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Send size={14} className="muted" />
+            <b>Canal Telegram (polling)</b>
+            <Badge kind={s.telegram?.running ? 'ok' : 'muted'}>{s.telegram?.running ? '@' + (s.telegram.botUsername || 'ativo') : 'Desligado'}</Badge>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(tg.enabled)} onChange={(e) => setTg({ ...tg, enabled: e.target.checked })} />
+            <span>Habilitar bot do Telegram (mesmos bots, memória e botões inline para aprovações)</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Bot Token (BotFather)"><input type="password" value={tg.token} onChange={(e) => setTg({ ...tg, token: e.target.value })} placeholder={s.telegram?.hasToken ? '•••• salvo (vazio mantém)' : '123456:ABC...'} /></Field>
+            <Field label="User IDs permitidos" hint="Separados por vírgula"><input value={tg.allowedUsers} onChange={(e) => setTg({ ...tg, allowedUsers: e.target.value })} placeholder="123456789" /></Field>
+          </div>
+          {s.telegram?.error && <p className="err small" style={{ margin: 0 }}>{s.telegram.error}</p>}
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'tg'} onClick={saveTg}>Salvar Telegram</Btn></div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 const CRED_KEYS = [
   { key: 'CLAUDE_CODE_OAUTH_TOKEN', id: 'oauth' },
@@ -140,6 +290,8 @@ export default function Providers() {
               </Card>
             ))}
           </div>
+
+          <ProactivityAndChannelsCard providers={data} />
 
           <ChatOverrides providers={data} />
         </>
