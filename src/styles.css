@@ -1765,3 +1765,27 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 /* AI Bot Avatar generation overlay */
 .bot-avatar-preview { position: relative; display: inline-flex; }
 .bot-avatar-gen-spin { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .42); border-radius: 30%; }
+
+/* ---- Usage dashboard: ring gauges, forecast, per-bot bars ---- */
+.rings { display: flex; flex-wrap: wrap; gap: 18px; justify-content: space-around; }
+.ring { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 112px; text-align: center; }
+.ring-bg { fill: none; stroke: rgba(128,128,128,.22); stroke-width: 10; }
+.ring-fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1), stroke .3s; }
+.ring-fg.ok { stroke: var(--ok); } .ring-fg.warn { stroke: var(--warn); } .ring-fg.err { stroke: var(--err); }
+.ring-txt { fill: currentColor; font-size: 24px; font-weight: 700; }
+.ring-label { font-size: 13px; }
+.usage-alert { display: flex; gap: 8px; align-items: center; border-radius: 10px; padding: 10px 12px; }
+.usage-alert.over { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); animation: usage-pulse 2s ease-in-out infinite; }
+.usage-alert.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.fc-bar { position: relative; height: 14px; border-radius: 8px; background: rgba(128,128,128,.18); overflow: hidden; }
+.fc-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.fc-fore { background: repeating-linear-gradient(45deg, rgba(128,128,128,.35) 0 6px, rgba(128,128,128,.15) 6px 12px); }
+.fc-spent.ok { background: var(--ok); } .fc-spent.warn { background: var(--warn); } .fc-spent.err { background: var(--err); }
+.fc-nums { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.daybars { display: flex; align-items: flex-end; gap: 4px; height: 64px; margin-top: 14px; }
+.daybar { flex: 1; background: var(--chart-1, #0a84ff); border-radius: 3px 3px 0 0; min-height: 1px; transition: height .6s; }
+.botbar { display: grid; grid-template-columns: minmax(80px, 140px) 1fr auto; gap: 10px; align-items: center; padding: 5px 0; }
+.botbar-track { height: 10px; border-radius: 6px; background: rgba(128,128,128,.18); overflow: hidden; }
+.botbar-track span { display: block; height: 100%; background: var(--chart-2, #af52de); border-radius: 6px; transition: width .7s; }
+@keyframes usage-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--err) 25%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .ring-fg, .fc-bar span, .daybar, .botbar-track span { transition: none; } .usage-alert.over { animation: none; } }

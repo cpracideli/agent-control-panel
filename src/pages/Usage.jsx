@@ -5,6 +5,7 @@ import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Skeleton, useAction, useFmt, useLoad } from '../ui.jsx';
 import { ListGroup, Row, useIsMobile } from '../native.jsx';
+import UsageDash from './UsageDash.jsx';
 
 const compact = (lang, n) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: n >= 1e6 ? 1 : 0 }).format(n || 0);
 const level = (p) => (p >= 95 ? 'err' : p >= 80 ? 'warn' : 'ok');
@@ -216,6 +217,7 @@ export default function Usage() {
     return (
       <div className="page page-list">
         <ErrorBox error={u.error} onRetry={() => u.reload()} />
+        <UsageDash d={d} />
         <ListGroup title={<span className="with-ic">Claude {d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}</span>}
           footer={d && <LimitStatus v={d.claude} as="span" />}>
           {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
@@ -247,6 +249,7 @@ export default function Usage() {
   return (
     <div className="page">
       <ErrorBox error={u.error} onRetry={() => u.reload()} />
+      <UsageDash d={d} />
 
       <div className="grid2">
         <Card title="Claude" icon={Gauge} actions={d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}>
