@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { Activity, BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
 import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
@@ -21,6 +21,7 @@ import Overview from './pages/Overview.jsx';
 import Usage from './pages/Usage.jsx';
 import Command from './pages/Command.jsx';
 import Status from './pages/Status.jsx';
+import Workflows from './pages/Workflows.jsx';
 import Memory from './pages/Memory.jsx';
 import Providers from './pages/Providers.jsx';
 import Mcp from './pages/Mcp.jsx';
@@ -31,6 +32,7 @@ import Logs from './pages/Logs.jsx';
 const PAGES = [
   { id: 'command', icon: LayoutDashboard, el: Command },
   { id: 'status', icon: Activity, el: Status },
+  { id: 'workflows', icon: GitBranch, el: Workflows },
   { id: 'chat', icon: MessageSquare, el: Chat },
   { id: 'bots', icon: Bot, el: Bots },
   { id: 'computer', icon: Monitor, el: Computer },

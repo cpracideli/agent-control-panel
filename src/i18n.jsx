@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 const pt = {
   'app.loading': 'Carregando…',
-  'nav.chat': 'Chat', 'nav.command': 'Centro', 'nav.status': 'Estado', 'nav.memory': 'Memória', 'common.delete': 'Apagar', 'mem.local': 'Memória interna', 'mem.localSource': 'memória interna do Claude Code (~/.claude/projects/-home-node-workspace/memory)',
+  'nav.chat': 'Chat', 'nav.command': 'Centro', 'nav.status': 'Estado', 'nav.workflows': 'Fluxos', 'nav.memory': 'Memória', 'common.delete': 'Apagar', 'mem.local': 'Memória interna', 'mem.localSource': 'memória interna do Claude Code (~/.claude/projects/-home-node-workspace/memory)',
   'mem.g.fact': 'Fatos', 'mem.g.session': 'Sessões', 'mem.g.other': 'Outros', 'mem.g.all': 'Tudo', 'mem.search': 'Buscar', 'mem.new': 'Nova', 'mem.edit': 'Editar', 'mem.project': 'Projeto',
   'mem.empty': 'Nada por aqui.', 'mem.updated': 'Atualizada em {d}', 'mem.saved': 'Memória salva', 'mem.deleted': 'Página apagada (dá para restaurar pelo ai-memory)', 'mem.deletedLocal': 'Memória apagada (cópia guardada na lixeira da ponte)',
   'mem.deleteConfirm': 'Apagar "{n}"?', 'mem.notIndexed': 'fora do MEMORY.md', 'mem.slug': 'Nome do arquivo', 'mem.slugHint': 'kebab-case, sem .md', 'mem.title': 'Título', 'mem.desc': 'Descrição (uma linha)',
@@ -208,7 +208,7 @@ const en = {
   'mem.type': 'Type', 'mem.body': 'Content (Markdown)', 'mem.rawFile': 'File {f}', 'mem.path': 'Path', 'mem.pathHint': 'e.g. notes/topic.md', 'mem.kind': 'Kind', 'mem.tags': 'Tags',
   'mem.suggest': 'Suggest a change', 'mem.suggestHint': 'Opens a new chat with the agent, with "{n}" as context.', 'mem.suggestPh': 'E.g. this is outdated, the number changed to…', 'mem.suggestSend': 'Open chat',
   'mem.suggestTitle': 'Memory: {n}', 'mem.suggestPrompt': 'Suggestion about a memory ({source}: {ref}). Evaluate it and, if it makes sense, apply the change (update, remove or create related memories). Ask me before deleting anything.',
-  'nav.usage': 'Usage', 'nav.command': 'Command', 'nav.status': 'Status', 'use.session': 'Current session (5 h)', 'use.weekly': 'Week (all models)', 'use.weeklyOpus': 'Week (Opus)', 'use.weeklySonnet': 'Week (Sonnet)',
+  'nav.usage': 'Usage', 'nav.command': 'Command', 'nav.status': 'Status', 'nav.workflows': 'Workflows', 'use.session': 'Current session (5 h)', 'use.weekly': 'Week (all models)', 'use.weeklyOpus': 'Week (Opus)', 'use.weeklySonnet': 'Week (Sonnet)',
   'use.resetsIn': 'resets in {t}', 'use.resetsAt': 'resets {t}', 'use.resetNow': 'resetting now', 'use.high': 'high', 'use.almostOut': 'almost at the limit',
   'use.stale': 'Stale data (last good reading).', 'use.staleAt': 'Stale data: last reading at {t}.', 'use.errorWas': 'Error: {e}', 'use.updated': 'Updated {t}', 'use.expired': 'Window reset · no new reading', 'use.models': '{n} models', 'use.today': 'today', 'use.last7': '7 days', 'use.msgs': '{n} replies', 'use.runs': '{n} runs',
   'use.history': 'Token history', 'use.days': '14 days', 'use.weeks': '8 weeks', 'use.weekOf': 'week of {d}',
@@ -407,7 +407,7 @@ const es = {
   'mem.type': 'Tipo', 'mem.body': 'Contenido (Markdown)', 'mem.rawFile': 'Archivo {f}', 'mem.path': 'Ruta', 'mem.pathHint': 'ej.: notes/tema.md', 'mem.kind': 'Tipo (kind)', 'mem.tags': 'Etiquetas',
   'mem.suggest': 'Sugerir cambio', 'mem.suggestHint': 'Abre una conversación nueva con la IA, con "{n}" como contexto.', 'mem.suggestPh': 'Ej.: esto está desactualizado, el número cambió a…', 'mem.suggestSend': 'Abrir conversación',
   'mem.suggestTitle': 'Memoria: {n}', 'mem.suggestPrompt': 'Sugerencia sobre una memoria ({source}: {ref}). Evalúala y, si tiene sentido, aplica el cambio (actualizar, eliminar o crear memorias relacionadas). Pregúntame antes de eliminar algo.',
-  'nav.usage': 'Consumo', 'nav.command': 'Centro', 'nav.status': 'Estado', 'use.session': 'Sesión actual (5 h)', 'use.weekly': 'Semana (todos los modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
+  'nav.usage': 'Consumo', 'nav.command': 'Centro', 'nav.status': 'Estado', 'nav.workflows': 'Flujos', 'use.session': 'Sesión actual (5 h)', 'use.weekly': 'Semana (todos los modelos)', 'use.weeklyOpus': 'Semana (Opus)', 'use.weeklySonnet': 'Semana (Sonnet)',
   'use.resetsIn': 'se renueva en {t}', 'use.resetsAt': 'se renueva {t}', 'use.resetNow': 'renovando ahora', 'use.high': 'alto', 'use.almostOut': 'casi en el límite',
   'use.stale': 'Datos desactualizados (última lectura válida).', 'use.staleAt': 'Datos desactualizados: última lectura a las {t}.', 'use.errorWas': 'Error: {e}', 'use.updated': 'Actualizado {t}', 'use.expired': 'Ventana renovada · sin lectura nueva', 'use.models': '{n} modelos', 'use.today': 'hoy', 'use.last7': '7 días', 'use.msgs': '{n} respuestas', 'use.runs': '{n} ejecuciones',
   'use.history': 'Historial de tokens', 'use.days': '14 días', 'use.weeks': '8 semanas', 'use.weekOf': 'semana del {d}',
