@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
-import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, readAsBase64, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
+import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
@@ -353,7 +353,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
   const sendRecordedTurn = async () => {
     if (sendingRecRef.current) return;
     sendingRecRef.current = true;
-    unlockSpeech();
+    prepareCallAudio();
     try {
       const audio = await cleanupRecorder(true);
       if (!activeRef.current) return;
@@ -379,7 +379,18 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     setErr('');
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      setAudioSession('play-and-record');
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      } catch (firstErr) {
+        if (/AudioSession/i.test(String(firstErr?.message || ''))) {
+          setAudioSession('auto');
+          await new Promise((res) => setTimeout(res, 120));
+          stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        } else {
+          throw firstErr;
+        }
+      }
     } catch (e) {
       const denied = e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError';
       setErr(denied
@@ -453,6 +464,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
 
   useEffect(() => {
     activeRef.current = true;
+    setCallAudioMode(true);
     startListening();
     return () => {
       activeRef.current = false;
@@ -460,12 +472,13 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
       notifyMsgRef.current = null;
       cleanupRecorder(false);
       stopSpeaking();
+      setCallAudioMode(false);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bargeIn = () => {
     turnIdRef.current++;
-    unlockSpeech();
+    prepareCallAudio();
     stopSpeaking();
     setMuted(false);
     mutedRef.current = false;
@@ -480,7 +493,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
       cleanupRecorder(false);
       setStatus('muted');
     } else {
-      unlockSpeech();
+      prepareCallAudio();
       startListening();
     }
   };
@@ -489,7 +502,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     e.preventDefault();
     const v = typed.trim();
     if (!v || status === 'sending' || status === 'thinking') return;
-    unlockSpeech();
+    prepareCallAudio();
     setTyped('');
     await cleanupRecorder(false);
     runTurn({ text: v });
@@ -542,7 +555,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
             <Btn icon={Mic} onClick={bargeIn}>Interromper e falar</Btn>
           )}
           {(status === 'idle' || status === 'muted') && (
-            <Btn icon={Mic} onClick={() => { unlockSpeech(); setMuted(false); mutedRef.current = false; startListening(); }}>Tocar para falar</Btn>
+            <Btn icon={Mic} onClick={() => { prepareCallAudio(); setMuted(false); mutedRef.current = false; startListening(); }}>Tocar para falar</Btn>
           )}
           {(status === 'sending' || status === 'thinking') && (
             <Btn icon={Square} className="ghost small" onClick={() => bridge.stopChat(chatId).catch(() => {})}>Interromper resposta</Btn>
@@ -1596,7 +1609,7 @@ export default function Chat({ openMore, me }) {
           {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
-            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { unlockSpeech(); setLiveCallOpen(true); }} />}
+            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
             <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
           </div>
@@ -1611,7 +1624,7 @@ export default function Chat({ openMore, me }) {
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
-          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { unlockSpeech(); setLiveCallOpen(true); }} />}
+          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {typeof Notification !== 'undefined' && (
             <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
@@ -1831,7 +1844,7 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           <div className="group">
-            <button className="group-row press" onClick={() => { unlockSpeech(); setShowOpts(false); setLiveCallOpen(true); }}>
+            <button className="group-row press" onClick={() => { prepareCallAudio(); setShowOpts(false); setLiveCallOpen(true); }}>
               <span className="row-ic ic-chat"><Phone size={17} /></span>
               <span className="grow"><b>Ligação de voz ao vivo</b><small className="muted">Conversa por voz em tempo real</small></span>
             </button>

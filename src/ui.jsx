@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react';
 import { localCache } from './api.js';
 import { store, useI18n, useT } from './i18n.jsx';
@@ -310,7 +311,7 @@ export function Modal({ title, onClose, children, wide }) {
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [close]);
-  return (
+  return createPortal(
     <div ref={bgRef} className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div ref={panelRef} className={'modal' + (wide ? ' wide' : '') + (primary ? ' has-primary' : '')} role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-grab modal-grab" aria-hidden />
@@ -324,7 +325,8 @@ export function Modal({ title, onClose, children, wide }) {
         </header>
         <div className="modal-body" ref={bodyRef}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

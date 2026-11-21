@@ -38,7 +38,18 @@ export function useRecorder(lang) {
     ref.current = { starting: true };
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      setAudioSession('play-and-record');
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      } catch (err) {
+        if (/AudioSession/i.test(String(err?.message || ''))) {
+          setAudioSession('auto');
+          await new Promise((res) => setTimeout(res, 120));
+          stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        } else {
+          throw err;
+        }
+      }
     } finally { ref.current = {}; }
     const mime = pickMime();
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -147,9 +158,14 @@ function bestVoice(lang) {
 
 // ---------- playback: one audio at a time, shared speed ----------
 // Safari 17+ Audio Session API. 'ambient' mixes with other apps (Spotify, Apple Music) instead of interrupting them;
-// 'playback' is set right before a real clip plays.
-function setAudioSession(type) {
+// 'playback' is set right before a real clip plays; 'play-and-record' allows getUserMedia + TTS during voice calls.
+let callAudioMode = false;
+export function setAudioSession(type) {
   try { if (typeof navigator !== 'undefined' && navigator.audioSession) navigator.audioSession.type = type; } catch {}
+}
+export function setCallAudioMode(on) {
+  callAudioMode = Boolean(on);
+  setAudioSession(on ? 'play-and-record' : 'auto');
 }
 const RATES = [1, 1.5, 2];
 let rate = RATES.includes(Number(store.get('acp_rate'))) ? Number(store.get('acp_rate')) : 1;
@@ -169,7 +185,7 @@ function cycleRate() {
 // Called on every "play": pauses whatever else is playing and applies the saved speed
 // (Safari resets playbackRate when the source loads, so it is set again here).
 function claim(a) {
-  setAudioSession('playback');
+  setAudioSession(callAudioMode ? 'play-and-record' : 'playback');
   if (activeAudio && activeAudio !== a) { try { activeAudio.pause(); } catch {} }
   activeAudio = a;
   a.defaultPlaybackRate = rate; a.playbackRate = rate;
@@ -229,7 +245,7 @@ export async function speak(id, text, lang, chatId, file) {
     const a = ttsEl();
     a.src = bridge.fileUrl(f);
     speakState = { id, loading: false }; notify();
-    setAudioSession('playback');
+    setAudioSession(callAudioMode ? 'play-and-record' : 'playback');
     await a.play();
   } catch {
     if (speakState?.id === id) speakBrowser(id, text, lang);
@@ -258,9 +274,22 @@ export function stopSpeaking() {
 export function unlockSpeech() {
   const a = ttsEl();
   if (!a || !a.paused || speakState) return;
+  if (callAudioMode) {
+    setAudioSession('play-and-record');
+    try { a.src = SILENT; a.play().catch(() => {}); } catch {}
+    return;
+  }
   setAudioSession('ambient');
-  const restore = () => { if (!speakState && (a.paused || a.src === SILENT)) setAudioSession('auto'); };
+  const restore = () => { if (!speakState && !callAudioMode && (a.paused || a.src === SILENT)) setAudioSession('auto'); };
   try { a.src = SILENT; a.play().then(restore, restore); } catch { restore(); }
+}
+// Unlocks iOS reply playback in 'play-and-record' mode so getUserMedia never fails with AudioSession mismatch.
+export function prepareCallAudio() {
+  callAudioMode = true;
+  setAudioSession('play-and-record');
+  const a = ttsEl();
+  if (!a || !a.paused || speakState) return;
+  try { a.src = SILENT; a.play().catch(() => {}); } catch {}
 }
 
 export function useSpeaking() {
