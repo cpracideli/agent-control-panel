@@ -1812,3 +1812,16 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .tool { transition: background .2s; border-radius: 10px; }
 .tool-chip { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok-ink); }
 .tool-chip.bad { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+
+/* ---- System status ---- */
+.st-list { display: flex; flex-direction: column; }
+.st-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,.15); }
+.st-row:last-child { border-bottom: 0; }
+.st-light { width: 14px; height: 14px; border-radius: 50%; background: #8e8e93; flex: none; }
+.st-row.ok .st-light { background: var(--ok); box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 70%, transparent); }
+.st-row.warn .st-light { background: var(--warn); box-shadow: 0 0 10px color-mix(in srgb, var(--warn) 70%, transparent); }
+.st-row.err .st-light { background: var(--err); box-shadow: 0 0 10px color-mix(in srgb, var(--err) 70%, transparent); animation: usage-pulse 1.6s infinite; }
+.st-pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; color: #fff; background: var(--ok); }
+.st-pill.warn { background: var(--warn); } .st-pill.err { background: var(--err); }
+kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid rgba(128,128,128,.35); background: rgba(128,128,128,.1); }
+@media (prefers-reduced-motion: reduce) { .st-row.err .st-light { animation: none; } * { scroll-behavior: auto !important; } }
