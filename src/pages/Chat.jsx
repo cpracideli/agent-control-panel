@@ -7,6 +7,7 @@ import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
+import CameraCapture from './CameraCapture.jsx';
 import { provName } from '../prov.js';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
@@ -1852,6 +1853,7 @@ export default function Chat({ openMore, me }) {
             <div className="composer-bar">
               <div className="cb-left">
                 <IconButton icon={Plus} className="ghost cbtn" size={21} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
+                <CameraCapture onPhoto={(f) => addFiles([f])} />
                 {ml && (
                   <button type="button" className="model-pill press" onClick={() => setShowOpts(true)} aria-label={t('chat.model')}>
                     <span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
