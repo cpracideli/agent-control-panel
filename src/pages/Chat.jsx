@@ -758,7 +758,8 @@ export default function Chat({ openMore, me }) {
     const msg = (overrideText !== undefined ? overrideText : text).trim();
     const pending = overrideText !== undefined ? [] : files;
     if (!msg && !pending.length && !voice) return;
-    unlockSpeech();
+    // Unlock reply audio only when a reply will be spoken: on iOS it interrupts the user's music.
+    if (voice || voiceMode) unlockSpeech();
     if (!voice) haptic(8); // voice notes already buzz on release
     let id = current;
     setSending(true);

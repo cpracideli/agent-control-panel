@@ -145,6 +145,11 @@ function bestVoice(lang) {
 }
 
 // ---------- playback: one audio at a time, shared speed ----------
+// Safari 17+ Audio Session API. 'ambient' mixes with other apps (Spotify, Apple Music) instead of interrupting them;
+// 'playback' is set right before a real clip plays.
+function setAudioSession(type) {
+  try { if (typeof navigator !== 'undefined' && navigator.audioSession) navigator.audioSession.type = type; } catch {}
+}
 const RATES = [1, 1.5, 2];
 let rate = RATES.includes(Number(store.get('acp_rate'))) ? Number(store.get('acp_rate')) : 1;
 const rateSubs = new Set();
@@ -163,6 +168,7 @@ function cycleRate() {
 // Called on every "play": pauses whatever else is playing and applies the saved speed
 // (Safari resets playbackRate when the source loads, so it is set again here).
 function claim(a) {
+  setAudioSession('playback');
   if (activeAudio && activeAudio !== a) { try { activeAudio.pause(); } catch {} }
   activeAudio = a;
   a.defaultPlaybackRate = rate; a.playbackRate = rate;
@@ -222,6 +228,7 @@ export async function speak(id, text, lang, chatId, file) {
     const a = ttsEl();
     a.src = bridge.fileUrl(f);
     speakState = { id, loading: false }; notify();
+    setAudioSession('playback');
     await a.play();
   } catch {
     if (speakState?.id === id) speakBrowser(id, text, lang);
@@ -233,10 +240,15 @@ export function stopSpeaking() {
   if (was?.browser && hasTTS()) window.speechSynthesis.cancel();
   if (ttsAudio && !ttsAudio.paused) try { ttsAudio.pause(); } catch {}
 }
+// Only the silent <audio> unlock: a volume-0 SpeechSynthesisUtterance also grabbed the iOS audio session and paused
+// the user's music. The silent clip plays as 'ambient' so it mixes with other apps; then the session goes back to
+// 'auto' so other players (attachments, videos) keep their normal behaviour.
 export function unlockSpeech() {
   const a = ttsEl();
-  if (a && a.paused && !speakState) { try { a.src = SILENT; a.play().catch(() => {}); } catch {} }
-  if (hasTTS()) { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); } catch {} }
+  if (!a || !a.paused || speakState) return;
+  setAudioSession('ambient');
+  const restore = () => { if (!speakState && (a.paused || a.src === SILENT)) setAudioSession('auto'); };
+  try { a.src = SILENT; a.play().then(restore, restore); } catch { restore(); }
 }
 
 export function useSpeaking() {
