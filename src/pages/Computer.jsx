@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Camera, Check, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Maximize2, Monitor, PenTool, Play, Power, RefreshCw, Send, SkipForward } from 'lucide-react';
+import { AlertTriangle, Camera, Check, Copy, Download, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Laptop, Maximize2, Monitor, PenTool, Play, Plus, Power, RefreshCw, Send, SkipForward, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -125,6 +125,74 @@ function TeachModal({ currentUrl, onClose }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+function LocalBridgeCard() {
+  const toast = useToast();
+  const f = useFmt();
+  const devs = useLoad(() => bridge.localDevices(), [], { interval: 10000 });
+  const [name, setName] = useState('');
+  const [paired, setPaired] = useState(null);
+  const [busy, run] = useAction();
+
+  const pair = async (e) => {
+    e.preventDefault();
+    const r = await run('pair', () => bridge.localPair(name.trim() || 'Meu Computador'), 'Dispositivo pareado');
+    if (r) { setPaired(r); setName(''); devs.reload(true); }
+  };
+
+  return (
+    <Card title={`Meus Computadores — Local Bridge (${(devs.data || []).length})`} icon={Laptop}>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Conecte seu Mac, Linux ou Windows pessoal (estilo OpenAI Dots) para os bots acessarem arquivos locais ou abrirem sites no seu navegador pessoal. Conexão revogável a qualquer momento.
+      </p>
+      <form className="row wrap" onSubmit={pair} style={{ marginBottom: 10 }}>
+        <input className="grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do computador (ex.: MacBook Pro Caio)" />
+        <Btn icon={Plus} className="small" disabled={busy === 'pair'}>Parear novo PC/Mac</Btn>
+      </form>
+      {paired && (
+        <div className="trigger-box stack" style={{ marginBottom: 10 }}>
+          <div className="row between wrap">
+            <b>✅ Token gerado para "{paired.name}" (mostrado uma única vez)</b>
+            <a className="btn small" href={bridge.localAgentUrl(paired.token)} download="local-bridge-agent.mjs">
+              <Download size={14} /> Baixar local-bridge-agent.mjs
+            </a>
+          </div>
+          <div className="row wrap">
+            <code className="mono small grow ellipsis">node local-bridge-agent.mjs</code>
+            <Btn icon={Copy} type="button" className="ghost small" onClick={() => { navigator.clipboard.writeText(paired.token); toast('Token copiado'); }}>Copiar token</Btn>
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>Baixe o script acima (Node 22+, zero dependências) e rode no terminal do seu Mac/PC. O status muda para Online na hora.</p>
+        </div>
+      )}
+      {!(devs.data || []).length && <p className="muted small">Nenhum computador local pareado ainda.</p>}
+      {(devs.data || []).map((d) => (
+        <div key={d.id} className="list-row wrap">
+          <div className="grow">
+            <div className="row wrap">
+              <Laptop size={14} className="muted" />
+              <b>{d.name}</b>
+              <Badge kind={d.online ? 'ok' : 'muted'}>{d.online ? 'Online' : 'Offline'}</Badge>
+              {d.os && <Badge kind="muted">{d.os}</Badge>}
+            </div>
+            <div className="muted small">{d.cwd ? d.cwd + ' · ' : ''}{d.lastSeen ? 'visto ' + f.ago(d.lastSeen) : 'nunca conectou'}</div>
+          </div>
+          <div className="row">
+            {d.online && (
+              <Btn icon={RefreshCw} className="ghost small" disabled={busy === 'ping' + d.id}
+                onClick={() => run('ping' + d.id, () => bridge.localCall({ deviceId: d.id, action: 'info' })).then((r) => r && toast(`Conectado: ${r.hostname} (${r.platform})`))}>
+                Testar
+              </Btn>
+            )}
+            <Btn icon={Trash2} className="ghost danger-text small" disabled={busy === 'rev' + d.id}
+              onClick={() => run('rev' + d.id, () => bridge.localRevoke(d.id), 'Acesso revogado').then(() => devs.reload(true))}>
+              Revogar
+            </Btn>
+          </div>
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -256,7 +324,9 @@ export default function Computer() {
             {d.cdpUrl && <Row label="CDP" value={<code className="mono">{d.cdpUrl}</code>} />}
           </ListGroup>
         )}
-        {teaching && <TeachModal currentUrl={d?.currentUrl} onClose={() => setTeaching(false)} />}
+        <LocalBridgeCard />
+
+      {teaching && <TeachModal currentUrl={d?.currentUrl} onClose={() => setTeaching(false)} />}
       </div>
     );
   }
@@ -371,6 +441,8 @@ export default function Computer() {
           </div>
         )}
       </Card>
+
+      <LocalBridgeCard />
 
       {teaching && <TeachModal currentUrl={d?.currentUrl} onClose={() => setTeaching(false)} />}
       {annotating && <AnnotateModal currentUrl={d?.currentUrl} onClose={() => setAnnotating(false)} />}

@@ -1,9 +1,87 @@
 import { useState } from 'react';
-import { Activity, Eye, Plug, Plus, Server, Trash2 } from 'lucide-react';
+import { Activity, ExternalLink, Eye, KeyRound, Link2, Plug, Plus, Search, Server, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useLoad, useToast } from '../ui.jsx';
 import { AddButton, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+
+function ConnectorsCard() {
+  const toast = useToast();
+  const conn = useLoad(() => bridge.connectors(), []);
+  const [apiKey, setApiKey] = useState('');
+  const [entityId, setEntityId] = useState('default');
+  const [q, setQ] = useState('');
+  const [apps, setApps] = useState(null);
+  const [busy, run] = useAction();
+
+  const setup = async (e) => {
+    e.preventDefault();
+    const r = await run('setup', () => bridge.composioSetup({ apiKey: apiKey.trim(), entityId: entityId.trim() || 'default' }), 'Composio salvo no cofre criptografado');
+    if (r) { setApiKey(''); conn.reload(true); }
+  };
+  const loadApps = async () => {
+    const r = await run('apps', () => bridge.composioApps(q.trim()));
+    if (r) setApps(r);
+  };
+  const connectApp = async (slug) => {
+    const r = await run('c-' + slug, () => bridge.composioConnect({ toolkit: slug }));
+    const url = r?.redirect_url || r?.redirectUrl || r?.connectionStatus?.redirectUrl;
+    if (url) { window.open(url, '_blank', 'noopener'); toast('Finalize a autorização OAuth na aba aberta'); }
+    else if (r) toast('Conexão iniciada');
+  };
+
+  const c = conn.data?.composio;
+  const oauths = conn.data?.oauthConnections || [];
+  return (
+    <Card title="Apps & Conectores OAuth (Composio 225+ apps)" icon={Link2} actions={
+      <Badge kind={c?.configured ? 'ok' : 'muted'}>{c?.configured ? 'Composio ativo' : 'Não configurado'}</Badge>
+    }>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Conecte 225+ apps via OAuth em 1 clique usando Composio (Gmail, Calendar, Notion, Slack, GitHub, Linear, Drive…). A chave fica protegida no Cofre AES-256-GCM.
+      </p>
+      <form className="form-grid" onSubmit={setup} style={{ marginBottom: 10 }}>
+        <Field label="Composio API Key"><input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={c?.configured ? '•••• salva no cofre (vazio mantém)' : 'ak_...'} /></Field>
+        <Field label="Entity / User ID"><input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="default" /></Field>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <Btn icon={KeyRound} className="small" disabled={busy === 'setup' || (!apiKey.trim() && !c?.configured)}>Salvar Composio</Btn>
+        </div>
+      </form>
+      {c?.configured && (
+        <div className="stack" style={{ marginTop: 8 }}>
+          <div className="row wrap">
+            <label className="search grow"><Search size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar app no Composio (ex.: gmail, notion, slack, linear)..." /></label>
+            <Btn icon={Search} className="ghost small" disabled={busy === 'apps'} onClick={loadApps}>Listar apps</Btn>
+          </div>
+          {apps && (
+            <div className="bot-grid">
+              {(apps.toolkits || []).slice(0, 12).map((tk) => {
+                const slug = tk.slug || tk.key || tk.name;
+                return (
+                  <div key={slug} className="bot-card">
+                    <b>{tk.name || slug}</b>
+                    <div className="muted small ellipsis-2">{tk.meta?.description || tk.description || slug}</div>
+                    <Btn icon={ExternalLink} className="ghost small block" disabled={busy === 'c-' + slug} onClick={() => connectApp(slug)}>Conectar OAuth</Btn>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {oauths.length > 0 && (
+        <div className="stack" style={{ marginTop: 10 }}>
+          <b className="small muted">Conexões OAuth no Cofre ({oauths.length})</b>
+          {oauths.map((s) => (
+            <div key={s.name} className="list-row">
+              <div className="grow"><b>{s.label}</b><div className="muted small">{s.note}</div></div>
+              <Badge kind="ok">AES-GCM</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 const PRESETS = [
   { name: 'playwright', transport: 'stdio', command: 'npx', args: '@playwright/mcp@latest --browser chromium --headless --no-sandbox' },
@@ -152,7 +230,9 @@ export default function Mcp() {
         {agy?.installed && testRow('agy-status', checkAgy)}
         {agyStatus?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{agyStatus.output}</pre></Disclosure>}
         {agy?.config && <Disclosure className="tools" summary={t('mcp.config', { p: agy.configPath })}><pre>{JSON.stringify(agy.config, null, 2)}</pre></Disclosure>}
-        <p className="muted small">{t('mcp.note')}</p>
+        <ConnectorsCard />
+
+      <p className="muted small">{t('mcp.note')}</p>
         {adding && <AddMcp provider={adding} onClose={() => setAdding(null)} onDone={() => mcp.reload(true)} />}
         {view && <Modal title={view.n} onClose={() => setView(null)}><pre>{JSON.stringify(view.cfg, null, 2)}</pre></Modal>}
       </div>
@@ -213,6 +293,8 @@ export default function Mcp() {
         {agyStatus?.output && <Disclosure className="tools" open summary={t('mcp.listOutput')}><pre>{agyStatus.output}</pre></Disclosure>}
         {agy?.config && <Disclosure className="tools" summary={t('mcp.config', { p: agy.configPath })}><pre>{JSON.stringify(agy.config, null, 2)}</pre></Disclosure>}
       </Card>
+
+      <ConnectorsCard />
 
       <p className="muted small">{t('mcp.note')}</p>
       {adding && <AddMcp provider={adding} onClose={() => setAdding(null)} onDone={() => mcp.reload(true)} />}

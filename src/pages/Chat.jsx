@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, Pencil, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, readAsBase64, speak, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -210,6 +210,183 @@ function DelegationList({ delegations, botsById, term }) {
         );
       })}
     </Disclosure>
+  );
+}
+
+function LiveVoiceCallModal({ chatId, botName, lang, onClose, onSentText }) {
+  const toast = useToast();
+  const [status, setStatus] = useState('listening'); // listening | thinking | speaking | muted
+  const [muted, setMuted] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [lastReply, setLastReply] = useState('');
+  const [typed, setTyped] = useState('');
+  const recRef = useRef(null);
+  const mutedRef = useRef(false);
+  const activeRef = useRef(true);
+  mutedRef.current = muted;
+
+  const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+
+  const startListening = () => {
+    if (!activeRef.current || mutedRef.current || !SR) return;
+    try {
+      if (recRef.current) { try { recRef.current.stop(); } catch {} }
+      const r = new SR();
+      r.lang = lang === 'en' ? 'en-US' : lang === 'es' ? 'es-ES' : 'pt-BR';
+      r.interimResults = true;
+      r.continuous = false;
+      let finalStr = '';
+      r.onstart = () => setStatus('listening');
+      r.onresult = (ev) => {
+        let interim = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const txt = ev.results[i][0].transcript;
+          if (ev.results[i].isFinal) finalStr += txt + ' ';
+          else interim += txt;
+        }
+        setTranscript((finalStr + interim).trim());
+      };
+      r.onend = () => {
+        const spoken = finalStr.trim();
+        if (spoken && activeRef.current) {
+          sendTurn(spoken);
+        } else if (activeRef.current && !mutedRef.current) {
+          setTimeout(startListening, 350);
+        }
+      };
+      r.onerror = () => {
+        if (activeRef.current && !mutedRef.current) setTimeout(startListening, 900);
+      };
+      recRef.current = r;
+      r.start();
+    } catch {}
+  };
+
+  const sendTurn = async (text) => {
+    if (!text.trim()) return;
+    stopSpeaking();
+    setStatus('thinking');
+    setTranscript(text);
+    try {
+      await bridge.send(chatId, text, [], '');
+      onSentText?.();
+      // Wait for assistant reply to land in messages
+      const startTs = Date.now();
+      while (activeRef.current && Date.now() - startTs < 90000) {
+        await new Promise((r) => setTimeout(r, 900));
+        const res = await bridge.messages(chatId).catch(() => null);
+        const last = (res?.messages || []).at(-1);
+        if (last && last.role === 'assistant' && !res?.chat?.running) {
+          const replyText = String(last.text || '').trim();
+          setLastReply(replyText);
+          setStatus('speaking');
+          await new Promise((done) => {
+            try {
+              const u = new SpeechSynthesisUtterance(replyText.replace(/[#*_`>]/g, ' ').slice(0, 1200));
+              u.lang = lang === 'en' ? 'en-US' : lang === 'es' ? 'es-ES' : 'pt-BR';
+              u.onend = done;
+              u.onerror = done;
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(u);
+            } catch { done(); }
+          });
+          break;
+        }
+      }
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+    if (activeRef.current && !mutedRef.current) startListening();
+    else if (activeRef.current) setStatus('muted');
+  };
+
+  useEffect(() => {
+    unlockSpeech();
+    startListening();
+    return () => {
+      activeRef.current = false;
+      try { recRef.current?.stop(); } catch {}
+      stopSpeaking();
+      try { window.speechSynthesis?.cancel(); } catch {}
+    };
+  }, []);
+
+  const bargeIn = () => {
+    stopSpeaking();
+    try { window.speechSynthesis?.cancel(); } catch {}
+    setMuted(false);
+    mutedRef.current = false;
+    startListening();
+  };
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    mutedRef.current = next;
+    if (next) {
+      try { recRef.current?.stop(); } catch {}
+      setStatus('muted');
+    } else {
+      startListening();
+    }
+  };
+
+  return (
+    <Modal title={`📞 Ligação ao vivo · ${botName || 'Agent'}`} onClose={onClose}>
+      <div className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: '12px 4px' }}>
+        <div className="hero-ic" style={{ width: 68, height: 68, borderRadius: '50%', background: status === 'listening' ? 'var(--ok, #30d158)22' : status === 'speaking' ? 'var(--accent, #0a84ff)22' : 'var(--bg-soft)' }}>
+          {status === 'muted' ? <MicOff size={28} /> : status === 'speaking' ? <Volume2 size={28} /> : <AudioLines size={28} />}
+        </div>
+        <b>{status === 'listening' ? 'Ouvindo você falar…' : status === 'thinking' ? 'Pensando / executando ferramentas…' : status === 'speaking' ? 'Falando (toque em Falar para interromper)' : 'Microfone mudo'}</b>
+        {!SR && <p className="muted small">Este navegador não expõe SpeechRecognition; use o campo abaixo para conversar durante a chamada.</p>}
+        {transcript && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left' }}><b>Você:</b> {transcript}</div>}
+        {lastReply && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left', maxHeight: 160, overflow: 'auto' }}><b>{botName || 'Bot'}:</b> {lastReply}</div>}
+        <form className="row" style={{ width: '100%' }} onSubmit={(e) => { e.preventDefault(); if (typed.trim()) { const v = typed.trim(); setTyped(''); sendTurn(v); } }}>
+          <input className="grow" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Ou digite durante a chamada…" />
+          <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || status === 'thinking'}>Enviar</Btn>
+        </form>
+        <div className="row wrap" style={{ marginTop: 6 }}>
+          <Btn icon={muted ? Mic : MicOff} className="ghost small" onClick={toggleMute}>{muted ? 'Ativar mic' : 'Mutar'}</Btn>
+          {status === 'speaking' && <Btn icon={Mic} className="small" onClick={bargeIn}>Interromper e falar</Btn>}
+          <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar ligação</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ParallelTaskModal({ chatId, bots, onClose, onStarted }) {
+  const [title, setTitle] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [bot, setBot] = useState('');
+  const [readOnly, setReadOnly] = useState(false);
+  const [busy, run] = useAction();
+  const submit = async (e) => {
+    e.preventDefault();
+    const r = await run('tsk', () => bridge.startTask({ parentChatId: chatId, title: title.trim(), prompt: prompt.trim(), bot: bot || undefined, readOnly }), 'Tarefa paralela iniciada');
+    if (r) { onStarted?.(r); onClose(); }
+  };
+  return (
+    <Modal title="🧵 Nova tarefa paralela (Task Session)" onClose={onClose} wide>
+      <form className="stack" onSubmit={submit}>
+        <p className="muted small" style={{ margin: 0 }}>Roda em segundo plano sem travar esta conversa e entrega o resultado aqui automaticamente ao terminar.</p>
+        <div className="form-grid">
+          <Field label="Título"><input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Pesquisar preços de voo" /></Field>
+          <Field label="Bot">
+            <select value={bot} onChange={(e) => setBot(e.target.value)}>
+              <option value="">Bot desta conversa</option>
+              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Instrução completa"><textarea required rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="O que executar em paralelo..." /></Field>
+        <label className="check"><input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} /><span>Modo somente leitura (read-only)</span></label>
+        <div className="row end">
+          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+          <Btn icon={Layers} disabled={busy === 'tsk' || !title.trim() || !prompt.trim()}>Iniciar em paralelo</Btn>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -514,6 +691,10 @@ export default function Chat({ openMore, me }) {
   const openRef = useRef(false);
   openRef.current = showList;
   const [showOpts, setShowOpts] = useState(false);
+  const [liveCallOpen, setLiveCallOpen] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const chatTasks = useLoad(() => (current ? bridge.tasks(current) : Promise.resolve([])), [current], { interval: 8000 });
+  const runningTasks = (chatTasks.data || []).filter((tk) => tk.status === 'running');
   const [files, setFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [voiceMode, setVoiceModeState] = useState(() => store.get('acp_voice') === '1');
@@ -1044,6 +1225,8 @@ export default function Chat({ openMore, me }) {
             </button>
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
+          {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
+          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => setLiveCallOpen(true)} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {typeof Notification !== 'undefined' && (
             <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
@@ -1063,6 +1246,19 @@ export default function Chat({ openMore, me }) {
           <div className="chat-search-bar">
             <label className="search grow"><Search size={14} /><input autoFocus value={msgSearch} onChange={(e) => setMsgSearch(e.target.value)} placeholder={t('chat.searchMsgs')} /></label>
             <IconButton icon={X} label={t('common.close')} onClick={() => { setShowMsgSearch(false); setMsgSearch(''); }} />
+          </div>
+        )}
+        {runningTasks.length > 0 && (
+          <div className="banner" style={{ margin: '6px 12px 0', borderRadius: 10, padding: '6px 10px', gap: 8 }}>
+            <Layers size={14} />
+            <div className="row wrap grow small" style={{ gap: 6 }}>
+              {runningTasks.map((tk) => (
+                <span key={tk.id} className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <span className="spin" /> {tk.title}
+                  <button type="button" className="ghost bare" style={{ padding: 0 }} title="Parar tarefa" onClick={() => bridge.stopTask(tk.id).then(() => chatTasks.reload(true))}>✕</button>
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1269,6 +1465,13 @@ export default function Chat({ openMore, me }) {
             </div>
           </form>
         </Modal>
+      )}
+      {liveCallOpen && current && (
+        <LiveVoiceCallModal chatId={current} botName={botsById[info?.bot || 'default']?.name || 'Agent'} lang={lang}
+          onClose={() => setLiveCallOpen(false)} onSentText={() => loadMessages(current)} />
+      )}
+      {newTaskOpen && current && (
+        <ParallelTaskModal chatId={current} bots={botsL.data} onClose={() => setNewTaskOpen(false)} onStarted={() => chatTasks.reload(true)} />
       )}
     </div>
   );

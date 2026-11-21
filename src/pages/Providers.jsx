@@ -16,9 +16,12 @@ function ProactivityAndChannelsCard({ providers }) {
   const cfg = useLoad(() => bridge.getSettings(), []);
   const [busy, run] = useAction();
   const [qh, setQh] = useState({ enabled: false, start: '22:00', end: '07:00' });
-  const [models, setModels] = useState({ triageProvider: '', triageModel: '', backgroundProvider: '', backgroundModel: '' });
+  const [models, setModels] = useState({ triageProvider: '', triageModel: '', backgroundProvider: '', backgroundModel: '', semanticMemory: false });
   const [pin, setPin] = useState('');
   const [tg, setTg] = useState({ enabled: false, token: '', allowedUsers: '' });
+  const [dc, setDc] = useState({ enabled: false, token: '', allowedUsers: '', allowedChannels: '' });
+  const [sl, setSl] = useState({ enabled: false, botToken: '', signingSecret: '', allowedUsers: '', allowedChannels: '' });
+  const [byom, setByom] = useState({ enabled: false, baseUrl: '', defaultModel: 'gpt-4.1-mini', models: 'gpt-4.1-mini, gpt-4.1', apiKey: '' });
   const [pushSubscribed, setPushSubscribed] = useState(false);
 
   useEffect(() => {
@@ -31,9 +34,19 @@ function ProactivityAndChannelsCard({ providers }) {
         triageModel: s.proactivity.triageModel || '',
         backgroundProvider: s.proactivity.backgroundProvider || '',
         backgroundModel: s.proactivity.backgroundModel || '',
+        semanticMemory: Boolean(s.proactivity.semanticMemory),
       });
     }
     if (s.telegram) setTg((cur) => ({ ...cur, enabled: Boolean(s.telegram.enabled), allowedUsers: s.telegram.allowedUsers || '' }));
+    if (s.discord) setDc((cur) => ({ ...cur, enabled: Boolean(s.discord.enabled), allowedUsers: s.discord.allowedUsers || '', allowedChannels: s.discord.allowedChannels || '' }));
+    if (s.slack) setSl((cur) => ({ ...cur, enabled: Boolean(s.slack.enabled), allowedUsers: s.slack.allowedUsers || '', allowedChannels: s.slack.allowedChannels || '' }));
+    if (s.openaiCompat) {
+      setByom((cur) => ({
+        ...cur, enabled: Boolean(s.openaiCompat.enabled), baseUrl: s.openaiCompat.baseUrl || '',
+        defaultModel: s.openaiCompat.defaultModel || 'gpt-4.1-mini',
+        models: (s.openaiCompat.models || []).map((m) => m.id || m).join(', '),
+      }));
+    }
   }, [cfg.data]);
 
   useEffect(() => {
@@ -45,6 +58,9 @@ function ProactivityAndChannelsCard({ providers }) {
   const savePro = () => run('pro', () => bridge.settings({ proactivity: { quietHours: qh, ...models } }), 'Proatividade salva').then(() => cfg.reload(true));
   const savePin = (val) => run('pin', () => bridge.settings({ securityPin: val }), val ? 'PIN de segurança salvo' : 'PIN removido').then(() => { setPin(''); cfg.reload(true); });
   const saveTg = () => run('tg', () => bridge.settings({ telegram: { enabled: tg.enabled, allowedUsers: tg.allowedUsers, ...(tg.token.trim() ? { token: tg.token.trim() } : {}) } }), 'Telegram atualizado').then(() => { setTg((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
+  const saveDc = () => run('dc', () => bridge.settings({ discord: { enabled: dc.enabled, allowedUsers: dc.allowedUsers, allowedChannels: dc.allowedChannels, ...(dc.token.trim() ? { token: dc.token.trim() } : {}) } }), 'Discord atualizado').then(() => { setDc((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
+  const saveSl = () => run('sl', () => bridge.settings({ slack: { enabled: sl.enabled, allowedUsers: sl.allowedUsers, allowedChannels: sl.allowedChannels, ...(sl.botToken.trim() ? { botToken: sl.botToken.trim() } : {}), ...(sl.signingSecret.trim() ? { signingSecret: sl.signingSecret.trim() } : {}) } }), 'Slack atualizado').then(() => { setSl((cur) => ({ ...cur, botToken: '', signingSecret: '' })); cfg.reload(true); });
+  const saveByom = () => run('byom', () => bridge.settings({ openaiCompat: { enabled: byom.enabled, baseUrl: byom.baseUrl.trim(), defaultModel: byom.defaultModel.trim(), models: byom.models, ...(byom.apiKey.trim() ? { apiKey: byom.apiKey.trim() } : {}) } }), 'API Direta (BYOM) salva').then(() => { setByom((cur) => ({ ...cur, apiKey: '' })); cfg.reload(true); });
 
   const enableWebPush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return toast('Navegador sem suporte a Web Push', 'err');
@@ -97,7 +113,35 @@ function ProactivityAndChannelsCard({ providers }) {
             </Field>
             <Field label="Modelo background"><input value={models.backgroundModel} onChange={(e) => setModels({ ...models, backgroundModel: e.target.value })} placeholder="sonnet" /></Field>
           </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(models.semanticMemory)} onChange={(e) => setModels({ ...models, semanticMemory: e.target.checked })} />
+            <span><b>Memória semântica automática (ai-memory)</b> · Recupera trechos relevantes antes de cada resposta</span>
+          </label>
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'pro'} onClick={savePro}>Salvar proatividade</Btn></div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Sparkles size={14} className="muted" />
+            <b>3º Provedor: API Direta (BYOM)</b>
+            <Badge kind={s.openaiCompat?.enabled ? 'ok' : 'muted'}>{s.openaiCompat?.enabled ? 'Ativo' : 'Desligado'}</Badge>
+          </div>
+          <div className="presets">
+            <button type="button" className="ghost small" onClick={() => setByom({ ...byom, enabled: true, baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini', models: 'gpt-4.1-mini, gpt-4.1, o4-mini' })}>OpenAI</button>
+            <button type="button" className="ghost small" onClick={() => setByom({ ...byom, enabled: true, baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4.1-mini', models: 'openai/gpt-4.1-mini, google/gemini-2.5-flash, deepseek/deepseek-chat' })}>OpenRouter</button>
+            <button type="button" className="ghost small" onClick={() => setByom({ ...byom, enabled: true, baseUrl: 'http://host.docker.internal:11434/v1', defaultModel: 'llama3.3', models: 'llama3.3, qwen2.5:14b' })}>Ollama local</button>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(byom.enabled)} onChange={(e) => setByom({ ...byom, enabled: e.target.checked })} />
+            <span>Habilitar provedor OpenAI-compatible (com tool-calling nativo)</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Base URL"><input value={byom.baseUrl} onChange={(e) => setByom({ ...byom, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" /></Field>
+            <Field label="Modelo padrão"><input value={byom.defaultModel} onChange={(e) => setByom({ ...byom, defaultModel: e.target.value })} placeholder="gpt-4.1-mini" /></Field>
+            <Field label="Modelos (vírgula)"><input value={byom.models} onChange={(e) => setByom({ ...byom, models: e.target.value })} placeholder="gpt-4.1-mini, gpt-4.1" /></Field>
+            <Field label="API Key (salva no Cofre AES-GCM)"><input type="password" value={byom.apiKey} onChange={(e) => setByom({ ...byom, apiKey: e.target.value })} placeholder={s.openaiCompat?.hasKey ? '•••• salva no cofre' : 'sk-... (vazio p/ Ollama)'} /></Field>
+          </div>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'byom'} onClick={saveByom}>Salvar BYOM</Btn></div>
         </div>
       </Card>
 
@@ -148,6 +192,43 @@ function ProactivityAndChannelsCard({ providers }) {
           </div>
           {s.telegram?.error && <p className="err small" style={{ margin: 0 }}>{s.telegram.error}</p>}
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'tg'} onClick={saveTg}>Salvar Telegram</Btn></div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Send size={14} className="muted" />
+            <b>Canal Discord (Gateway WS)</b>
+            <Badge kind={s.discord?.running ? 'ok' : 'muted'}>{s.discord?.running ? '@' + (s.discord.botUsername || 'online') : 'Desligado'}</Badge>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(dc.enabled)} onChange={(e) => setDc({ ...dc, enabled: e.target.checked })} />
+            <span>Habilitar bot do Discord (com botões interativos para aprovações)</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Bot Token"><input type="password" value={dc.token} onChange={(e) => setDc({ ...dc, token: e.target.value })} placeholder={s.discord?.hasToken ? '•••• salvo' : 'MT...'} /></Field>
+            <Field label="User IDs permitidos"><input value={dc.allowedUsers} onChange={(e) => setDc({ ...dc, allowedUsers: e.target.value })} placeholder="IDs separados por vírgula" /></Field>
+            <Field label="Channel IDs (opcional)"><input value={dc.allowedChannels} onChange={(e) => setDc({ ...dc, allowedChannels: e.target.value })} placeholder="DMs sempre aceitas se user permitido" /></Field>
+          </div>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'dc'} onClick={saveDc}>Salvar Discord</Btn></div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Send size={14} className="muted" />
+            <b>Canal Slack (Events API + Block Kit)</b>
+            <Badge kind={s.slack?.enabled ? 'ok' : 'muted'}>{s.slack?.enabled ? 'Ativo' : 'Desligado'}</Badge>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={Boolean(sl.enabled)} onChange={(e) => setSl({ ...sl, enabled: e.target.checked })} />
+            <span>Habilitar Slack (Events: <code className="mono">{window.location.origin}/slack/events</code>)</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Bot Token (xoxb-...)"><input type="password" value={sl.botToken} onChange={(e) => setSl({ ...sl, botToken: e.target.value })} placeholder={s.slack?.hasToken ? '•••• salvo' : 'xoxb-...'} /></Field>
+            <Field label="Signing Secret (HMAC)"><input type="password" value={sl.signingSecret} onChange={(e) => setSl({ ...sl, signingSecret: e.target.value })} placeholder={s.slack?.hasSigningSecret ? '•••• salvo' : 'signing secret'} /></Field>
+            <Field label="User IDs permitidos"><input value={sl.allowedUsers} onChange={(e) => setSl({ ...sl, allowedUsers: e.target.value })} placeholder="U0123..." /></Field>
+            <Field label="Channel IDs (opcional)"><input value={sl.allowedChannels} onChange={(e) => setSl({ ...sl, allowedChannels: e.target.value })} placeholder="C0123..." /></Field>
+          </div>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'sl'} onClick={saveSl}>Salvar Slack</Btn></div>
         </div>
       </Card>
     </div>

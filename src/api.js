@@ -142,6 +142,17 @@ export const bridge = {
   removeMcp: (provider, name, scope) => del(`/bridge/mcp/${provider}/${encodeURIComponent(name)}${scope ? '?scope=' + scope : ''}`),
   audit: (n = 200) => get('/bridge/audit?n=' + n),
   auditCsvUrl: (n = 1000) => '/api/bridge/audit/csv?n=' + n,
+  connectors: () => get('/bridge/connectors'),
+  composioSetup: (b) => post('/bridge/connectors/composio/setup', b),
+  composioApps: (q = '') => get('/bridge/connectors/composio/apps' + (q ? '?q=' + encodeURIComponent(q) : '')),
+  composioConnect: (b) => post('/bridge/connectors/composio/connect', b),
+  oauthSave: (b) => post('/bridge/connectors/oauth/save', b),
+  localDevices: () => get('/bridge/local-bridge/devices'),
+  localPair: (name) => post('/bridge/local-bridge/pair', { name }),
+  localRevoke: (id) => del('/bridge/local-bridge/revoke/' + encodeURIComponent(id)),
+  localCall: (b) => post('/bridge/local-bridge/call', b),
+  localAgentUrl: (token) => '/api/bridge/local-bridge/agent.mjs?token=' + encodeURIComponent(token || '') + '&ws=' + encodeURIComponent(window.location.origin.replace(/^http/i, 'ws') + '/api/local-bridge/ws'),
+  voiceLiveConfig: () => get('/bridge/voice/live-config'),
   sendWhatsApp: (to, text) => post('/bridge/send', { to, text }),
 };
 

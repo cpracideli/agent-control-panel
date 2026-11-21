@@ -42,6 +42,24 @@ app.all('/hooks/:id/:token', express.raw({ type: () => true, limit: '1mb' }), as
   }
 });
 
+// ---------- public Slack webhooks: /slack/events and /slack/interactions (verified by HMAC in bridge) ----------
+app.all(['/slack/events', '/slack/interactions'], express.raw({ type: () => true, limit: '1mb' }), async (req, res) => {
+  try {
+    const r = await fetch(BRIDGE_URL + req.originalUrl, {
+      method: req.method,
+      headers: {
+        'Content-Type': req.get('content-type') || 'application/json',
+        'x-slack-signature': req.get('x-slack-signature') || '',
+        'x-slack-request-timestamp': req.get('x-slack-request-timestamp') || '',
+      },
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : (Buffer.isBuffer(req.body) ? req.body : undefined),
+    });
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(Buffer.from(await r.arrayBuffer()));
+  } catch {
+    res.status(502).json({ error: 'Bridge inacessível' });
+  }
+});
+
 // ---------- public shared pages: GET /p/<id>/<token> serves the HTML page from the bridge ----------
 app.get('/p/:id/:token', async (req, res) => {
   try {
@@ -458,21 +476,30 @@ app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sen
 
 const httpServer = http.createServer(app);
 
-// WebSocket proxy for live agent computer (noVNC): verifies session cookie before tunneling to the bridge.
+// WebSocket proxy for live agent computer (noVNC) AND Local Computer Bridge (/api/local-bridge/ws)
 httpServer.on('upgrade', (req, socket, head) => {
-  const pathname = (req.url || '').split('?')[0];
-  if (pathname !== '/api/bridge/computer/ws' || !BRIDGE_TOKEN || !validSession(req)) {
+  const fullUrl = req.url || '/';
+  const pathname = fullUrl.split('?')[0];
+  const qs = fullUrl.includes('?') ? fullUrl.slice(fullUrl.indexOf('?')) : '';
+  const isLocalBridge = pathname === '/api/local-bridge/ws';
+  const isComputer = pathname === '/api/bridge/computer/ws';
+  if (!isLocalBridge && !isComputer) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    return socket.destroy();
+  }
+  if (isComputer && (!BRIDGE_TOKEN || !validSession(req))) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     return socket.destroy();
   }
   let target;
   try { target = new URL(BRIDGE_URL); } catch { return socket.destroy(); }
   const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
+  const upstreamPath = isLocalBridge ? ('/admin/local-bridge/ws' + qs) : '/admin/computer/ws';
   const upstream = net.connect(port, target.hostname, () => {
     const hdrs = [
-      'GET /admin/computer/ws HTTP/1.1',
+      `GET ${upstreamPath} HTTP/1.1`,
       `Host: ${target.host}`,
-      `Authorization: Bearer ${BRIDGE_TOKEN}`,
+      ...(BRIDGE_TOKEN ? [`Authorization: Bearer ${BRIDGE_TOKEN}`] : []),
     ];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const k = req.rawHeaders[i], v = req.rawHeaders[i + 1];
