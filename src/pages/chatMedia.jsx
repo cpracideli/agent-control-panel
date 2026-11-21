@@ -147,13 +147,40 @@ export function speakable(md) {
     .trim();
 }
 
+// Chrome and Android load voices asynchronously: getVoices() is empty until 'voiceschanged' fires.
+// Keep a cache that refreshes on that event, so the right voice is picked on the first reply too.
+let voiceCache = [];
+let voiceListenerOn = false;
+function loadVoices() {
+  if (!hasTTS()) return voiceCache;
+  const synth = window.speechSynthesis;
+  if (!voiceListenerOn) {
+    voiceListenerOn = true;
+    synth.addEventListener?.('voiceschanged', () => { voiceCache = synth.getVoices(); });
+  }
+  const now = synth.getVoices();
+  if (now.length) voiceCache = now;
+  return voiceCache;
+}
 function bestVoice(lang) {
-  const voices = window.speechSynthesis.getVoices();
+  const voices = loadVoices();
   const base = lang.split('-')[0];
   const same = voices.filter((v) => v.lang.replace('_', '-').toLowerCase().startsWith(lang.toLowerCase()));
   const pool = same.length ? same : voices.filter((v) => v.lang.toLowerCase().startsWith(base));
   const score = (v) => (/premium|enhanced|natural|neural/i.test(v.name) ? 4 : 0) + (/google|siri|luciana|felipe|samantha/i.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0);
   return pool.sort((a, b) => score(b) - score(a))[0] || null;
+}
+// Chrome garbage-collects utterances that nothing references, which silently cuts the speech mid-answer.
+// Keep them alive until they finish or fail.
+const liveUtterances = new Set();
+function queueUtterance(synth, u) {
+  liveUtterances.add(u);
+  const release = () => liveUtterances.delete(u);
+  u.onend = ((prev) => (ev) => { release(); prev?.(ev); })(u.onend);
+  u.onerror = ((prev) => (ev) => { release(); prev?.(ev); })(u.onerror);
+  // Chrome can leave the synth paused (e.g. after a cancel or a tab switch): nothing plays until resume().
+  if (synth.paused) { try { synth.resume(); } catch {} }
+  synth.speak(u);
 }
 
 // ---------- playback: one audio at a time, shared speed ----------
@@ -230,7 +257,7 @@ function speakBrowser(id, text, lang) {
     u.rate = rate;
     if (i === parts.length - 1) u.onend = () => { if (speakState?.id === id) { speakState = null; notify(); } };
     u.onerror = () => { speakState = null; notify(); };
-    synth.speak(u);
+    queueUtterance(synth, u);
   });
 }
 
@@ -275,7 +302,7 @@ export function speakChunk(text, lang) {
     const u = new SpeechSynthesisUtterance(p.trim());
     u.lang = voice?.lang || lang; if (voice) u.voice = voice;
     u.rate = rate;
-    synth.speak(u);
+    queueUtterance(synth, u);
   });
   return true;
 }
@@ -291,7 +318,7 @@ export async function waitSpeechIdle(maxMs = 120000) {
 export function stopSpeaking() {
   const was = speakState;
   speakState = null; notify();
-  if (was?.browser && hasTTS()) window.speechSynthesis.cancel();
+  if (was?.browser && hasTTS()) { window.speechSynthesis.cancel(); liveUtterances.clear(); }
   if (ttsAudio && !ttsAudio.paused) try { ttsAudio.pause(); } catch {}
 }
 // Only the silent <audio> unlock: a volume-0 SpeechSynthesisUtterance also grabbed the iOS audio session and paused

@@ -1,9 +1,89 @@
-import { useState } from 'react';
-import { Code, Copy, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Code, Copy, Database, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { docLink } from '../viewer.jsx';
+
+const MINI_APP_HTML = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Checklist Interativo</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #0b0d12; color: #f8fafc; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { margin: 0 0 12px; font-size: 22px; }
+  .row { display: flex; gap: 8px; margin-bottom: 14px; }
+  input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; background: #161a24; color: #f8fafc; font-size: 16px; }
+  button { padding: 10px 14px; border-radius: 10px; border: 0; background: #0a84ff; color: #fff; font-weight: 600; cursor: pointer; }
+  .item { display: flex; align-items: center; gap: 10px; background: #161a24; padding: 11px 14px; border-radius: 12px; margin-bottom: 8px; }
+  .done { text-decoration: line-through; opacity: .55; }
+  .del { background: transparent; color: #f87171; padding: 4px 8px; margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>✅ Lista Interativa (Mini-App)</h1>
+  <div class="row"><input id="inp" placeholder="Adicionar item..." /><button id="add">Adicionar</button></div>
+  <div id="list">Carregando...</div>
+</div>
+<script>
+  let state = { items: [] };
+  const listEl = document.getElementById('list');
+  const inp = document.getElementById('inp');
+  async function save() { if (window.PageData) await window.PageData.set(state); render(); }
+  function render() {
+    listEl.innerHTML = '';
+    if (!state.items.length) { listEl.innerHTML = '<p style="opacity:.6">Nenhum item ainda.</p>'; return; }
+    state.items.forEach((it, idx) => {
+      const d = document.createElement('div'); d.className = 'item';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!it.done; cb.style.flex = '0';
+      cb.onchange = () => { state.items[idx].done = cb.checked; save(); };
+      const sp = document.createElement('span'); sp.textContent = it.text; if (it.done) sp.className = 'done';
+      const rm = document.createElement('button'); rm.className = 'del'; rm.textContent = '✕';
+      rm.onclick = () => { state.items.splice(idx, 1); save(); };
+      d.append(cb, sp, rm); listEl.appendChild(d);
+    });
+  }
+  document.getElementById('add').onclick = () => { const v = inp.value.trim(); if (!v) return; state.items.push({ text: v, done: false }); inp.value = ''; save(); };
+  inp.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('add').click(); };
+  (window.PageData ? window.PageData.get() : Promise.resolve({})).then((d) => { if (d && Array.isArray(d.items)) state = d; render(); }).catch(render);
+</script>
+</body>
+</html>`;
+
+function PageDataModal({ page, onClose, onSaved }) {
+  const toast = useToast();
+  const ld = useLoad(() => bridge.pageData(page.id), [page.id]);
+  const [raw, setRaw] = useState('');
+  const [busy, run] = useAction();
+  useEffect(() => {
+    if (ld.data !== undefined && ld.data !== null) setRaw(JSON.stringify(ld.data, null, 2));
+  }, [ld.data]);
+  const save = async () => {
+    let parsed;
+    try { parsed = JSON.parse(raw || '{}'); } catch { return toast('JSON inválido', 'err'); }
+    const r = await run('save', () => bridge.setPageData(page.id, parsed), 'Dados do Mini-App salvos');
+    if (r) { onSaved?.(); onClose(); }
+  };
+  return (
+    <Modal title={'Dados persistentes — ' + page.title} onClose={onClose} wide>
+      <div className="stack">
+        <p className="muted small" style={{ margin: 0 }}>
+          Estado JSON salvo no SQLite e acessível via <code className="mono">window.PageData</code> dentro da página (e em <code className="mono">/p/{page.id}/TOKEN/data</code> se pública).
+        </p>
+        <ErrorBox error={ld.error} onRetry={() => ld.reload()} />
+        <textarea rows={14} className="mono" value={raw} onChange={(e) => setRaw(e.target.value)} />
+        <div className="row end">
+          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+          <Btn icon={Save} disabled={busy === 'save' || ld.loading} onClick={save}>Salvar JSON</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 const SAMPLE_HTML = `<!doctype html>
 <html lang="pt-BR">
@@ -153,6 +233,7 @@ export default function Dashboards() {
   const [viewer, setViewer] = useState(null);
   const [form, setForm] = useState(null);
   const [history, setHistory] = useState(null);
+  const [dataModal, setDataModal] = useState(null);
   const [busy, run] = useAction();
 
   return (
@@ -160,7 +241,10 @@ export default function Dashboards() {
       <ErrorBox error={pages.error} onRetry={() => pages.reload()} />
       <p className="muted page-intro">{t('pg.intro')}</p>
       <Card title={t('pg.title', { n: pages.data?.length || 0 })} icon={FileCode2}
-        actions={<Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('pg.new')}</Btn>}>
+        actions={<div className="row" style={{ gap: 6 }}>
+          <Btn icon={Sparkles} className="ghost small" onClick={() => setForm({ title: 'Lista Interativa', description: 'Mini-App com estado persistente via window.PageData', html: MINI_APP_HTML })}>Novo Mini-App</Btn>
+          <Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('pg.new')}</Btn>
+        </div>}>
         {pages.data && !pages.data.length && <p className="muted">{t('pg.none')}</p>}
         <div className="bot-grid">
           {(pages.data || []).map((p) => {
@@ -173,6 +257,7 @@ export default function Dashboards() {
                     <div className="row wrap">
                       <b>{p.title}</b>
                       <Badge kind={p.public ? 'ok' : 'muted'}>{p.public ? t('pg.publicBadge') : t('pg.privateBadge')}</Badge>
+                      {p.hasData && <Badge kind="ok">Mini-App</Badge>}
                       <Badge>{t('pg.revs', { n: p.revisions || 1 })}</Badge>
                     </div>
                     <div className="muted small ellipsis-2">{p.description || ('/' + p.id)}</div>
@@ -195,6 +280,7 @@ export default function Dashboards() {
                   <Btn icon={Maximize2} className="small" onClick={() => setViewer(p)}>{t('pg.open')}</Btn>
                   <a className="btn ghost small" {...docLink(bridge.pageRawUrl(p.id), p.title, 'text/html')} aria-label={t('pg.full')}><ExternalLink size={14} /></a>
                   <span className="grow" />
+                  <IconButton icon={Database} label="Dados do Mini-App" onClick={() => setDataModal(p)} />
                   <IconButton icon={ p.public ? Globe : Lock } label={t('pg.public')} disabled={busy === 'pub' + p.id}
                     onClick={() => run('pub' + p.id, () => bridge.patchPage(p.id, { public: !p.public }), t('pg.saved')).then(() => pages.reload(true))} />
                   <IconButton icon={Code} label={t('common.edit')} onClick={() => setForm(p)} />
@@ -210,6 +296,7 @@ export default function Dashboards() {
       {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)} onEdit={(p) => setForm(p)} />}
       {form && <PageForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => pages.reload(true)} />}
       {history && <PageHistoryModal page={history} onClose={() => setHistory(null)} onRestored={() => pages.reload(true)} />}
+      {dataModal && <PageDataModal page={dataModal} onClose={() => setDataModal(null)} onSaved={() => pages.reload(true)} />}
     </div>
   );
 }

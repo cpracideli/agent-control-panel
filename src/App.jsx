@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, Inbox, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
 import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
+import { ActionInboxModal, GlobalSearchModal } from './GlobalCommandHub.jsx';
 import { LANGS, store, useI18n } from './i18n.jsx';
 import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
 import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
@@ -169,10 +170,24 @@ function Avatar({ me, size = 34 }) {
 }
 
 // Pages + appearance + account. Root of the "Mais" tab, and also the sheet behind the avatar.
-function MoreList({ me, page, go, install, logout, onClose, dock, morePages, openDockSettings }) {
+function MoreList({ me, page, go, install, logout, onClose, dock, morePages, openDockSettings, openSearch, openInbox, inboxCount }) {
   const { t } = useI18n();
   return (
     <>
+      <div className="group-label">Atalhos rápidos</div>
+      <div className="group">
+        <button type="button" className="group-row press" onClick={() => { onClose?.(); openSearch(); }}>
+          <span className="row-ic ic-memory"><Search size={17} /></span>
+          <span className="grow">Busca Global (Cmd+K)</span>
+          <ChevronRight size={17} className="chev" />
+        </button>
+        <button type="button" className="group-row press" onClick={() => { onClose?.(); openInbox(); }}>
+          <span className="row-ic ic-board"><Inbox size={17} /></span>
+          <span className="grow">Central de Decisões</span>
+          {inboxCount > 0 && <span className="nav-dot err" style={{ marginRight: 6 }} />}
+          <ChevronRight size={17} className="chev" />
+        </button>
+      </div>
       <div className="group-label">{t('nav.pages')}</div>
       <div className="group">
         {morePages.map(({ id, icon: Icon }) => (
@@ -289,7 +304,20 @@ export default function App() {
   const { nav } = stackNav;
   const page = stackNav.top();
   const [more, setMore] = useState(false);
-  const [navStatus, setNavStatus] = useState({ running: 0, webRunning: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [navStatus, setNavStatus] = useState({ running: 0, webRunning: 0, unread: 0, pendingPrompts: 0, inboxCount: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const install = useInstall();
   const online = useOnline();
   useKeyboardFlag();
@@ -321,7 +349,7 @@ export default function App() {
         .then((o) => !stop && setNavStatus({
           running: o.running?.length || 0,
           webRunning: Array.isArray(o.webRunning) ? o.webRunning.length : 0,
-          unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0,
+          unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0, inboxCount: o.inboxCount || 0,
           computerNeedsHuman: Boolean(o.computer?.needsHuman), computerRunning: o.computer?.status === 'running',
           openTickets: o.openTickets || 0, offline: false,
         }))
@@ -403,7 +431,7 @@ export default function App() {
     return prefs.save({ dock: isDef ? null : clean });
   };
   const dockIndex = dock.indexOf(nav.tab);
-  const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true) };
+  const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true), openSearch: () => setSearchOpen(true), openInbox: () => setInboxOpen(true), inboxCount: navStatus.inboxCount };
   const renderScreen = (id, depth, isTop, cls, prev) => (
     <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
       backLabel={prev ? t('nav.' + prev) : ''} onBack={() => stackNav.pop()}
@@ -418,6 +446,15 @@ export default function App() {
     <div className={'shell' + (page === 'chat' ? ' on-chat' : '') + (nav.anim ? ' navigating' : '')}>
       <aside className="nav">
         <div className="brand"><img src="/pwa-192.png" alt="" width="26" height="26" className="app-icon sm" />Agent Control</div>
+        <div className="row" style={{ padding: '0 10px 8px', gap: 6 }}>
+          <button type="button" className="ghost small grow" style={{ justifyContent: 'flex-start', gap: 6 }} onClick={() => setSearchOpen(true)} title="Busca Global (Cmd+K)">
+            <Search size={14} /><span>Buscar</span><span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>⌘K</span>
+          </button>
+          <button type="button" className="ghost small" style={{ position: 'relative', padding: '6px 9px' }} onClick={() => setInboxOpen(true)} title="Central de Decisões (Inbox)">
+            <Inbox size={15} />
+            {navStatus.inboxCount > 0 && <span className="nav-dot err" style={{ position: 'absolute', top: 3, right: 3 }} />}
+          </button>
+        </div>
         <nav>
           {PAGES.map(({ id, icon: Icon }) => (
             <button key={id} className={'nav-item' + (id === page ? ' active' : '')} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
@@ -472,6 +509,8 @@ export default function App() {
       <ViewerHost />
       {more && <MoreSheet {...moreProps} onClose={() => setMore(false)} />}
       {dockModal && <DockSettingsModal pages={DOCK_OPTIONS} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
+      {searchOpen && <GlobalSearchModal onClose={() => setSearchOpen(false)} go={go} />}
+      {inboxOpen && <ActionInboxModal onClose={() => setInboxOpen(false)} go={go} />}
     </div>
   );
 }

@@ -60,13 +60,44 @@ app.all(['/slack/events', '/slack/interactions'], express.raw({ type: () => true
   }
 });
 
-// ---------- public shared pages: GET /p/<id>/<token> serves the HTML page from the bridge ----------
+// ---------- public shared pages + Mini-App data API: /p/<id>/<token> and /p/<id>/<token>/data ----------
 app.get('/p/:id/:token', async (req, res) => {
   try {
     const r = await fetch(BRIDGE_URL + '/p/' + encodeURIComponent(req.params.id) + '/' + encodeURIComponent(req.params.token));
     res.status(r.status).type(r.headers.get('content-type') || 'text/html; charset=utf-8').send(Buffer.from(await r.arrayBuffer()));
   } catch (e) {
     res.status(502).type('text/plain; charset=utf-8').send('Bridge inacessível');
+  }
+});
+
+app.all('/p/:id/:token/data', express.raw({ type: () => true, limit: '1mb' }), async (req, res) => {
+  try {
+    const r = await fetch(BRIDGE_URL + '/p/' + encodeURIComponent(req.params.id) + '/' + encodeURIComponent(req.params.token) + '/data', {
+      method: req.method,
+      headers: { 'Content-Type': req.get('content-type') || 'application/json' },
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : (Buffer.isBuffer(req.body) ? req.body : undefined),
+    });
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(Buffer.from(await r.arrayBuffer()));
+  } catch {
+    res.status(502).json({ error: 'Bridge inacessível' });
+  }
+});
+
+// ---------- iOS Shortcuts / Share Sheet / Siri ingest (authenticated by personal Bearer token in bridge) ----------
+app.post('/api/shortcut', express.raw({ type: () => true, limit: '25mb' }), async (req, res) => {
+  try {
+    const r = await fetch(BRIDGE_URL + '/shortcut/ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': req.get('content-type') || 'application/json',
+        ...(req.get('authorization') ? { Authorization: req.get('authorization') } : {}),
+        ...(req.get('x-shortcut-token') ? { 'x-shortcut-token': req.get('x-shortcut-token') } : {}),
+      },
+      body: Buffer.isBuffer(req.body) ? req.body : undefined,
+    });
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(Buffer.from(await r.arrayBuffer()));
+  } catch {
+    res.status(502).json({ error: 'Bridge inacessível' });
   }
 });
 

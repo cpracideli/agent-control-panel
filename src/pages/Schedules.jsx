@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarClock, Eye, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, Smartphone, Trash2, Webhook, Zap } from 'lucide-react';
+import { CalendarClock, Eye, GitBranch, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Smartphone, Sun, Trash2, Webhook, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -161,6 +161,153 @@ function RunsModal({ sch, onClose }) {
   );
 }
 
+function WorkflowsAndBriefingSection({ chats, bots }) {
+  const f = useFmt();
+  const confirm = useConfirm();
+  const wfs = useLoad(() => bridge.workflows(), [], { interval: 20000 });
+  const runs = useLoad(() => bridge.workflowRuns(), [], { interval: 15000 });
+  const [busy, run] = useAction();
+  const [withAudio, setWithAudio] = useState(false);
+  const [newWf, setNewWf] = useState(false);
+  const [wfName, setWfName] = useState('');
+  const [wfCron, setWfCron] = useState('');
+  const [steps, setSteps] = useState([
+    { id: 's1', name: 'Analisar', type: 'bot', bot: 'default', prompt: 'Analise: {{trigger}}' },
+    { id: 's2', name: 'Aprovar', type: 'approval', title: 'Confirmar ação', question: 'Aprovar resultado?\n{{steps.s1}}' },
+    { id: 's3', name: 'Notificar', type: 'notify', prompt: 'Concluído: {{steps.s1}}' },
+  ]);
+
+  const createWf = async (e) => {
+    e.preventDefault();
+    const r = await run('addwf', () => bridge.addWorkflow({
+      name: wfName.trim(),
+      chatId: chats[0]?.id || '',
+      trigger: wfCron.trim() ? { cron: wfCron.trim() } : {},
+      steps,
+    }), 'Workflow criado');
+    if (r) { setNewWf(false); setWfName(''); setWfCron(''); wfs.reload(true); }
+  };
+
+  return (
+    <div className="stack" style={{ marginTop: 16 }}>
+      <Card title="☀️ Briefing Diário Personalizado" icon={Sun}
+        actions={<Btn icon={Sun} className="small" disabled={busy === 'mb'} onClick={() => run('mb', () => bridge.morningBriefingPreset({ chatId: chats[0]?.id || '', withAudio }), 'Briefing Diário (Página Viva + rotina 07:30) ativado!')}>Ativar Briefing (07:30)</Btn>}>
+        <div className="row wrap">
+          <span className="muted small grow">Cria automaticamente a Página Viva <code>briefing-diario</code> e a rotina das 07:30 reunindo tarefas, e-mails, saúde do servidor e destaques do Radar.</span>
+          <label className="check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={withAudio} onChange={(e) => setWithAudio(e.target.checked)} />
+            <span className="small">Enviar também nota de voz (podcast 1 min)</span>
+          </label>
+        </div>
+      </Card>
+
+      <Card title={'Workflows Multi-Etapa (' + (wfs.data?.length || 0) + ')'} icon={GitBranch}
+        actions={<Btn icon={Plus} className="small" onClick={() => setNewWf(true)}>Novo Workflow</Btn>}>
+        <ErrorBox error={wfs.error} onRetry={() => wfs.reload()} />
+        {wfs.data && !wfs.data.length && <p className="muted small">Encadeie bots, condições (<code>if</code>), aprovações humanas e atualizações de Mini-Apps com retomada passo-a-passo.</p>}
+        {(wfs.data || []).map((w) => (
+          <div key={w.id} className="list-row wrap">
+            <div className="grow">
+              <div className="row wrap" style={{ gap: 6 }}>
+                <b>{w.name}</b>
+                <Badge kind="muted">{w.steps?.length || 0} etapas</Badge>
+                {w.trigger?.cron && <span className="chip mono">{w.trigger.cron}</span>}
+              </div>
+              <div className="muted small">{(w.steps || []).map((s) => s.name + ' (' + s.type + ')').join(' → ')}</div>
+            </div>
+            <div className="row">
+              <Btn icon={Zap} className="small" disabled={busy === 'rw' + w.id} onClick={() => run('rw' + w.id, () => bridge.runWorkflow(w.id, 'manual'), 'Workflow executado').then(() => runs.reload(true))}>Rodar</Btn>
+              <IconButton icon={Trash2} className="ghost danger-text" label="Remover" onClick={async () => (await confirm('Remover workflow "' + w.name + '"?')) && run('dw' + w.id, () => bridge.deleteWorkflow(w.id), 'Removido').then(() => wfs.reload(true))} />
+            </div>
+          </div>
+        ))}
+
+        {(runs.data || []).length > 0 && (
+          <div className="stack" style={{ marginTop: 12, gap: 6 }}>
+            <b className="small">Últimas execuções de Workflows</b>
+            {(runs.data || []).slice(0, 8).map((r) => (
+              <Disclosure key={r.id} className="run-row" summary={<>
+                <Badge kind={r.status === 'done' ? 'ok' : r.status === 'error' ? 'err' : 'warn'}>{r.status}</Badge>
+                <b>{r.workflowName}</b>
+                <span className="muted small">{f.ago(r.started)} · {r.stepLogs?.length || 0} passos</span>
+              </>}>
+                <div className="stack" style={{ gap: 6 }}>
+                  {(r.stepLogs || []).map((st, idx) => (
+                    <div key={idx} className="row wrap small">
+                      <Badge kind={st.status === 'ok' ? 'ok' : st.status === 'error' ? 'err' : 'warn'}>{st.status}</Badge>
+                      <b>{st.name}</b> <span className="muted">({st.type})</span>
+                      <span className="grow ellipsis">{st.error || st.output}</span>
+                    </div>
+                  ))}
+                  {(r.status === 'error' || r.status === 'waiting_approval') && (
+                    <div className="row end">
+                      <Btn icon={RotateCcw} className="ghost small" disabled={busy === 'rs' + r.id} onClick={() => run('rs' + r.id, () => bridge.resumeWorkflowRun(r.id), 'Retomando workflow').then(() => runs.reload(true))}>Retomar daqui</Btn>
+                    </div>
+                  )}
+                </div>
+              </Disclosure>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {newWf && (
+        <Modal title="Novo Workflow Multi-Etapa" onClose={() => setNewWf(false)} wide>
+          <form className="stack" onSubmit={createWf}>
+            <div className="form-grid">
+              <Field label="Nome"><input required value={wfName} onChange={(e) => setWfName(e.target.value)} placeholder="Ex.: Triagem NF → Drive → Lembrete" /></Field>
+              <Field label="Cron (opcional)"><input className="mono" value={wfCron} onChange={(e) => setWfCron(e.target.value)} placeholder="0 8 * * *" /></Field>
+            </div>
+            <div className="stack" style={{ gap: 8 }}>
+              <div className="row between">
+                <b className="small">Etapas (use {'{{trigger}}'} e {'{{steps.s1}}'})</b>
+                <Btn icon={Plus} type="button" className="ghost small" onClick={() => setSteps([...steps, { id: 's' + (steps.length + 1), name: 'Etapa ' + (steps.length + 1), type: 'bot', bot: 'default', prompt: '' }])}>Adicionar etapa</Btn>
+              </div>
+              {steps.map((st, i) => (
+                <div key={i} className="stack" style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10, gap: 6 }}>
+                  <div className="form-grid">
+                    <Field label="ID"><input className="mono" value={st.id} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))} /></Field>
+                    <Field label="Nome"><input value={st.name} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} /></Field>
+                    <Field label="Tipo">
+                      <select value={st.type} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
+                        <option value="bot">Bot</option>
+                        <option value="condition">Condição (if)</option>
+                        <option value="approval">Aprovação humana</option>
+                        <option value="page_data">Atualizar Mini-App</option>
+                        <option value="draft">Criar Rascunho</option>
+                        <option value="notify">Notificar</option>
+                      </select>
+                    </Field>
+                    {st.type === 'bot' && (
+                      <Field label="Bot">
+                        <select value={st.bot || 'default'} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, bot: e.target.value } : x)))}>
+                          {(bots || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </Field>
+                    )}
+                  </div>
+                  {st.type === 'condition'
+                    ? <Field label="Expressão"><input className="mono" value={st.expr || ''} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, expr: e.target.value } : x)))} placeholder="{{steps.s1}} contains urgente" /></Field>
+                    : st.type === 'approval'
+                      ? <Field label="Pergunta de aprovação"><input value={st.question || ''} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, question: e.target.value } : x)))} /></Field>
+                      : st.type === 'page_data'
+                        ? <Field label="ID da Página"><input className="mono" value={st.pageId || ''} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, pageId: e.target.value } : x)))} placeholder="briefing-diario" /></Field>
+                        : <Field label="Prompt / Mensagem"><textarea rows={2} value={st.prompt || ''} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, prompt: e.target.value } : x)))} /></Field>}
+                  {steps.length > 1 && <div className="row end"><button type="button" className="ghost small danger-text" onClick={() => setSteps(steps.filter((_, j) => j !== i))}>Remover etapa</button></div>}
+                </div>
+              ))}
+            </div>
+            <div className="row end">
+              <button type="button" className="ghost" onClick={() => setNewWf(false)}>Cancelar</button>
+              <button disabled={busy === 'addwf'}>Salvar Workflow</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function Schedules() {
   const t = useT();
   const f = useFmt();
@@ -251,6 +398,7 @@ export default function Schedules() {
             ]} />
         )}
         {modals}
+        <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
       </div>
     );
   }
@@ -298,6 +446,7 @@ export default function Schedules() {
           );
         })}
       </Card>
+      <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
       {modals}
     </div>
   );

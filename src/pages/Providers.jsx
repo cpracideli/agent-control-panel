@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, KeyRound, Lock, Moon, Pencil, RefreshCw, RotateCcw, Save, Send, Shield, SlidersHorizontal, Smartphone, Sparkles } from 'lucide-react';
+import { Bell, Copy, KeyRound, Lock, Moon, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, Shield, SlidersHorizontal, Smartphone, Sparkles, Trash2, Users } from 'lucide-react';
 import { bridge, coolify, webPush } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
@@ -322,6 +322,166 @@ function ChatOverrides({ providers }) {
   );
 }
 
+function RouterShortcutsAndGuestsCard({ providers }) {
+  const toast = useToast();
+  const cfg = useLoad(() => bridge.getSettings(), []);
+  const scCfg = useLoad(() => bridge.shortcutConfig(), []);
+  const bots = useLoad(() => bridge.bots(), []);
+  const [busy, run] = useAction();
+  const [routing, setRouting] = useState({ enabled: false, fallbackOrder: 'antigravity, claude, opencode, openai_compat', lightRouting: false, lightProvider: 'opencode', lightModel: 'opencode/deepseek-v4.1-flash-free' });
+  const [startupNotify, setStartupNotify] = useState(true);
+  const [newToken, setNewToken] = useState('');
+  const [guests, setGuests] = useState([]);
+  const [newGuest, setNewGuest] = useState({ name: '', number: '', bot: 'familia', readOnly: true });
+
+  useEffect(() => {
+    const s = cfg.data;
+    if (!s) return;
+    if (s.routing) {
+      setRouting({
+        enabled: Boolean(s.routing.enabled),
+        fallbackOrder: (s.routing.fallbackOrder || ['antigravity', 'claude', 'opencode', 'openai_compat']).join(', '),
+        lightRouting: Boolean(s.routing.lightRouting),
+        lightProvider: s.routing.lightProvider || 'opencode',
+        lightModel: s.routing.lightModel || 'opencode/deepseek-v4.1-flash-free',
+      });
+    }
+    setStartupNotify(s.startupNotify !== false);
+    setGuests(Array.isArray(s.guestAccess) ? s.guestAccess : []);
+  }, [cfg.data]);
+
+  const saveRouting = () => run('rt', () => bridge.settings({
+    startupNotify,
+    routing: {
+      enabled: routing.enabled,
+      fallbackOrder: routing.fallbackOrder.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean),
+      lightRouting: routing.lightRouting,
+      lightProvider: routing.lightProvider,
+      lightModel: routing.lightModel,
+    },
+  }), 'Roteamento salvo').then(() => cfg.reload(true));
+
+  const rotateToken = async () => {
+    const r = await run('sctok', () => bridge.rotateShortcutToken(), 'Novo token gerado (copie agora!)');
+    if (r?.token) { setNewToken(r.token); scCfg.reload(true); }
+  };
+  const revokeToken = () => run('scdel', () => bridge.revokeShortcutToken(), 'Token revogado').then(() => { setNewToken(''); scCfg.reload(true); });
+
+  const saveGuests = (next) => run('gst', () => bridge.settings({ guestAccess: next }), 'Acesso convidado atualizado').then(() => cfg.reload(true));
+  const addGuest = () => {
+    if (!newGuest.name.trim() || newGuest.number.replace(/\D/g, '').length < 10) return toast('Informe nome e número com DDI+DDD', 'err');
+    const next = [...guests, { ...newGuest, name: newGuest.name.trim(), number: newGuest.number.replace(/\D/g, ''), enabled: true }];
+    setNewGuest({ name: '', number: '', bot: newGuest.bot, readOnly: true });
+    saveGuests(next);
+  };
+
+  const endpointUrl = scCfg.data?.endpointUrl || (window.location.origin + '/api/shortcut');
+  return (
+    <div className="grid2">
+      <Card title="Roteador Inteligente & Failover" icon={Sparkles}>
+        <div className="stack">
+          <label className="check">
+            <input type="checkbox" checked={routing.enabled} onChange={(e) => setRouting({ ...routing, enabled: e.target.checked })} />
+            <span><b>Failover automático entre provedores</b> · Se um provedor falhar/der rate-limit, tenta o próximo da fila automaticamente</span>
+          </label>
+          <Field label="Ordem de failover (vírgula)" hint="Valores: antigravity, claude, opencode, openai_compat">
+            <input className="mono" value={routing.fallbackOrder} onChange={(e) => setRouting({ ...routing, fallbackOrder: e.target.value })} />
+          </Field>
+          <label className="check">
+            <input type="checkbox" checked={routing.lightRouting} onChange={(e) => setRouting({ ...routing, lightRouting: e.target.checked })} />
+            <span><b>Roteamento econômico em perguntas leves</b> · Envia perguntas curtas sem código/ação para modelo leve/gratuito</span>
+          </label>
+          <div className="form-grid">
+            <Field label="Provedor leve">
+              <select value={routing.lightProvider} onChange={(e) => setRouting({ ...routing, lightProvider: e.target.value })}>
+                {(providers?.providers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Modelo leve"><input className="mono" value={routing.lightModel} onChange={(e) => setRouting({ ...routing, lightModel: e.target.value })} /></Field>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={startupNotify} onChange={(e) => setStartupNotify(e.target.checked)} />
+            <span>Avisar no WhatsApp quando a ponte reiniciar (sempre silenciado no Horário de Silêncio)</span>
+          </label>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'rt'} onClick={saveRouting}>Salvar roteador</Btn></div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <div className="row wrap">
+            <Users size={14} className="muted" />
+            <b>Acesso Convidado / Família (WhatsApp isolado)</b>
+            <Badge kind={guests.some((g) => g.enabled) ? 'ok' : 'muted'}>{guests.filter((g) => g.enabled).length} ativos</Badge>
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>Permite que familiares conversem apenas com um bot isolado (sandbox, sem acesso a trabalho, infra ou credenciais).</p>
+          {guests.map((g, i) => (
+            <div key={g.id || i} className="list-row wrap">
+              <div className="grow">
+                <b>{g.name}</b> <span className="muted small mono">{g.number}</span>
+                <div className="muted small">Bot: {g.bot} · {g.readOnly ? 'somente leitura' : 'padrão'}</div>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="checkbox" checked={Boolean(g.enabled)} onChange={(e) => saveGuests(guests.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)))} />
+                <span className="small">Ativo</span>
+              </label>
+              <IconButton icon={Trash2} className="ghost danger-text" label="Remover" onClick={() => saveGuests(guests.filter((_, j) => j !== i))} />
+            </div>
+          ))}
+          <div className="form-grid">
+            <Field label="Nome"><input value={newGuest.name} onChange={(e) => setNewGuest({ ...newGuest, name: e.target.value })} placeholder="Ex.: Bia" /></Field>
+            <Field label="WhatsApp (DDI+DDD)"><input value={newGuest.number} onChange={(e) => setNewGuest({ ...newGuest, number: e.target.value })} placeholder="5511999998888" /></Field>
+            <Field label="Bot exclusivo">
+              <select value={newGuest.bot} onChange={(e) => setNewGuest({ ...newGuest, bot: e.target.value })}>
+                {(bots.data || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="row end"><Btn icon={Plus} className="ghost small" disabled={busy === 'gst'} onClick={addGuest}>Adicionar convidado</Btn></div>
+        </div>
+      </Card>
+
+      <Card title="iOS Shortcuts · Share Sheet · Siri" icon={Smartphone}>
+        <div className="stack">
+          <div className="row wrap">
+            <b>Endpoint pessoal autenticado</b>
+            <Badge kind={scCfg.data?.configured ? 'ok' : 'muted'}>{scCfg.data?.configured ? 'Token ativo' : 'Não configurado'}</Badge>
+          </div>
+          <div className="row hook-url" style={{ paddingLeft: 0 }}>
+            <code className="mono grow ellipsis">{endpointUrl}</code>
+            <IconButton icon={Copy} size={14} label="Copiar URL" onClick={() => { navigator.clipboard.writeText(endpointUrl); toast('URL copiada'); }} />
+          </div>
+          <div className="row wrap" style={{ gap: 6 }}>
+            <Btn icon={KeyRound} className="small" disabled={busy === 'sctok'} onClick={rotateToken}>{scCfg.data?.configured ? 'Gerar novo token' : 'Gerar token'}</Btn>
+            {scCfg.data?.configured && <button type="button" className="ghost small danger-text" disabled={busy === 'scdel'} onClick={revokeToken}>Revogar</button>}
+          </div>
+          {newToken && (
+            <div className="stack" style={{ padding: 10, borderRadius: 10, border: '1px solid var(--accent)', gap: 6 }}>
+              <b className="small">Token gerado (salve no app Atalhos do iPhone — não será mostrado novamente):</b>
+              <div className="row">
+                <code className="mono grow ellipsis">{newToken}</code>
+                <IconButton icon={Copy} size={14} label="Copiar token" onClick={() => { navigator.clipboard.writeText(newToken); toast('Token copiado'); }} />
+              </div>
+            </div>
+          )}
+          <p className="muted small" style={{ margin: 0 }}>
+            No app <b>Atalhos (iOS)</b>: ação <i>Obter Conteúdo do URL</i> → método <b>POST</b> → cabeçalho <code className="mono">Authorization: Bearer SEU_TOKEN</code> → JSON:
+          </p>
+          <pre className="history-preview" style={{ margin: 0 }}>{`// Capturar tarefa via Siri:
+{"action":"ticket","title":"Ligar pro dentista","priority":"high"}
+
+// Salvar link do Share Sheet no Obsidian:
+{"action":"note","title":"Artigo","url":"https://..."}
+
+// Resumir link ou perguntar à Siri (retorna campo "spoken"):
+{"action":"summarize","url":"https://...","wait":true}
+
+// Arquivar Nota Fiscal (Arquivista -> Google Drive):
+{"action":"receipt","text":"NF Mercado","file":{"name":"nf.jpg","type":"image/jpeg","data":"<base64>"}}`}</pre>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Providers() {
   const t = useT();
   const p = useLoad(() => bridge.providers(), [], { cacheKey: '/bridge/providers' });
@@ -373,6 +533,8 @@ export default function Providers() {
           </div>
 
           <ProactivityAndChannelsCard providers={data} />
+
+          <RouterShortcutsAndGuestsCard providers={data} />
 
           <ChatOverrides providers={data} />
         </>

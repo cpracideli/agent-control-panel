@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
-import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, speakChunk, waitSpeechIdle, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
+import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import { provName } from '../prov.js';
@@ -234,22 +234,11 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
   const recCtxRef = useRef(null);
   const turnIdRef = useRef(0);
   const sendingRecRef = useRef(false);
-  const streamRef = useRef({ active: false, n: 0, spoken: false });
 
   mutedRef.current = muted;
   handsFreeRef.current = handsFree;
   messagesRef.current = messages || [];
   useEffect(() => { notifyMsgRef.current?.(); }, [messages]);
-  // Speak each text block of the running reply as soon as it streams in (no waiting for the final message).
-  useEffect(() => {
-    const s = streamRef.current;
-    if (!s.active || !live?.texts) return;
-    if (live.texts.length < s.n) s.n = 0;
-    while (s.n < live.texts.length) {
-      const t = live.texts[s.n++];
-      if (speakChunk(t, lang)) { s.spoken = true; setStatus('speaking'); }
-    }
-  }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stops MediaRecorder + AudioContext + all mic tracks so iOS switches audio back to loudspeaker before TTS plays.
   const cleanupRecorder = (keep) => new Promise((resolve) => {
@@ -285,7 +274,6 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     if (!cleanText && !audio) return;
     const myTurn = ++turnIdRef.current;
     stopSpeaking();
-    streamRef.current = { active: true, n: 0, spoken: false };
     setErr('');
     setStatus(audio ? 'sending' : 'thinking');
     setTranscript(cleanText || '🎤 Enviando e transcrevendo áudio…');
@@ -341,11 +329,9 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
       setLastReply(replyText);
       if (replyText && !replyMsg.error && !replyMsg.stopped) {
         setStatus('speaking');
-        if (streamRef.current.spoken) await waitSpeechIdle();
-        else if (speakChunk(replyText, lang)) await waitSpeechIdle();
-        else await speakAndWait(replyMsg.id, replyText, lang, chatId, replyMsg.tts);
+        // Resposta da ligação sempre em áudio do servidor (mesma voz da nota de voz); a voz do navegador só entra de reserva.
+        await speakAndWait(replyMsg.id, replyText, lang, chatId, replyMsg.tts);
       }
-      streamRef.current.active = false;
     } catch (e) {
       if (activeRef.current && turnIdRef.current === myTurn) {
         const msg = e?.message || 'Erro durante a ligação';
@@ -493,8 +479,29 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
   useEffect(() => {
     activeRef.current = true;
     setCallAudioMode(true);
+    // Keep the screen awake during the call: on phones the screen lock otherwise stops the mic and the audio.
+    let wakeLock = null;
+    let wakeWanted = true;
+    const takeWakeLock = async () => {
+      if (!wakeWanted || wakeLock || document.visibilityState !== 'visible') return;
+      try { wakeLock = await navigator.wakeLock?.request('screen'); wakeLock?.addEventListener?.('release', () => { wakeLock = null; }); } catch {}
+    };
+    // Coming back from the background, the OS may have killed the mic track: reopen it only in that case,
+    // so a turn that is still thinking or speaking is not interrupted.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      takeWakeLock();
+      const tracks = recCtxRef.current?.stream?.getAudioTracks?.() || [];
+      const micDead = tracks.length > 0 && tracks.every((t) => t.readyState === 'ended');
+      if (activeRef.current && !mutedRef.current && micDead) startListening();
+    };
+    takeWakeLock();
+    document.addEventListener('visibilitychange', onVisible);
     startListening();
     return () => {
+      wakeWanted = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      try { wakeLock?.release(); } catch {}
       activeRef.current = false;
       turnIdRef.current++;
       notifyMsgRef.current = null;
@@ -884,7 +891,7 @@ function MsgTime({ at, lang }) {
   return <time className="msg-time" dateTime={d.toISOString()} aria-hidden="true">{day && <span>{day}</span>}{time}</time>;
 }
 
-function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term }) {
+function Message({ m, chatId, onResend, onRetry, onQuote, onFork, onCorrect, bot, botsById, term }) {
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -897,10 +904,13 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
     openContextMenu({ rect, title: when, items: m.role === 'user' ? [
       (m.text || m.transcript) && { icon: Copy, label: t('common.copy'), onClick: copy },
       m.text && onResend && { icon: Pencil, label: t('common.edit'), onClick: () => onResend(m.text) },
+      onFork && { icon: GitBranch, label: 'Ramificar daqui (Fork)', onClick: () => onFork(m) },
       m.text && { icon: TextSelect, label: t('chat.selectText'), onClick: () => setSelectable(true) },
     ] : [
       m.text && { icon: Copy, label: t('common.copy'), onClick: copy },
       m.text && onQuote && { icon: Reply, label: t('chat.quote'), onClick: () => onQuote(m.text) },
+      onFork && { icon: GitBranch, label: 'Ramificar daqui (Fork)', onClick: () => onFork(m) },
+      onCorrect && { icon: Flag, label: 'Corrigir comportamento', onClick: () => onCorrect(m) },
       m.text && !m.error && { icon: Volume2, label: t('chat.listen'), onClick: () => speak(m.id, m.text, lang, chatId, m.tts) },
       m.text && { icon: TextSelect, label: t('chat.selectText'), onClick: () => setSelectable(true) },
     ] });
@@ -939,8 +949,15 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{(m.usage.estimated || m.provider === 'antigravity' ? '~' : '') + f.usd(m.usage.cost)}</span> : null}
+          {m.meta?.fallbackFrom && <Badge kind="warn" title={'Failover de ' + provName(m.meta.fallbackFrom)}>failover</Badge>}
+          {m.meta?.routedReason === 'light' && <Badge kind="ok">econômico</Badge>}
+          {m.meta?.skills?.length > 0 && <Badge kind="muted">/{m.meta.skills[0]}</Badge>}
+          {m.meta?.memories?.length > 0 && <Badge kind="muted" title={m.meta.memories.join(', ')}>🧠 {m.meta.memories.length}</Badge>}
+          {m.corrected && <Badge kind="ok" title={m.correctionNote || ''}>regra salva</Badge>}
           {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} chatId={chatId} file={m.tts} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
           {(m.error || m.stopped) && onRetry && <Btn icon={RotateCcw} className="ghost small" onClick={onRetry}>{t('chat.retry')}</Btn>}
+          {onFork && <IconButton icon={GitBranch} size={13} className="ghost bare" label="Ramificar conversa daqui (Fork)" onClick={() => onFork(m)} />}
+          {onCorrect && !m.error && <IconButton icon={Flag} size={13} className="ghost bare" label="Corrigir comportamento do bot" onClick={() => onCorrect(m)} />}
           {onQuote && m.text && <IconButton icon={Reply} size={13} className="ghost bare" label={t('chat.quote')} onClick={() => onQuote(m.text)} />}
           <IconButton icon={Copy} size={13} className="ghost bare" label={t('common.copy')} onClick={() => { navigator.clipboard.writeText(m.text); toast(t('common.copied')); }} />
         </div>
@@ -1086,6 +1103,47 @@ export default function Chat({ openMore, me }) {
   const [msgSearch, setMsgSearch] = useState('');
   const [renaming, setRenaming] = useState(null);
   const [queuedAhead, setQueuedAhead] = useState(0);
+  const [correctMsg, setCorrectMsg] = useState(null);
+  const [correctText, setCorrectText] = useState('');
+  const [undoOpen, setUndoOpen] = useState(false);
+  const undoL = useLoad(() => (undoOpen ? bridge.undoList() : Promise.resolve([])), [undoOpen]);
+  const [undoBusy, setUndoBusy] = useState(false);
+
+  useEffect(() => {
+    const openPending = () => {
+      try {
+        const cid = localStorage.getItem('acp_chat_open');
+        if (cid && cid.startsWith('web:')) { localStorage.removeItem('acp_chat_open'); setCurrent(cid); }
+      } catch {}
+    };
+    openPending();
+    const onOpen = (e) => { if (e?.detail?.chatId) setCurrent(e.detail.chatId); };
+    window.addEventListener('acp:open-chat', onOpen);
+    return () => window.removeEventListener('acp:open-chat', onOpen);
+  }, []);
+
+  const forkFrom = async (m) => {
+    if (!current) return;
+    try {
+      const r = await bridge.forkChat(current, { upToMessageId: m.id });
+      if (r?.chat?.id) {
+        toast('Conversa ramificada (Fork)');
+        await chats.reload(true);
+        setCurrent(r.chat.id);
+      }
+    } catch (e) { toast(e.message || 'Falha ao ramificar', 'err'); }
+  };
+
+  const saveCorrection = async (e) => {
+    e.preventDefault();
+    if (!correctMsg || !correctText.trim()) return;
+    try {
+      await bridge.correctFeedback({ chatId: current, messageId: correctMsg.id, botId: correctMsg.bot || info?.bot || 'default', correction: correctText.trim() });
+      toast('Regra salva na memória do bot!');
+      setMessages((ms) => ms.map((x) => (x.id === correctMsg.id ? { ...x, corrected: true, correctionNote: correctText.trim() } : x)));
+      setCorrectMsg(null); setCorrectText('');
+    } catch (err) { toast(err.message || 'Erro ao salvar regra', 'err'); }
+  };
   const rootRef = useRef(null);
   const openRef = useRef(false);
   openRef.current = showList;
@@ -1652,6 +1710,8 @@ export default function Chat({ openMore, me }) {
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
+          {info && <IconButton icon={Sparkles} className="ghost voice-toggle only-desktop" label="Conselho Multi-Modelo (/council)" onClick={() => { setText((prev) => (prev.startsWith('/council ') ? prev : '/council ' + prev)); inputRef.current?.focus(); }} />}
+          <IconButton icon={Undo2} className="ghost voice-toggle only-desktop" label="Checkpoints & Desfazer no Workspace" onClick={() => setUndoOpen(true)} />
           {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {typeof Notification !== 'undefined' && (
@@ -1709,6 +1769,8 @@ export default function Chat({ openMore, me }) {
               <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} botsById={botsById} term={term}
                 onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
                 onQuote={(txt) => { const snip = txt.trim().split('\n').slice(0, 3).map((l) => '> ' + l).join('\n'); setText((prev) => (prev ? prev + '\n' : '') + snip + '\n\n'); inputRef.current?.focus(); }}
+                onFork={forkFrom}
+                onCorrect={(msg) => { setCorrectMsg(msg); setCorrectText(''); }}
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
@@ -1890,6 +1952,14 @@ export default function Chat({ openMore, me }) {
               <span className="row-ic ic-chat"><Pencil size={17} /></span>
               <span className="grow"><b>{t('chat.rename')}</b></span>
             </button>
+            <button className="group-row press" onClick={() => { setShowOpts(false); setUndoOpen(true); }}>
+              <span className="row-ic ic-providers"><Undo2 size={17} /></span>
+              <span className="grow"><b>Checkpoints & Desfazer</b><small className="muted">Snapshots git do workspace</small></span>
+            </button>
+            <button className="group-row press" onClick={() => { setShowOpts(false); setText('/council '); inputRef.current?.focus(); }}>
+              <span className="row-ic ic-skills"><Sparkles size={17} /></span>
+              <span className="grow"><b>Conselho Multi-Modelo</b><small className="muted">Comparar 2–3 modelos em paralelo</small></span>
+            </button>
             <button className="group-row press" onClick={() => { setShowOpts(false); reset(); }}>
               <span className="row-ic ic-providers"><RotateCcw size={17} /></span>
               <span className="grow"><b>{t('common.newSession')}</b><small className="muted">{t('chat.resetTitle')}</small></span>
@@ -1919,6 +1989,61 @@ export default function Chat({ openMore, me }) {
       )}
       {newTaskOpen && current && (
         <ParallelTaskModal chatId={current} bots={botsL.data} onClose={() => setNewTaskOpen(false)} onStarted={() => chatTasks.reload(true)} />
+      )}
+      {correctMsg && (
+        <Modal title="Corrigir comportamento do bot" onClose={() => setCorrectMsg(null)}>
+          <form className="stack" onSubmit={saveCorrection}>
+            <p className="muted small" style={{ margin: 0 }}>
+              A regra será salva diretamente na memória do bot <b>{botsById[correctMsg.bot || info?.bot || 'default']?.name || 'Agent'}</b> para valer nas próximas conversas.
+            </p>
+            <Field label="O que o bot deve fazer (ou nunca mais fazer)?">
+              <textarea autoFocus required rows={3} value={correctText} onChange={(e) => setCorrectText(e.target.value)} placeholder="Ex.: Nunca usar tabelas no WhatsApp; sempre resumir em até 3 tópicos." />
+            </Field>
+            <div className="row end">
+              <button type="button" className="ghost" onClick={() => setCorrectMsg(null)}>Cancelar</button>
+              <button disabled={!correctText.trim()}>Salvar regra</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {undoOpen && (
+        <Modal title="Checkpoints & Desfazer no Workspace" onClose={() => setUndoOpen(false)} wide>
+          <div className="stack">
+            <div className="row wrap">
+              <span className="muted small grow">Crie pontos de restauração git antes de mudanças grandes e reverta em 1 clique.</span>
+              <Btn icon={Plus} className="small" disabled={undoBusy} onClick={async () => {
+                setUndoBusy(true);
+                try { await bridge.undoSnapshot({ repo: 'claude-zap', label: 'Snapshot claude-zap' }); toast('Snapshot criado (claude-zap)'); undoL.reload(true); }
+                catch (e) { toast(e.message, 'err'); } finally { setUndoBusy(false); }
+              }}>Snapshot Ponte</Btn>
+              <Btn icon={Plus} className="ghost small" disabled={undoBusy} onClick={async () => {
+                setUndoBusy(true);
+                try { await bridge.undoSnapshot({ repo: 'agent-control-panel', label: 'Snapshot painel' }); toast('Snapshot criado (painel)'); undoL.reload(true); }
+                catch (e) { toast(e.message, 'err'); } finally { setUndoBusy(false); }
+              }}>Snapshot Painel</Btn>
+            </div>
+            <ErrorBox error={undoL.error} onRetry={() => undoL.reload()} />
+            {undoL.data && !undoL.data.length && <p className="muted small">Nenhum checkpoint salvo ainda.</p>}
+            {(undoL.data || []).map((cp) => (
+              <div key={cp.id} className="list-row wrap">
+                <div className="grow">
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    <b>{cp.label}</b>
+                    <Badge kind="muted">{cp.repo}</Badge>
+                    <span className="chip mono">{cp.ref.slice(0, 7)}</span>
+                  </div>
+                  <div className="muted small">{f.date(cp.at)} · {cp.files?.length || 0} arquivos alterados</div>
+                </div>
+                <Btn icon={Undo2} className="ghost small" disabled={undoBusy} onClick={async () => {
+                  if (!(await confirm('Restaurar arquivos rastreados de "' + cp.repo + '" para o checkpoint "' + cp.label + '"? (Um backup do estado atual será salvo antes.)'))) return;
+                  setUndoBusy(true);
+                  try { await bridge.undoRestore(cp.id); toast('Checkpoint restaurado!'); undoL.reload(true); }
+                  catch (e) { toast(e.message, 'err'); } finally { setUndoBusy(false); }
+                }}>Restaurar</Btn>
+              </div>
+            ))}
+          </div>
+        </Modal>
       )}
     </div>
   );
