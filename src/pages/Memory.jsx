@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Brain, FileText, MessageSquarePlus, Pencil, Pin, Plus, Search, Trash2 } from 'lucide-react';
+import MemoryGraph from './MemoryGraph.jsx';
+import { Brain, FileText, Network, MessageSquarePlus, Pencil, Pin, Plus, Search, Trash2 } from 'lucide-react';
 import { api, bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -278,8 +279,9 @@ export default function Memory() {
       <div className="seg big mem-tabs">
         <button type="button" className={tab === 'ai' ? 'on' : ''} onClick={() => setTab('ai')}><Brain size={14} /> ai-memory</button>
         <button type="button" className={tab === 'local' ? 'on' : ''} onClick={() => setTab('local')}><FileText size={14} /> {t('mem.local')}</button>
+        <button type="button" className={tab === 'graph' ? 'on' : ''} onClick={() => setTab('graph')}><Network size={14} /> Grafo</button>
       </div>
-      {tab === 'ai' ? <AiMemory /> : <LocalMemory />}
+      {tab === 'ai' ? <AiMemory /> : tab === 'graph' ? <MemoryGraph /> : <LocalMemory />}
     </div>
   );
 }

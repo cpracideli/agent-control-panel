@@ -1865,3 +1865,20 @@ kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; bord
 .tg-prev { width: 100%; height: 520px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
 @media (max-width: 800px) { .tg-prev { height: 380px; } }
 .tg-item { width: 100%; justify-content: flex-start; }
+
+/* Memory graph */
+.mg-legend { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.mg-legend .chip, .mg-detail .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border); background: transparent; color: inherit; border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+.mg-legend .chip i, .mg-detail .chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.mg-legend .chip.off { opacity: .4; }
+.mg-wrap { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: rgba(128,128,128,.06); }
+.mg-svg { width: 100%; height: auto; max-height: 70vh; touch-action: none; cursor: grab; display: block; }
+.mg-edge { stroke: rgba(128,128,128,.35); stroke-width: 1; }
+.mg-edge.hot { stroke: var(--accent, #0a84ff); stroke-width: 2; }
+.mg-node { cursor: pointer; transition: opacity .2s; outline: none; }
+.mg-node text { font-size: 11px; fill: currentColor; paint-order: stroke; stroke: var(--bg, #fff); stroke-width: 3px; pointer-events: none; }
+.mg-node circle { transition: r .2s; stroke: var(--bg, #fff); stroke-width: 2; }
+.mg-node.sel circle { stroke: var(--fg, #000); stroke-width: 3; }
+.mg-node.dim { opacity: .3; }
+.mg-node:focus-visible circle { stroke: var(--accent, #0a84ff); stroke-width: 3; }
+.mg-detail { margin: 12px 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow: auto; }
