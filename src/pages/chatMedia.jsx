@@ -262,6 +262,32 @@ export async function speakAndWait(id, text, lang, chatId, file) {
     subs.add(fn);
   });
 }
+// Streaming speech for live calls: queues sentences on the browser voice (no server TTS round trip) so the bot
+// starts talking while it is still working. Returns false when the browser has no speech synthesis.
+export function speakChunk(text, lang) {
+  if (!hasTTS()) return false;
+  const clean = speakable(text);
+  if (!clean) return true;
+  const synth = window.speechSynthesis;
+  const voice = bestVoice(lang);
+  speakState = { id: 'call-stream', browser: true }; notify();
+  (clean.match(/[^.!?…]+[.!?…]*\s*/g) || [clean]).forEach((p) => {
+    const u = new SpeechSynthesisUtterance(p.trim());
+    u.lang = voice?.lang || lang; if (voice) u.voice = voice;
+    u.rate = rate;
+    synth.speak(u);
+  });
+  return true;
+}
+export async function waitSpeechIdle(maxMs = 120000) {
+  if (!hasTTS()) return;
+  const synth = window.speechSynthesis;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const t0 = Date.now();
+  await sleep(200);
+  while ((synth.speaking || synth.pending) && Date.now() - t0 < maxMs) await sleep(200);
+  if (speakState?.id === 'call-stream') { speakState = null; notify(); }
+}
 export function stopSpeaking() {
   const was = speakState;
   speakState = null; notify();

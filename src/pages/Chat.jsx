@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, HelpCircle, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Square, SquarePen, TextSelect, Trash2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache, webPush } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
-import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
+import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, speakChunk, waitSpeechIdle, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
@@ -234,11 +234,22 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
   const recCtxRef = useRef(null);
   const turnIdRef = useRef(0);
   const sendingRecRef = useRef(false);
+  const streamRef = useRef({ active: false, n: 0, spoken: false });
 
   mutedRef.current = muted;
   handsFreeRef.current = handsFree;
   messagesRef.current = messages || [];
   useEffect(() => { notifyMsgRef.current?.(); }, [messages]);
+  // Speak each text block of the running reply as soon as it streams in (no waiting for the final message).
+  useEffect(() => {
+    const s = streamRef.current;
+    if (!s.active || !live?.texts) return;
+    if (live.texts.length < s.n) s.n = 0;
+    while (s.n < live.texts.length) {
+      const t = live.texts[s.n++];
+      if (speakChunk(t, lang)) { s.spoken = true; setStatus('speaking'); }
+    }
+  }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stops MediaRecorder + AudioContext + all mic tracks so iOS switches audio back to loudspeaker before TTS plays.
   const cleanupRecorder = (keep) => new Promise((resolve) => {
@@ -249,6 +260,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     setHeardSpeech(false);
     if (!ctx) return resolve(null);
     if (ctx.vadTimer) { clearInterval(ctx.vadTimer); ctx.vadTimer = null; }
+    if (ctx.sr) { try { ctx.sr.abort(); } catch {} ctx.sr = null; }
     if (ctx.audioCtx) { try { ctx.audioCtx.close(); } catch {} ctx.audioCtx = null; }
     let finished = false;
     const done = () => {
@@ -273,6 +285,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     if (!cleanText && !audio) return;
     const myTurn = ++turnIdRef.current;
     stopSpeaking();
+    streamRef.current = { active: true, n: 0, spoken: false };
     setErr('');
     setStatus(audio ? 'sending' : 'thinking');
     setTranscript(cleanText || '🎤 Enviando e transcrevendo áudio…');
@@ -328,8 +341,11 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
       setLastReply(replyText);
       if (replyText && !replyMsg.error && !replyMsg.stopped) {
         setStatus('speaking');
-        await speakAndWait(replyMsg.id, replyText, lang, chatId, replyMsg.tts);
+        if (streamRef.current.spoken) await waitSpeechIdle();
+        else if (speakChunk(replyText, lang)) await waitSpeechIdle();
+        else await speakAndWait(replyMsg.id, replyText, lang, chatId, replyMsg.tts);
       }
+      streamRef.current.active = false;
     } catch (e) {
       if (activeRef.current && turnIdRef.current === myTurn) {
         const msg = e?.message || 'Erro durante a ligação';
@@ -355,8 +371,10 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     sendingRecRef.current = true;
     prepareCallAudio();
     try {
+      const srText = String(recCtxRef.current?.srText || '').trim();
       const audio = await cleanupRecorder(true);
       if (!activeRef.current) return;
+      if (srText && audio) { await runTurn({ text: srText }); return; } // browser transcript: skips upload + server transcription
       if (!audio) {
         if (!mutedRef.current) setStatus('idle');
         return;
@@ -409,7 +427,17 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
     rec.start(250);
 
-    const ctx = { stream, rec, mime, chunks, audioCtx: null, vadTimer: null };
+    const ctx = { stream, rec, mime, chunks, audioCtx: null, vadTimer: null, sr: null, srText: '' };
+    try {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SR && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        const r = new SR();
+        r.lang = lang || 'pt-BR'; r.continuous = true; r.interimResults = true;
+        r.onresult = (ev) => { let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; ctx.srText = t; setTranscript(t); };
+        r.start();
+        ctx.sr = r;
+      }
+    } catch {}
     recCtxRef.current = ctx;
     setRecStarted(Date.now());
     setHeardSpeech(false);
@@ -433,7 +461,7 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
         let lastVoiceAt = 0;
         const SPEECH_RMS = 0.022;
         const MIN_SPEECH_MS = 280;
-        const SILENCE_MS = 1500;
+        const SILENCE_MS = 900;
         const MAX_TURN_MS = 60000;
         ctx.vadTimer = setInterval(() => {
           if (recCtxRef.current !== ctx || !activeRef.current) return;
