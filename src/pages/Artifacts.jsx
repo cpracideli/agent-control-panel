@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileText, FolderArchive, Image as ImageIcon, MessageSquare, Music, PenTool, Search, Send, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
-import { useT } from '../i18n.jsx';
+import { useI18n, useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { docLink, imageLink } from '../viewer.jsx';
 
@@ -82,21 +82,52 @@ function kindOf(a) {
   return 'doc';
 }
 
+function fmtBytes(bytes, lang) {
+  const n = Math.max(0, Number(bytes) || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (Math.round((n / 1024) * 10) / 10).toLocaleString(lang) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (Math.round((n / (1024 * 1024)) * 10) / 10).toLocaleString(lang) + ' MB';
+  return (Math.round((n / (1024 * 1024 * 1024)) * 100) / 100).toLocaleString(lang) + ' GB';
+}
+
 export default function Artifacts() {
   const t = useT();
+  const { lang } = useI18n();
   const f = useFmt();
   const confirm = useConfirm();
+  const toast = useToast();
   const arts = useLoad(() => bridge.artifacts(), [], { interval: 30000, cacheKey: '/bridge/artifacts' });
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [annotating, setAnnotating] = useState(null);
   const [busy, run] = useAction();
 
-  const list = (arts.data || []).filter((a) => {
+  const allItems = arts.data || [];
+  const list = allItems.filter((a) => {
     if (filter !== 'all' && kindOf(a) !== filter) return false;
     if (q.trim() && !(a.origName + ' ' + a.name + ' ' + a.chatTitle).toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
+  const totalBytes = allItems.reduce((acc, a) => acc + (Number(a.size) || 0), 0);
+  const filteredBytes = list.reduce((acc, a) => acc + (Number(a.size) || 0), 0);
+  const isFiltered = filter !== 'all' || Boolean(q.trim());
+  const storageSummary = isFiltered
+    ? t('art.storageFiltered', { n: list.length, totalN: allItems.length, size: fmtBytes(filteredBytes, lang), totalSize: fmtBytes(totalBytes, lang) })
+    : t('art.storageTotal', { n: allItems.length, size: fmtBytes(totalBytes, lang) });
+
+  const removeAll = async () => {
+    if (!list.length) return;
+    const sizeStr = fmtBytes(filteredBytes, lang);
+    const title = isFiltered ? t('art.removeFilteredTitle') : t('art.removeAllTitle');
+    const body = t('art.removeAllConfirm', { n: list.length, size: sizeStr });
+    if (!(await confirm(title, body, t('art.removeAllBtn')))) return;
+    const opts = isFiltered ? { names: list.map((a) => a.name) } : {};
+    const res = await run('delAll', () => bridge.deleteAllArtifacts(opts));
+    if (res) {
+      toast(t('art.removedAll', { n: res.deleted, size: fmtBytes(res.freedBytes, lang) }));
+      arts.reload(true);
+    }
+  };
 
   return (
     <div className="page">
@@ -110,8 +141,18 @@ export default function Artifacts() {
             ))}
           </div>
           <label className="search"><Search size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('common.filter')} /></label>
+          {list.length > 0 && (
+            <Btn icon={Trash2} className="ghost small danger-text" disabled={busy === 'delAll'} onClick={removeAll}>
+              {isFiltered ? t('art.removeFilteredBtn') : t('art.removeAllBtn')}
+            </Btn>
+          )}
         </div>
       }>
+        {arts.data && (
+          <div className="row between wrap" style={{ marginBottom: 10 }}>
+            <span className="muted small">{storageSummary}</span>
+          </div>
+        )}
         {arts.data && !list.length && <p className="muted">{t('art.none')}</p>}
         <div className="bot-grid">
           {list.map((a) => {

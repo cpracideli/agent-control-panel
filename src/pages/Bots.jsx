@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -39,10 +39,14 @@ function resizeAvatar(file) {
   });
 }
 
-function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
+function BotForm({ initial, defaultBot, providers, mcpNames, onClose, onSaved }) {
   const t = useT();
+  const toast = useToast();
   const editing = Boolean(initial?.id);
   const [f, setF] = useState({ name: '', emoji: '✨', avatar: '', color: COLORS[0], description: '', instructions: '', provider: '', model: '', effort: '', agyModel: '', agyEffort: '', memory: 'own', approvalMode: 'auto', allowRules: '', blockRules: '', policyEnforce: false, sandboxed: false, mcp: null, ...initial });
+  const [avatarHint, setAvatarHint] = useState('');
+  const [autoGenAvatar, setAutoGenAvatar] = useState(!editing && !initial?.avatar);
+  const [genBusy, setGenBusy] = useState(false);
   const [busy, run] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const pickAvatar = async (e) => {
@@ -50,11 +54,32 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
     if (!file) return;
     const dataUrl = await resizeAvatar(file);
     setF((cur) => ({ ...cur, avatar: dataUrl }));
+    setAutoGenAvatar(false);
     e.target.value = '';
   };
+  const generateAvatar = async () => {
+    if (genBusy) return;
+    setGenBusy(true);
+    try {
+      const payload = { name: f.name.trim() || 'Bot', description: f.description, instructions: f.instructions, color: f.color, emoji: f.emoji, hint: avatarHint.trim() };
+      const r = editing
+        ? await bridge.generateBotAvatarFor(f.id, { ...payload, save: false })
+        : await bridge.generateBotAvatar(payload);
+      if (r?.avatar) {
+        setF((cur) => ({ ...cur, avatar: r.avatar }));
+        setAutoGenAvatar(false);
+        toast(t('bots.avatarGenerated'));
+      }
+    } catch (e) {
+      toast(e.message || t('bots.avatarGenError'), 'err');
+    } finally {
+      setGenBusy(false);
+    }
+  };
   const provs = providers?.providers || [];
-  const agy = f.provider === 'antigravity';
-  const prov = provs.find((p) => p.id === (f.provider || providers?.defaultProvider || 'claude')) || provs[0];
+  const effProvider = f.provider || (!initial?.isDefault && defaultBot?.provider) || providers?.defaultProvider || 'claude';
+  const agy = effProvider === 'antigravity';
+  const prov = provs.find((p) => p.id === effProvider) || provs[0];
   const agyModel = agy && prov?.models.find((m) => m.id === f.agyModel);
   const efforts = agy ? (agyModel ? agyModel.efforts : []) : (prov?.efforts || []);
   const limited = Array.isArray(f.mcp);
@@ -65,7 +90,15 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
       provider: f.provider, model: agy ? '' : f.model, effort: agy ? '' : f.effort, agyModel: agy ? f.agyModel : '', agyEffort: agy ? f.agyEffort : '', memory: f.memory,
       approvalMode: f.approvalMode || 'auto', allowRules: f.allowRules || '', blockRules: f.blockRules || '', policyEnforce: Boolean(f.policyEnforce), sandboxed: Boolean(f.sandboxed), mcp: f.mcp };
     const r = editing ? await run('save', () => bridge.patchBot(f.id, body), t('bots.saved')) : await run('save', () => bridge.addBot(body), t('bots.created'));
-    if (r) { onSaved(r); onClose(); }
+    if (r) {
+      if (!editing && !f.avatar && autoGenAvatar && r.id) {
+        bridge.generateBotAvatarFor(r.id, { async: true, hint: avatarHint.trim() })
+          .then(() => toast(t('bots.avatarBgStarted')))
+          .catch(() => {});
+      }
+      onSaved(r);
+      onClose();
+    }
   };
   return (
     <Modal title={editing ? t('bots.editTitle', { n: initial.name }) : t('bots.newTitle')} onClose={onClose} wide>
@@ -75,13 +108,26 @@ function BotForm({ initial, providers, mcpNames, onClose, onSaved }) {
           <Field label={t('bots.emoji')}>
             <div className="stack">
               <div className="row wrap">
-                <BotAvatar bot={f} size={36} />
+                <span className="bot-avatar-preview">
+                  <BotAvatar bot={f} size={42} />
+                  {genBusy && <span className="bot-avatar-gen-spin" aria-label={t('bots.avatarGenerating')}><span className="spin" /></span>}
+                </span>
                 <label className="btn ghost small" style={{ cursor: 'pointer' }}>
-                  Imagem
+                  {t('bots.uploadImg')}
                   <input type="file" accept="image/*" hidden onChange={pickAvatar} />
                 </label>
-                {f.avatar && <button type="button" className="ghost small" onClick={() => setF({ ...f, avatar: '' })}>Remover imagem</button>}
+                <Btn icon={Wand2} type="button" className="small" disabled={genBusy} onClick={generateAvatar}>
+                  {genBusy ? t('bots.avatarGenerating') : (f.avatar ? t('bots.avatarRegen') : t('bots.avatarGenAi'))}
+                </Btn>
+                {f.avatar && <button type="button" className="ghost small" onClick={() => setF({ ...f, avatar: '' })}>{t('bots.removeImg')}</button>}
               </div>
+              <input value={avatarHint} onChange={(e) => setAvatarHint(e.target.value)} maxLength={140} placeholder={t('bots.avatarHintPh')} />
+              {!editing && !f.avatar && (
+                <label className="check small">
+                  <input type="checkbox" checked={autoGenAvatar} onChange={(e) => setAutoGenAvatar(e.target.checked)} />
+                  <span>{t('bots.avatarAutoGen')}</span>
+                </label>
+              )}
               <div className="row wrap emoji-pick">
                 <input className="emoji-input" value={f.emoji} onChange={set('emoji')} maxLength={8} aria-label={t('bots.emoji')} />
                 {EMOJIS.map((x) => <button type="button" key={x} className={'ghost small' + (f.emoji === x ? ' on' : '')} onClick={() => setF({ ...f, emoji: x, avatar: '' })}>{x}</button>)}
@@ -329,11 +375,21 @@ export default function Bots() {
   const [busy, run] = useAction();
   const mobile = useIsMobile();
   const [detail, setDetail] = useState(null);
+  const defaultBot = (bots.data || []).find((b) => b.isDefault || b.id === 'default') || null;
+  const anyGenerating = (bots.data || []).some((b) => b.avatarGenerating);
+  useEffect(() => {
+    if (!anyGenerating) return undefined;
+    const id = setInterval(() => bots.reload(true), 5000);
+    return () => clearInterval(id);
+  }, [anyGenerating]); // eslint-disable-line react-hooks/exhaustive-deps
   const mcpNames = mcp.data ? [...new Set(['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})))].sort() : [];
   const provLabel = (b) => {
+    const effP = b.provider || (!b.isDefault && defaultBot?.provider) || providers.data?.defaultProvider || 'claude';
     const p = (providers.data?.providers || []).find((x) => x.id === b.provider);
-    const model = b.provider === 'antigravity' ? b.agyModel : b.model;
-    return [p ? p.name : '', model, b.provider === 'antigravity' ? b.agyEffort : b.effort].filter(Boolean).join(' · ');
+    const agyMode = effP === 'antigravity';
+    const model = agyMode ? b.agyModel : b.model;
+    const effort = agyMode ? b.agyEffort : b.effort;
+    return [p ? p.name : '', model, effort].filter(Boolean).join(' · ');
   };
   const chatWith = async (b) => {
     const c = await run('chat' + b.id, () => bridge.newWeb({ bot: b.id, title: t('bots.chatTitle', { n: b.name }) }));
@@ -361,7 +417,7 @@ export default function Bots() {
   ].filter(Boolean);
   const modals = (
     <>
-      {form && <BotForm initial={form} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
+      {form && <BotForm initial={form} defaultBot={defaultBot} providers={providers.data} mcpNames={mcpNames} onClose={() => setForm(null)} onSaved={() => bots.reload(true)} />}
       {memory && <MemoryModal bot={memory} onClose={() => { setMemory(null); bots.reload(true); }} />}
       {history && <HistoryModal bot={history} onClose={() => setHistory(null)} onRestored={() => bots.reload(true)} />}
       {tplOpen && <TemplatesModal onClose={() => setTplOpen(false)} onCreated={() => bots.reload(true)} />}
@@ -384,7 +440,7 @@ export default function Bots() {
         <ListGroup>
           {(bots.data || []).map((b) => (
             <ListRow key={b.id} leading={<BotAvatar bot={b} size={40} />} title={b.name}
-              badges={b.isDefault && <Badge>{t('bots.default')}</Badge>}
+              badges={<>{b.isDefault && <Badge>{t('bots.default')}</Badge>}{b.avatarGenerating && <Badge kind="warn">{t('bots.avatarGenerating')}</Badge>}</>}
               subtitle={b.description || t('bots.noDescription')}
               onOpen={() => setDetail(b.id)}
               onLongPress={(rect) => openContextMenu({ rect, title: b.name, items: [
@@ -438,7 +494,7 @@ export default function Bots() {
               <div className="row">
                 <BotAvatar bot={b} size={44} />
                 <div className="grow">
-                  <div className="row wrap"><b>{b.name}</b>{b.isDefault && <Badge>{t('bots.default')}</Badge>}</div>
+                  <div className="row wrap"><b>{b.name}</b>{b.isDefault && <Badge>{t('bots.default')}</Badge>}{b.avatarGenerating && <Badge kind="warn"><span className="spin" /> {t('bots.avatarGenerating')}</Badge>}</div>
                   <div className="muted small ellipsis-2">{b.description || t('bots.noDescription')}</div>
                 </div>
               </div>

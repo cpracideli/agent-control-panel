@@ -602,85 +602,231 @@ function ParallelTaskModal({ chatId, bots, onClose, onStarted }) {
   );
 }
 
-function PromptList({ prompts, term, onAnswered }) {
+function normalizePromptOptionItems(p) {
+  if (Array.isArray(p.optionItems) && p.optionItems.length) return p.optionItems;
+  return (p.options || []).map((o) => (typeof o === 'string' ? { label: o, description: '', recommended: false } : { label: o.label || '', description: o.description || '', recommended: Boolean(o.recommended) })).filter((x) => x.label);
+}
+
+function PromptCardItem({ p, term, isFirstPending, busy, onReply }) {
   const t = useT();
+  const pending = p.status === 'pending';
+  const isSecret = p.kind === 'secret';
+  const questions = Array.isArray(p.questions) && p.questions.length > 1
+    ? p.questions.map((q) => ({ question: q.question, items: normalizePromptOptionItems(q), multiSelect: Boolean(q.multiSelect) }))
+    : [{ question: p.question, items: normalizePromptOptionItems(p), multiSelect: Boolean(p.multiSelect) }];
+  const multiQ = questions.length > 1;
+  const [step, setStep] = useState(0);
+  const [answersMap, setAnswersMap] = useState({});
+  const [customOpen, setCustomOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [secretVal, setSecretVal] = useState('');
+  const [pin, setPin] = useState('');
+  const customRef = useRef(null);
+
+  const curQ = questions[Math.min(step, questions.length - 1)];
+  const curSel = answersMap[step];
+  const curMulti = curQ.multiSelect;
+  const selectedList = curMulti ? (Array.isArray(curSel) ? curSel : []) : [];
+
+  const submitAll = (nextMap) => {
+    const map = nextMap || answersMap;
+    if (multiQ) {
+      const list = questions.map((q, idx) => ({ question: q.question, answer: map[idx] ?? '' }));
+      const summary = list.map((x, idx) => `${idx + 1}) ${Array.isArray(x.answer) ? x.answer.join(', ') : x.answer}`).join(' | ');
+      onReply(p, summary, note, '', pin, list);
+    } else {
+      const val = map[0];
+      if (Array.isArray(val)) onReply(p, val.join(', '), note, '', pin, val);
+      else onReply(p, String(val || ''), note, '', pin);
+    }
+  };
+
+  const pickOption = (label) => {
+    if (busy === p.id) return;
+    if (curMulti) {
+      const next = selectedList.includes(label) ? selectedList.filter((x) => x !== label) : [...selectedList, label];
+      setAnswersMap((m) => ({ ...m, [step]: next }));
+      return;
+    }
+    const nextMap = { ...answersMap, [step]: label };
+    setAnswersMap(nextMap);
+    if (multiQ) {
+      if (step < questions.length - 1) { setStep(step + 1); setCustomOpen(false); }
+      else submitAll(nextMap);
+    } else {
+      onReply(p, label, note, '', pin);
+    }
+  };
+
+  const submitCustom = () => {
+    const val = note.trim();
+    if (!val || busy === p.id) return;
+    if (multiQ) {
+      const nextMap = { ...answersMap, [step]: curMulti ? [...selectedList, val] : val };
+      setAnswersMap(nextMap);
+      setNote('');
+      setCustomOpen(false);
+      if (step < questions.length - 1) setStep(step + 1);
+      else submitAll(nextMap);
+    } else {
+      onReply(p, val, val, '', pin);
+    }
+  };
+
+  useEffect(() => {
+    if (!pending || isSecret || !isFirstPending) return undefined;
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= curQ.items.length) {
+        e.preventDefault();
+        pickOption(curQ.items[n - 1].label);
+      } else if (n === curQ.items.length + 1 && n <= 9) {
+        e.preventDefault();
+        setCustomOpen(true);
+        setTimeout(() => customRef.current?.focus(), 30);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const canConfirmMulti = curMulti && selectedList.length > 0;
+  const allStepsAnswered = !multiQ || questions.every((_, idx) => {
+    const v = answersMap[idx];
+    return Array.isArray(v) ? v.length > 0 : Boolean(String(v || '').trim());
+  });
+
+  return (
+    <div className={'prompt-card' + (pending ? ' pending' : ' answered') + (term ? ' term-card' : '')}>
+      <div className="prompt-h">
+        {isSecret ? <Lock size={15} /> : <HelpCircle size={15} />}
+        <b>{p.title || t('logs.a.prompt-ask')}</b>
+        {isSecret && p.secretName && <Badge kind="muted">{p.secretName}</Badge>}
+        <Badge kind={pending ? 'warn' : 'ok'}>{pending ? t('prp.pending') : t('prp.answered')}</Badge>
+      </div>
+      {pending && multiQ && (
+        <div className="prompt-steps">
+          <span>{t('prp.stepOf', { a: step + 1, b: questions.length })}</span>
+          <span className="only-desktop">{t('prp.kbdHint')}</span>
+        </div>
+      )}
+      <div className="prompt-q">{pending ? curQ.question : p.question}</div>
+      {pending ? (
+        <div className="prompt-actions stack">
+          {isSecret ? (
+            <div className="row wrap">
+              <input className="grow" type="password" value={secretVal}
+                onChange={(e) => setSecretVal(e.target.value)}
+                placeholder={t('vlt.cardPh')}
+                onKeyDown={(e) => { if (e.key === 'Enter' && secretVal.trim()) { e.preventDefault(); onReply(p, '', '', secretVal, pin); setSecretVal(''); } }} />
+              <button type="button" className="small" disabled={busy === p.id || !secretVal.trim()}
+                onClick={() => { onReply(p, '', '', secretVal, pin); setSecretVal(''); }}>{t('vlt.saveBtn')}</button>
+              <button type="button" className="ghost small" disabled={busy === p.id}
+                onClick={() => onReply(p, 'Cancelado', '', '', pin)}>{t('common.cancel')}</button>
+            </div>
+          ) : (
+            <>
+              {p.requirePin && (
+                <div className="row">
+                  <input type="password" value={pin} onChange={(e) => setPin(e.target.value)}
+                    placeholder="🔐 PIN de segurança obrigatório para aprovar" />
+                </div>
+              )}
+              <div className="prompt-opt-list">
+                {curQ.items.map((opt, idx) => {
+                  const isSel = curMulti ? selectedList.includes(opt.label) : curSel === opt.label;
+                  return (
+                    <button key={opt.label + idx} type="button" disabled={busy === p.id}
+                      className={'prompt-opt press' + (curMulti ? ' multi' : '') + (isSel ? ' selected' : '') + (opt.recommended ? ' recommended' : '')}
+                      onClick={() => pickOption(opt.label)}>
+                      <span className="prompt-opt-ind" aria-hidden>{isSel && <Check size={11} strokeWidth={3} />}</span>
+                      <span className="prompt-opt-body">
+                        <span className="prompt-opt-head">
+                          <span>{opt.label}</span>
+                          {opt.recommended && <Badge kind="ok">{t('prp.recommended')}</Badge>}
+                        </span>
+                        {opt.description && <span className="prompt-opt-desc">{opt.description}</span>}
+                      </span>
+                      {idx < 9 && <span className="prompt-opt-key" aria-hidden>{idx + 1}</span>}
+                    </button>
+                  );
+                })}
+                <button type="button" disabled={busy === p.id}
+                  className={'prompt-opt press' + (customOpen ? ' selected' : '')}
+                  onClick={() => { setCustomOpen((o) => !o); setTimeout(() => customRef.current?.focus(), 30); }}>
+                  <span className="prompt-opt-ind" aria-hidden>{customOpen && <Check size={11} strokeWidth={3} />}</span>
+                  <span className="prompt-opt-body">
+                    <span className="prompt-opt-head"><span>{t('prp.other')}</span></span>
+                    <span className="prompt-opt-desc">{t('prp.customPh')}</span>
+                  </span>
+                  {curQ.items.length < 9 && <span className="prompt-opt-key" aria-hidden>{curQ.items.length + 1}</span>}
+                </button>
+              </div>
+              {customOpen && (
+                <div className="row">
+                  <input ref={customRef} className="grow" value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder={t('prp.customPh')}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && note.trim()) { e.preventDefault(); submitCustom(); } }} />
+                  <button type="button" className="small" disabled={busy === p.id || !note.trim()} onClick={submitCustom}>{t('prp.send')}</button>
+                </div>
+              )}
+              {(curMulti || multiQ) && (
+                <div className="row between wrap" style={{ gap: 6 }}>
+                  {multiQ && step > 0 ? (
+                    <button type="button" className="ghost small" onClick={() => { setStep(step - 1); setCustomOpen(false); }}>{t('prp.back')}</button>
+                  ) : <span />}
+                  <div className="row" style={{ gap: 6 }}>
+                    {multiQ && step < questions.length - 1 && (
+                      <button type="button" className="small" disabled={curMulti ? !canConfirmMulti : !curSel}
+                        onClick={() => { setStep(step + 1); setCustomOpen(false); }}>{t('prp.next')}</button>
+                    )}
+                    {(!multiQ && curMulti) && (
+                      <button type="button" className="small" disabled={busy === p.id || !canConfirmMulti}
+                        onClick={() => submitAll()}>{t('prp.confirmMulti', { n: selectedList.length })}</button>
+                    )}
+                    {(multiQ && step === questions.length - 1) && (
+                      <button type="button" className="small" disabled={busy === p.id || !allStepsAnswered}
+                        onClick={() => submitAll()}>{t('prp.finish')}</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="prompt-ans">
+          <Check size={14} /> <b>{p.answer}</b>{p.note && p.note !== p.answer ? <span className="muted"> — {p.note}</span> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptList({ prompts, term, onAnswered }) {
   const toast = useToast();
-  const [notes, setNotes] = useState({});
-  const [secretsVal, setSecretsVal] = useState({});
-  const [pins, setPins] = useState({});
   const [busy, setBusy] = useState(null);
   if (!prompts || !prompts.length) return null;
-  const reply = async (p, ans, secretVal = '') => {
+  const firstPendingId = prompts.find((x) => x.status === 'pending' && x.kind !== 'secret')?.id;
+  const reply = async (p, ans, note = '', secretVal = '', pin = '', answers = undefined) => {
     const val = String(ans || '').trim();
-    if ((!val && !secretVal) || busy) return;
+    if ((!val && !secretVal && answers === undefined) || busy) return;
     setBusy(p.id);
     try {
-      const updated = await bridge.answerPrompt(p.id, val, notes[p.id] || '', secretVal, pins[p.id] || '');
-      if (secretVal) setSecretsVal((s) => ({ ...s, [p.id]: '' }));
-      if (pins[p.id]) setPins((s) => ({ ...s, [p.id]: '' }));
+      const updated = await bridge.answerPrompt(p.id, val, note, secretVal, pin, answers);
+      window.dispatchEvent(new Event('acp:nav-refresh'));
       onAnswered?.(updated);
     } catch (e) { toast(e.message, 'err'); }
     finally { setBusy(null); }
   };
   return (
     <div className="prompt-cards">
-      {prompts.map((p) => {
-        const pending = p.status === 'pending';
-        const isSecret = p.kind === 'secret';
-        return (
-          <div key={p.id} className={'prompt-card' + (pending ? ' pending' : ' answered') + (term ? ' term-card' : '')}>
-            <div className="prompt-h">
-              {isSecret ? <Lock size={15} /> : <HelpCircle size={15} />}
-              <b>{p.title || t('logs.a.prompt-ask')}</b>
-              {isSecret && p.secretName && <Badge kind="muted">{p.secretName}</Badge>}
-              <Badge kind={pending ? 'warn' : 'ok'}>{pending ? t('prp.pending') : t('prp.answered')}</Badge>
-            </div>
-            <div className="prompt-q">{p.question}</div>
-            {pending ? (
-              <div className="prompt-actions stack">
-                {isSecret ? (
-                  <div className="row wrap">
-                    <input className="grow" type="password" value={secretsVal[p.id] || ''}
-                      onChange={(e) => setSecretsVal({ ...secretsVal, [p.id]: e.target.value })}
-                      placeholder={t('vlt.cardPh')}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && (secretsVal[p.id] || '').trim()) { e.preventDefault(); reply(p, '', secretsVal[p.id]); } }} />
-                    <button type="button" className="small" disabled={busy === p.id || !(secretsVal[p.id] || '').trim()}
-                      onClick={() => reply(p, '', secretsVal[p.id])}>{t('vlt.saveBtn')}</button>
-                    <button type="button" className="ghost small" disabled={busy === p.id}
-                      onClick={() => reply(p, 'Cancelado')}>{t('common.cancel')}</button>
-                  </div>
-                ) : (
-                  <>
-                    {p.requirePin && (
-                      <div className="row">
-                        <input type="password" value={pins[p.id] || ''} onChange={(e) => setPins({ ...pins, [p.id]: e.target.value })}
-                          placeholder="🔐 PIN de segurança obrigatório para aprovar" />
-                      </div>
-                    )}
-                    <div className="row wrap">
-                      {(p.options || []).map((opt) => (
-                        <button key={opt} type="button" className="small" disabled={busy === p.id} onClick={() => reply(p, opt)}>{opt}</button>
-                      ))}
-                    </div>
-                    <div className="row">
-                      <input value={notes[p.id] || ''} onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })}
-                        placeholder={t('prp.customPh')}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && (notes[p.id] || '').trim()) { e.preventDefault(); reply(p, notes[p.id]); } }} />
-                      {(notes[p.id] || '').trim() && (
-                        <button type="button" className="ghost small" disabled={busy === p.id} onClick={() => reply(p, notes[p.id])}>{t('prp.send')}</button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="prompt-ans">
-                <Check size={14} /> <b>{p.answer}</b>{p.note && p.note !== p.answer ? <span className="muted"> — {p.note}</span> : null}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {prompts.map((p) => (
+        <PromptCardItem key={p.id} p={p} term={term} isFirstPending={p.id === firstPendingId} busy={busy} onReply={reply} />
+      ))}
     </div>
   );
 }
@@ -751,7 +897,7 @@ function Message({ m, chatId, onResend, onRetry, onQuote, bot, botsById, term })
           {m.provider && <span>{provName(m.provider)}</span>}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
-          {m.usage?.cost ? <span>{f.usd(m.usage.cost)}</span> : null}
+          {m.usage?.cost ? <span>{(m.usage.estimated || m.provider === 'antigravity' ? '~' : '') + f.usd(m.usage.cost)}</span> : null}
           {!m.error && !m.stopped && <SpeakButton id={m.id} text={m.text} lang={lang} chatId={chatId} file={m.tts} label={t('chat.listen')} stopLabel={t('chat.stopListen')} />}
           {(m.error || m.stopped) && onRetry && <Btn icon={RotateCcw} className="ghost small" onClick={onRetry}>{t('chat.retry')}</Btn>}
           {onQuote && m.text && <IconButton icon={Reply} size={13} className="ghost bare" label={t('chat.quote')} onClick={() => onQuote(m.text)} />}
@@ -1013,8 +1159,9 @@ export default function Chat({ openMore, me }) {
     const cached = localCache.get(msgKey);
     setMessages(cached?.messages || []); setChatInfo(cached?.chat || null);
     setLive(null); setLoadErr(null); setQueuedAhead(0); setMsgSearch(''); setShowMsgSearch(false);
+    const notifyNav = () => window.dispatchEvent(new Event('acp:nav-refresh'));
     const load = () => bridge.messages(current)
-      .then((r) => { if (!closed) { setMessages(r.messages); setChatInfo(r.chat); } })
+      .then((r) => { if (!closed) { setMessages(r.messages); setChatInfo(r.chat); notifyNav(); } })
       .catch((e) => !closed && setLoadErr(e.message));
     load();
     const es = new EventSource(bridge.eventsUrl(current));
@@ -1024,13 +1171,20 @@ export default function Chat({ openMore, me }) {
       else if (ev.type === 'message') {
         setMessages((ms) => (ms.some((m) => m.id === ev.message.id) ? ms : [...ms, ev.message]));
         const sp = speakRef.current;
-        if (ev.message.role === 'assistant' && !ev.message.error && !ev.message.stopped) {
-          if (!sp.liveCall && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
-          notifyBrowser('Agent Control', ev.message.text);
+        if (ev.message.role === 'assistant') {
+          if (!document.hidden) {
+            bridge.patchChat(current, { read: true }).then(notifyNav).catch(notifyNav);
+          } else {
+            notifyNav();
+          }
+          if (!ev.message.error && !ev.message.stopped) {
+            if (!sp.liveCall && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
+            notifyBrowser('Agent Control', ev.message.text);
+          }
         }
       }
       else if (ev.type === 'update') setMessages((ms) => ms.map((m) => (m.id === ev.id ? { ...m, ...ev.patch } : m)));
-      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], prompts: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); }
+      else if (ev.type === 'start') { setLive({ started: Date.now(), texts: [], tools: [], delegations: [], prompts: [], provider: ev.provider, bot: ev.bot }); setQueuedAhead((q) => Math.max(0, q - 1)); notifyNav(); }
       else if (ev.type === 'init') setLive((l) => l && { ...l, model: ev.model, mcp: ev.mcp });
       else if (ev.type === 'text') setLive((l) => l && { ...l, texts: [...l.texts, ev.text] });
       else if (ev.type === 'tool') setLive((l) => l && { ...l, tools: [...l.tools, { id: ev.id, name: ev.name, input: ev.input }] });
@@ -1040,8 +1194,13 @@ export default function Chat({ openMore, me }) {
         setLive((l) => l && { ...l, prompts: (l.prompts || []).some((p) => p.id === ev.prompt.id) ? l.prompts.map((p) => (p.id === ev.prompt.id ? ev.prompt : p)) : [...(l.prompts || []), ev.prompt] });
         if (ev.prompt.status === 'pending') notifyBrowser(ev.prompt.title || 'Aprovação pendente', ev.prompt.question);
         chats.reload(true);
+        notifyNav();
       }
-      else if (ev.type === 'idle') { setLive(null); setQueuedAhead(0); chats.reload(true); }
+      else if (ev.type === 'idle') {
+        setLive(null); setQueuedAhead(0); chats.reload(true);
+        if (!document.hidden) bridge.patchChat(current, { read: true }).then(notifyNav).catch(notifyNav);
+        else notifyNav();
+      }
     };
     return () => { closed = true; es.close(); };
   }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1333,8 +1492,17 @@ export default function Chat({ openMore, me }) {
       window.history.replaceState(null, '', '#/chat');
       toast(t('chat.clearedAll'));
       chats.reload(true);
+      window.dispatchEvent(new Event('acp:nav-refresh'));
     } catch (e) { toast(e.message, 'err'); }
   };
+
+  const [mePicErr, setMePicErr] = useState(false);
+  useEffect(() => { setMePicErr(false); }, [me?.picture]);
+  const [dismissedSugMsgId, setDismissedSugMsgId] = useState(null);
+  const lastMsg = !msgSearch && !live && shownMessages.length ? shownMessages[shownMessages.length - 1] : null;
+  const activeSuggestions = lastMsg && lastMsg.role === 'assistant' && lastMsg.id !== dismissedSugMsgId && Array.isArray(lastMsg.suggestions) && lastMsg.suggestions.length
+    ? lastMsg.suggestions
+    : [];
 
   return (
     <div ref={rootRef} className={'chat' + (showList ? ' list-open' : '') + (listHidden ? ' list-hidden' : '') + (term ? ' term' : '')}>
@@ -1434,7 +1602,11 @@ export default function Chat({ openMore, me }) {
           </div>
           {openMore && (
             <button type="button" className="glass-btn icon press head-avatar only-mobile" aria-label={t('nav.settings')} onClick={openMore}>
-              <span className="avatar-ring" style={{ width: 34, height: 34 }}>{me?.picture ? <img src={me.picture} alt="" referrerPolicy="no-referrer" /> : <UserRound size={19} />}</span>
+              <span className="avatar-ring" style={{ width: 34, height: 34 }}>
+                {me?.picture && !mePicErr
+                  ? <img src={me.picture} alt="" referrerPolicy="no-referrer" onError={() => setMePicErr(true)} />
+                  : me?.email ? <span className="avatar-letter">{(me.name || me.email).trim()[0]?.toUpperCase()}</span> : <UserRound size={19} />}
+              </span>
             </button>
           )}
           {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
@@ -1499,6 +1671,17 @@ export default function Chat({ openMore, me }) {
                 onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
             );
           })}
+          {activeSuggestions.length > 0 && (
+            <div className="quick-suggestions" role="group" aria-label="Sugestões rápidas">
+              {activeSuggestions.map((s, idx) => (
+                <button key={(s.label || '') + idx} type="button" className="quick-sug-btn press" disabled={sending}
+                  onClick={() => { setDismissedSugMsgId(lastMsg.id); send(null, s.text || s.label); }}>
+                  <b>{s.label}</b>
+                  {s.description && <small>{s.description}</small>}
+                </button>
+              ))}
+            </div>
+          )}
           {live && <LiveRun live={live} bot={botsById[live.bot || (info && info.bot) || 'default']} botsById={botsById} term={term}
             onPromptAnswered={(upd) => setLive((l) => l && { ...l, prompts: (l.prompts || []).map((p) => (p.id === upd.id ? upd : p)) })} />}
         </div>

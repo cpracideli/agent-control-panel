@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CheckSquare, MessageSquare, Pencil, Play, Plus, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bot, CheckSquare, ExternalLink, MessageSquare, Pencil, Play, Plus, RotateCcw, Send, Settings2, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 
 const STATUSES = ['todo', 'in_progress', 'review', 'blocked', 'done'];
@@ -83,6 +83,97 @@ function TicketForm({ initial, bots, onClose, onSaved }) {
   );
 }
 
+function BoardRunnerModal({ runner, bots, onClose, onSaved }) {
+  const t = useT();
+  const [f, setF] = useState({
+    enabled: Boolean(runner?.enabled),
+    intervalMin: runner?.intervalMin ?? 10,
+    defaultBot: runner?.defaultBot || 'default',
+    maxConcurrent: runner?.maxConcurrent ?? 1,
+    respectQuietHours: runner?.respectQuietHours !== false,
+    onlyAssigned: Boolean(runner?.onlyAssigned),
+  });
+  const [busy, run] = useAction();
+  const submit = async (e) => {
+    e.preventDefault();
+    const r = await run('save', () => bridge.saveTicketRunner({
+      enabled: Boolean(f.enabled),
+      intervalMin: Math.min(1440, Math.max(1, Number(f.intervalMin) || 10)),
+      defaultBot: f.defaultBot || 'default',
+      maxConcurrent: Math.min(5, Math.max(1, Number(f.maxConcurrent) || 1)),
+      respectQuietHours: Boolean(f.respectQuietHours),
+      onlyAssigned: Boolean(f.onlyAssigned),
+    }), t('bd.runnerSaved'));
+    if (r) { onSaved(r); onClose(); }
+  };
+  return (
+    <Modal title={t('bd.runnerConfigTitle')} onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <label className="check">
+          <input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
+          <span><b>{t('bd.runnerAuto')}</b> · {t('bd.runnerAutoHint')}</span>
+        </label>
+        <div className="form-grid">
+          <Field label={t('bd.runnerInterval')} hint="1–1440 min">
+            <input type="number" min={1} max={1440} value={f.intervalMin} onChange={(e) => setF({ ...f, intervalMin: e.target.value })} />
+          </Field>
+          <Field label={t('bd.runnerBot')}>
+            <select value={f.defaultBot} onChange={(e) => setF({ ...f, defaultBot: e.target.value })}>
+              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
+            </select>
+          </Field>
+          <Field label={t('bd.runnerMaxConc')} hint={t('bd.runnerMaxConcHint')}>
+            <input type="number" min={1} max={5} value={f.maxConcurrent} onChange={(e) => setF({ ...f, maxConcurrent: e.target.value })} />
+          </Field>
+        </div>
+        <label className="check">
+          <input type="checkbox" checked={f.respectQuietHours} onChange={(e) => setF({ ...f, respectQuietHours: e.target.checked })} />
+          <span>{t('bd.runnerQuiet')}</span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={f.onlyAssigned} onChange={(e) => setF({ ...f, onlyAssigned: e.target.checked })} />
+          <span>{t('bd.runnerOnlyAssigned')}</span>
+        </label>
+        <div className="row end">
+          <button type="button" className="ghost" onClick={onClose}>{t('common.cancel')}</button>
+          <button disabled={busy === 'save'}>{t('common.save')}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function BoardRunnerBar({ runner, bots, onToggle, onConfigure, onTick, busy }) {
+  const t = useT();
+  const f = useFmt();
+  if (!runner) return null;
+  const botObj = (bots || []).find((b) => b.id === runner.defaultBot);
+  const botName = botObj ? ((botObj.emoji ? botObj.emoji + ' ' : '') + botObj.name) : runner.defaultBot;
+  const activeCount = (runner.activeRuns || []).length;
+  return (
+    <div className={'runner-bar' + (runner.enabled ? ' on' : '')}>
+      <label className="runner-switch">
+        <input type="checkbox" checked={Boolean(runner.enabled)} disabled={busy === 'toggle'} onChange={onToggle} />
+        <span className="runner-switch-track" aria-hidden />
+        <span className="runner-switch-lbl"><b>{t('bd.runnerAuto')}</b></span>
+      </label>
+      <div className="runner-bar-meta muted small grow">
+        <span>{t('bd.runnerEvery', { n: runner.intervalMin })}</span>
+        <span>·</span>
+        <span><Bot size={12} style={{ verticalAlign: '-2px' }} /> {botName}</span>
+        <span>·</span>
+        <span>{t('bd.runnerQueue', { n: runner.queueCount ?? 0 })}</span>
+        {activeCount > 0 && <><span>·</span><Badge kind="warn"><span className="spin" /> {t('bd.runnerActive', { n: activeCount })}</Badge></>}
+        {runner.lastScanAt && <><span>·</span><span>{t('bd.runnerLastScan', { t: f.ago(runner.lastScanAt) })}</span></>}
+      </div>
+      <div className="row wrap" style={{ gap: 6 }}>
+        <Btn icon={Play} className="ghost small" disabled={busy === 'tick'} onClick={onTick}>{t('bd.runnerNow')}</Btn>
+        <Btn icon={Settings2} className="ghost small" onClick={onConfigure}>{t('bd.runnerConfig')}</Btn>
+      </div>
+    </div>
+  );
+}
+
 function TicketDetail({ ticket, onClose, onEdit, onChanged }) {
   const t = useT();
   const f = useFmt();
@@ -96,6 +187,8 @@ function TicketDetail({ ticket, onClose, onEdit, onChanged }) {
     const r = await run('cm', () => bridge.commentTicket(ticket.id, comment.trim()));
     if (r) { setComment(''); onChanged(r); }
   };
+  const canResume = Boolean(ticket.interrupted || (ticket.status === 'in_progress' && !ticket.running));
+  const hasWebChat = Boolean(ticket.chatId && ticket.chatId.startsWith('web:'));
 
   return (
     <Modal title={'#' + ticket.id + ' · ' + ticket.title} onClose={onClose} wide>
@@ -107,11 +200,24 @@ function TicketDetail({ ticket, onClose, onEdit, onChanged }) {
           <Badge kind={PRIO_KIND[ticket.priority] || 'muted'}>{t('bd.pr.' + ticket.priority)}</Badge>
           {ticket.botName && <span className="chip">{ticket.botName}</span>}
           {ticket.running && <Badge kind="warn">{t('common.running')}</Badge>}
+          {ticket.interrupted && <Badge kind="err"><AlertTriangle size={11} /> {t('bd.interrupted')}</Badge>}
           <span className="grow" />
-          <Btn icon={Play} className="small" disabled={busy === 'run' || ticket.running}
-            onClick={() => run('run', () => bridge.runTicket(ticket.id), t('bd.runStarted')).then((r) => r && onChanged(r))}>
-            {t('bd.runWithBot')}
-          </Btn>
+          {hasWebChat && (
+            <Btn icon={ExternalLink} className="ghost small" onClick={() => { onClose(); window.location.hash = '#/chat/' + ticket.chatId.slice(4); }}>
+              {t('bd.openChat')}
+            </Btn>
+          )}
+          {canResume ? (
+            <Btn icon={RotateCcw} className="small" disabled={busy === 'resume' || ticket.running}
+              onClick={() => run('resume', () => bridge.resumeTicket(ticket.id), t('bd.resumed')).then((r) => r && onChanged(r))}>
+              {t('bd.resume')}
+            </Btn>
+          ) : (
+            <Btn icon={Play} className="small" disabled={busy === 'run' || ticket.running}
+              onClick={() => run('run', () => bridge.runTicket(ticket.id), t('bd.runStarted')).then((r) => r && onChanged(r))}>
+              {t('bd.runWithBot')}
+            </Btn>
+          )}
           <IconButton icon={Pencil} label={t('common.edit')} onClick={() => { onClose(); onEdit(ticket); }} />
           <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')}
             onClick={async () => (await confirm(t('bd.removeConfirm', { id: ticket.id }))) && run('del', () => bridge.deleteTicket(ticket.id), t('common.removed')).then(() => { onChanged(null); onClose(); })} />
@@ -141,30 +247,58 @@ function TicketDetail({ ticket, onClose, onEdit, onChanged }) {
 export default function Board() {
   const t = useT();
   const f = useFmt();
+  const toast = useToast();
   const tickets = useLoad(() => bridge.tickets(), [], { interval: 10000, cacheKey: '/bridge/tickets' });
+  const runner = useLoad(() => bridge.ticketRunner(), [], { interval: 10000 });
   const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [form, setForm] = useState(null);
   const [detailId, setDetailId] = useState(null);
+  const [runnerModal, setRunnerModal] = useState(false);
   const [busy, run] = useAction();
 
   const list = tickets.data || [];
   const detail = detailId ? list.find((x) => x.id === detailId) : null;
 
   const mobile = useIsMobile();
-  const runTicket = (tk) => run('run' + tk.id, () => bridge.runTicket(tk.id), t('bd.runStarted')).then(() => tickets.reload(true));
+  const runTicket = (tk) => run('run' + tk.id, () => bridge.runTicket(tk.id), t('bd.runStarted')).then(() => { tickets.reload(true); runner.reload(true); });
+  const resumeTicket = (tk) => run('res' + tk.id, () => bridge.resumeTicket(tk.id), t('bd.resumed')).then(() => { tickets.reload(true); runner.reload(true); });
+  const toggleRunner = () => {
+    if (!runner.data) return;
+    const next = !runner.data.enabled;
+    run('toggle', () => bridge.saveTicketRunner({ enabled: next }), next ? t('bd.runnerEnabled') : t('bd.runnerDisabled'))
+      .then(() => runner.reload(true));
+  };
+  const tickRunner = async () => {
+    const r = await run('tick', () => bridge.tickTicketRunner());
+    if (r) {
+      if (r.started) toast(t('bd.runnerTickStarted', { id: r.ticketId }));
+      else toast(t('bd.runnerTickSkipped', { r: r.reason || 'empty' }));
+      tickets.reload(true);
+      runner.reload(true);
+    }
+  };
+  const runnerBar = (
+    <BoardRunnerBar runner={runner.data} bots={bots.data} busy={busy}
+      onToggle={toggleRunner} onConfigure={() => setRunnerModal(true)} onTick={tickRunner} />
+  );
   const modals = (
     <>
-      {form && <TicketForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => tickets.reload(true)} />}
-      {detail && <TicketDetail ticket={detail} onClose={() => setDetailId(null)} onEdit={(tk) => setForm(tk)} onChanged={() => tickets.reload(true)} />}
+      {form && <TicketForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => { tickets.reload(true); runner.reload(true); }} />}
+      {detail && <TicketDetail ticket={detail} onClose={() => setDetailId(null)} onEdit={(tk) => setForm(tk)} onChanged={() => { tickets.reload(true); runner.reload(true); }} />}
+      {runnerModal && <BoardRunnerModal runner={runner.data} bots={bots.data} onClose={() => setRunnerModal(false)} onSaved={() => runner.reload(true)} />}
     </>
   );
   if (mobile) {
     return (
       <div className="page page-list">
         <HeaderActions>
-          <AddButton items={[{ icon: Plus, label: t('bd.new'), onClick: () => setForm({}) }]} />
+          <AddButton items={[
+            { icon: Plus, label: t('bd.new'), onClick: () => setForm({}) },
+            { icon: Settings2, label: t('bd.runnerConfig'), onClick: () => setRunnerModal(true) },
+          ]} />
         </HeaderActions>
         <ErrorBox error={tickets.error} onRetry={() => tickets.reload()} />
+        {runnerBar}
         {STATUSES.map((st) => {
           const col = list.filter((x) => x.status === st);
           if (!col.length) return null;
@@ -172,12 +306,13 @@ export default function Board() {
             <ListGroup key={st} title={t('bd.st.' + st) + ' · ' + col.length}>
               {col.map((tk) => (
                 <ListRow key={tk.id}
-                  leading={<span className={'row-ic ic-board prio-' + tk.priority}>{tk.running ? <span className="spin" /> : <CheckSquare size={18} />}</span>}
+                  leading={<span className={'row-ic ic-board prio-' + tk.priority}>{tk.running ? <span className="spin" /> : tk.interrupted ? <AlertTriangle size={18} /> : <CheckSquare size={18} />}</span>}
                   title={tk.title}
-                  badges={<Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>}
+                  badges={<><Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>{tk.interrupted && <Badge kind="err">{t('bd.interrupted')}</Badge>}</>}
                   subtitle={'#' + tk.id + ' · ' + (tk.botName || t('bd.unassigned')) + ' · ' + f.ago(tk.updated) + ((tk.comments || []).length ? ' · 💬 ' + tk.comments.length : '')}
                   onOpen={() => setDetailId(tk.id)}
                   swipe={[
+                    tk.interrupted && !tk.running && { icon: RotateCcw, label: t('bd.resume'), kind: 'warn', disabled: busy === 'res' + tk.id, onClick: () => resumeTicket(tk) },
                     st === 'todo' && tk.bot && !tk.running && { icon: Play, label: t('bd.runWithBot'), kind: 'warn', disabled: busy === 'run' + tk.id, onClick: () => runTicket(tk) },
                     { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(tk) },
                   ].filter(Boolean)} />
@@ -195,6 +330,7 @@ export default function Board() {
     <div className="page">
       <ErrorBox error={tickets.error} onRetry={() => tickets.reload()} />
       <p className="muted page-intro">{t('bd.intro')}</p>
+      {runnerBar}
       <Card title={t('bd.title', { n: list.length })} icon={CheckSquare}
         actions={<Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('bd.new')}</Btn>}>
         <div className="kanban">
@@ -212,7 +348,10 @@ export default function Board() {
                     <div key={tk.id} className="kanban-card press" onClick={() => setDetailId(tk.id)}>
                       <div className="row between" style={{ gap: 6 }}>
                         <span className="mono muted small">#{tk.id}{tk.goal ? ' 🎯' : ''}</span>
-                        <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>
+                        <div className="row" style={{ gap: 4 }}>
+                          {tk.interrupted && <Badge kind="err">{t('bd.interrupted')}</Badge>}
+                          <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>
+                        </div>
                       </div>
                       <b className="kanban-title">{tk.title}</b>
                       {tk.goal && tk.nextCheckAt && <div className="muted small">⏰ {f.date(tk.nextCheckAt)}</div>}
@@ -225,10 +364,18 @@ export default function Board() {
                           <span className="muted small">{f.ago(tk.updated)}</span>
                         </div>
                       </div>
+                      {tk.interrupted && !tk.running && (
+                        <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+                          <Btn icon={RotateCcw} className="ghost small block" disabled={busy === 'res' + tk.id}
+                            onClick={() => resumeTicket(tk)}>
+                            {t('bd.resume')}
+                          </Btn>
+                        </div>
+                      )}
                       {st === 'todo' && tk.bot && !tk.running && (
                         <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                           <Btn icon={Play} className="ghost small block" disabled={busy === 'run' + tk.id}
-                            onClick={() => run('run' + tk.id, () => bridge.runTicket(tk.id), t('bd.runStarted')).then(() => tickets.reload(true))}>
+                            onClick={() => runTicket(tk)}>
                             {t('bd.runWithBot')}
                           </Btn>
                         </div>

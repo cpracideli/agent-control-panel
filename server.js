@@ -122,9 +122,45 @@ app.post('/api/logout', (req, res) => {
   res.setHeader('Set-Cookie', 'acp_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
 });
-app.get('/api/me', (req, res) => {
+const userProfiles = new Map(); // email -> { name, picture }
+async function saveUserProfile(email, prof) {
+  const key = String(email || '').trim().toLowerCase();
+  if (!key || key === 'password') return;
+  const clean = { name: String(prof?.name || '').trim(), picture: String(prof?.picture || '').trim() };
+  if (!clean.name && !clean.picture) return;
+  userProfiles.set(key, clean);
+  if (!BRIDGE_TOKEN) return;
+  try {
+    await fetch(`${BRIDGE_URL}/admin/prefs/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: clean }),
+    });
+  } catch {}
+}
+async function loadUserProfile(email) {
+  const key = String(email || '').trim().toLowerCase();
+  if (!key || key === 'password') return { name: '', picture: '' };
+  if (userProfiles.has(key)) return userProfiles.get(key);
+  if (!BRIDGE_TOKEN) return { name: '', picture: '' };
+  try {
+    const r = await fetch(`${BRIDGE_URL}/admin/prefs/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
+    });
+    if (r.ok) {
+      const data = await r.json().catch(() => ({}));
+      const prof = { name: String(data?.profile?.name || ''), picture: String(data?.profile?.picture || '') };
+      if (prof.name || prof.picture) userProfiles.set(key, prof);
+      return prof;
+    }
+  } catch {}
+  return { name: '', picture: '' };
+}
+app.get('/api/me', async (req, res) => {
   const s = session(req);
-  res.json({ ok: Boolean(s), email: s && s.email !== 'password' ? s.email : null, google: googleOn(), password: Boolean(ADMIN_PASSWORD) });
+  const email = s && s.email !== 'password' ? s.email : null;
+  const prof = email ? await loadUserProfile(email) : { name: '', picture: '' };
+  res.json({ ok: Boolean(s), email, name: prof.name || '', picture: prof.picture || '', google: googleOn(), password: Boolean(ADMIN_PASSWORD) });
 });
 
 // ---------- per-user preferences (persisted in the bridge's settings.json) ----------
@@ -228,7 +264,9 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
     sweep(loginCodes);
     const one = crypto.randomBytes(24).toString('base64url');
-    loginCodes.set(one, { email, name: p.name || '', picture: p.picture || '', exp: Date.now() + 2 * 60000 });
+    const prof = { name: p.name || '', picture: p.picture || '' };
+    saveUserProfile(email, prof).catch(() => {});
+    loginCodes.set(one, { email, name: prof.name, picture: prof.picture, exp: Date.now() + 2 * 60000 });
     res.redirect('/?auth_code=' + one);
   } catch (e) {
     console.error('Google callback:', e.message);
@@ -241,6 +279,7 @@ app.post('/api/auth/exchange', (req, res) => {
   const c = loginCodes.get(code);
   loginCodes.delete(code);
   if (!c || c.exp < Date.now()) return res.status(401).json({ error: 'Código de login expirado, entre de novo' });
+  saveUserProfile(c.email, { name: c.name, picture: c.picture }).catch(() => {});
   startSession(req, res, c.email);
   res.json({ ok: true, email: c.email, name: c.name, picture: c.picture });
 });

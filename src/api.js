@@ -56,7 +56,7 @@ export const get = (p) => api('GET', p);
 export const post = (p, b) => api('POST', p, b || {});
 export const patch = (p, b) => api('PATCH', p, b);
 export const put = (p, b) => api('PUT', p, b);
-export const del = (p) => api('DELETE', p);
+export const del = (p, b) => api('DELETE', p, b);
 
 export const bridge = {
   overview: () => get('/bridge/overview'),
@@ -89,6 +89,8 @@ export const bridge = {
   addBot: (b) => post('/bridge/bots', b),
   patchBot: (id, b) => patch('/bridge/bots/' + encodeURIComponent(id), b),
   deleteBot: (id) => del('/bridge/bots/' + encodeURIComponent(id)),
+  generateBotAvatar: (b) => post('/bridge/bots/generate-avatar', b),
+  generateBotAvatarFor: (id, b) => post('/bridge/bots/' + encodeURIComponent(id) + '/generate-avatar', b),
   botMemory: (id) => get('/bridge/bots/' + encodeURIComponent(id) + '/memory'),
   saveBotMemory: (id, content) => put('/bridge/bots/' + encodeURIComponent(id) + '/memory', { content }),
   restoreBot: (id, at) => post('/bridge/bots/' + encodeURIComponent(id) + '/restore', { at }),
@@ -107,6 +109,10 @@ export const bridge = {
   deleteTicket: (id) => del('/bridge/tickets/' + encodeURIComponent(id)),
   commentTicket: (id, text) => post('/bridge/tickets/' + encodeURIComponent(id) + '/comment', { text }),
   runTicket: (id) => post('/bridge/tickets/' + encodeURIComponent(id) + '/run'),
+  resumeTicket: (id) => post('/bridge/tickets/' + encodeURIComponent(id) + '/resume'),
+  ticketRunner: () => get('/bridge/tickets/runner'),
+  saveTicketRunner: (b) => put('/bridge/tickets/runner', b),
+  tickTicketRunner: () => post('/bridge/tickets/runner/tick'),
   tasks: (chatId) => get('/bridge/tasks' + (chatId ? '?chatId=' + encodeURIComponent(chatId) : '')),
   startTask: (b) => post('/bridge/tasks', b),
   stopTask: (id) => post('/bridge/tasks/' + encodeURIComponent(id) + '/stop'),
@@ -127,6 +133,11 @@ export const bridge = {
   artifacts: () => get('/bridge/artifacts'),
   artifactFileUrl: (name) => '/api/bridge/artifacts/file/' + encodeURIComponent(name),
   deleteArtifact: (name) => del('/bridge/artifacts/' + encodeURIComponent(name)),
+  deleteAllArtifacts: (opts) => {
+    const q = opts?.kind && opts.kind !== 'all' ? '?kind=' + encodeURIComponent(opts.kind) : '';
+    const body = opts?.names?.length ? { names: opts.names } : (opts?.kind && opts.kind !== 'all' ? { kind: opts.kind } : {});
+    return del('/bridge/artifacts' + q, body);
+  },
   activity: () => get('/bridge/activity'),
   pages: () => get('/bridge/pages'),
   page: (id) => get('/bridge/pages/' + encodeURIComponent(id)),
@@ -135,7 +146,7 @@ export const bridge = {
   patchPage: (id, b) => patch('/bridge/pages/' + encodeURIComponent(id), b),
   deletePage: (id) => del('/bridge/pages/' + encodeURIComponent(id)),
   restorePage: (id, at) => post('/bridge/pages/' + encodeURIComponent(id) + '/restore', { at }),
-  answerPrompt: (id, answer, note, secretValue, pin) => post('/bridge/prompts/' + encodeURIComponent(id) + '/answer', { answer, note: note || '', ...(secretValue ? { secretValue } : {}), ...(pin ? { pin } : {}) }),
+  answerPrompt: (id, answer, note, secretValue, pin, answers) => post('/bridge/prompts/' + encodeURIComponent(id) + '/answer', { answer, note: note || '', ...(secretValue ? { secretValue } : {}), ...(pin ? { pin } : {}), ...(answers !== undefined ? { answers } : {}) }),
   mcp: () => get('/bridge/mcp'),
   mcpStatus: (provider) => get('/bridge/mcp/status' + (provider ? '?provider=' + provider : '')),
   addMcp: (b) => post('/bridge/mcp', b),

@@ -158,10 +158,12 @@ const readCachedDock = (key) => {
 
 function Avatar({ me, size = 34 }) {
   const pic = me?.picture;
+  const [imgErr, setImgErr] = useState(false);
+  useEffect(() => { setImgErr(false); }, [pic]);
   const letter = (me?.name || me?.email || '?').trim()[0]?.toUpperCase();
   return (
     <span className="avatar-ring" style={{ width: size, height: size }}>
-      {pic ? <img src={pic} alt="" referrerPolicy="no-referrer" /> : me?.email ? <span className="avatar-letter">{letter}</span> : <UserRound size={size * 0.55} />}
+      {pic && !imgErr ? <img src={pic} alt="" referrerPolicy="no-referrer" onError={() => setImgErr(true)} /> : me?.email ? <span className="avatar-letter">{letter}</span> : <UserRound size={size * 0.55} />}
     </span>
   );
 }
@@ -287,7 +289,7 @@ export default function App() {
   const { nav } = stackNav;
   const page = stackNav.top();
   const [more, setMore] = useState(false);
-  const [navStatus, setNavStatus] = useState({ running: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
+  const [navStatus, setNavStatus] = useState({ running: 0, webRunning: 0, unread: 0, pendingPrompts: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
   const install = useInstall();
   const online = useOnline();
   useKeyboardFlag();
@@ -317,15 +319,20 @@ export default function App() {
       if (document.hidden || stop) return;
       bridge.overview()
         .then((o) => !stop && setNavStatus({
-          running: o.running?.length || 0, unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0,
+          running: o.running?.length || 0,
+          webRunning: Array.isArray(o.webRunning) ? o.webRunning.length : 0,
+          unread: o.unread || 0, pendingPrompts: o.pendingPrompts || 0,
           computerNeedsHuman: Boolean(o.computer?.needsHuman), computerRunning: o.computer?.status === 'running',
           openTickets: o.openTickets || 0, offline: false,
         }))
         .catch(() => !stop && setNavStatus((s) => ({ ...s, offline: true })));
     };
+    const onVis = () => { if (!document.hidden) poll(); };
     poll();
     const id = setInterval(poll, 30000);
-    return () => { stop = true; clearInterval(id); };
+    window.addEventListener('acp:nav-refresh', poll);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop = true; clearInterval(id); window.removeEventListener('acp:nav-refresh', poll); document.removeEventListener('visibilitychange', onVis); };
   }, [authed]);
 
   useEffect(() => {
@@ -343,7 +350,16 @@ export default function App() {
         const r = await api('GET', '/me');
         let prof = {};
         try { prof = JSON.parse(store.get('acp_profile') || '{}'); } catch {}
-        setMe({ ...r, ...(prof.email === r.email ? prof : {}) });
+        const sameCached = prof.email && r.email && prof.email === r.email ? prof : {};
+        const merged = {
+          ...r,
+          name: r.name || sameCached.name || '',
+          picture: r.picture || sameCached.picture || '',
+        };
+        if (merged.email && (merged.name || merged.picture)) {
+          store.set('acp_profile', JSON.stringify({ name: merged.name, picture: merged.picture, email: merged.email }));
+        }
+        setMe(merged);
         setAuthed(r.ok);
       } catch { setMe({ google: false, password: true }); setAuthed(false); }
     })();
@@ -394,7 +410,7 @@ export default function App() {
       me={me} openMore={() => setMore(true)} banners={banners} moreProps={moreProps} />
   );
   const dockDot = (id) =>
-    (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.running > 0 || navStatus.unread > 0) && 'warn'))
+    (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.webRunning > 0 || navStatus.unread > 0) && 'warn'))
     || (id === 'computer' && (navStatus.computerNeedsHuman ? 'err' : navStatus.computerRunning && 'ok'))
     || (id === 'overview' && navStatus.offline && 'err');
 
@@ -409,7 +425,7 @@ export default function App() {
               <span className="grow">{t('nav.' + id)}</span>
               {id === 'chat' && (navStatus.pendingPrompts > 0
                 ? <span className="nav-dot err" aria-label={t('prp.pending')} />
-                : (navStatus.running > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
+                : (navStatus.webRunning > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
               {id === 'computer' && (navStatus.computerNeedsHuman
                 ? <span className="nav-dot err" aria-label={t('comp.needsYou')} />
                 : navStatus.computerRunning && <span className="nav-dot ok" aria-label={t('comp.running')} />)}

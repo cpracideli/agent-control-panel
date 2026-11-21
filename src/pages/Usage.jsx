@@ -69,10 +69,11 @@ function weekStart(date) {
   return d.toISOString().slice(0, 10);
 }
 
-function BarChart({ title, rows, color, render, empty }) {
+function BarChart({ title, rows, color, render, empty, fmtMax }) {
   const { lang } = useI18n();
   const [hover, setHover] = useState(null);
-  const max = Math.max(1, ...rows.map((r) => r.value));
+  const rawMax = Math.max(0, ...rows.map((r) => r.value || 0));
+  const max = rawMax > 0 ? rawMax : 1;
   const active = hover != null ? rows[hover] : rows[rows.length - 1];
   const allZero = rows.every((r) => !r.value);
   return (
@@ -83,9 +84,9 @@ function BarChart({ title, rows, color, render, empty }) {
       </div>
       {allZero && empty ? <p className="muted small bars-empty">{empty}</p> : (
         <div className="bars" onPointerLeave={() => setHover(null)}>
-          <span className="bars-max muted">{compact(lang, max)}</span>
+          <span className="bars-max muted">{fmtMax ? fmtMax(rawMax) : compact(lang, max)}</span>
           {rows.map((r, i) => (
-            <button type="button" key={r.key} className={'bar-hit' + (hover === i ? ' on' : '')} aria-label={r.label + ': ' + compact(lang, r.value)}
+            <button type="button" key={r.key} className={'bar-hit' + (hover === i ? ' on' : '')} aria-label={r.label + ': ' + (fmtMax ? fmtMax(r.value) : compact(lang, r.value))}
               onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} onFocus={() => setHover(i)}>
               <span className="bar" style={{ height: Math.max(r.value ? 3 : 0, (r.value / max) * 100) + '%', background: color }} />
               <span className="bar-x">{r.short}</span>
@@ -172,9 +173,9 @@ export default function Usage() {
     const weeks = new Map();
     for (const x of d.days) {
       const k = weekStart(x.date);
-      const w = weeks.get(k) || { key: k, c: { tokens: 0, msgs: 0, runs: 0, cost: 0 }, a: { tokens: 0, runs: 0 } };
+      const w = weeks.get(k) || { key: k, c: { tokens: 0, msgs: 0, runs: 0, cost: 0 }, a: { tokens: 0, runs: 0, cost: 0 } };
       for (const f of ['tokens', 'msgs', 'runs', 'cost']) w.c[f] += x.claude[f] || 0;
-      for (const f of ['tokens', 'runs']) w.a[f] += x.antigravity[f] || 0;
+      for (const f of ['tokens', 'runs', 'cost']) w.a[f] += x.antigravity[f] || 0;
       weeks.set(k, w);
     }
     return [...weeks.values()].slice(-8).map((w) => ({ ...w, label: t('use.weekOf', { d: fmtDay(w.key, { day: '2-digit', month: '2-digit' }) }), short: fmtDay(w.key, { day: 'numeric', month: 'numeric' }) }));
@@ -197,12 +198,15 @@ export default function Usage() {
       </div>
     </div>
   );
+  const fmtEstUsd = (v) => '~' + f.usd(v || 0);
   const charts = series && (
     <div className="stack">
       <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
+        fmtMax={metric === 'cost' ? (v) => f.usd(v) : undefined}
         render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? f.usd(r.value) : tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
-      <BarChart title="Antigravity" color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.a.tokens, raw: r.a }))}
-        render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+      <BarChart title={metric === 'cost' ? 'Antigravity (' + t('use.estimated') + ')' : 'Antigravity'} color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.a.cost || 0) : r.a.tokens, raw: r.a }))}
+        fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
+        render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
         empty={t('use.agyEmpty')} />
     </div>
   );
@@ -281,9 +285,11 @@ export default function Usage() {
         {series && (
           <div className="stack">
             <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
+              fmtMax={metric === 'cost' ? (v) => f.usd(v) : undefined}
               render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? f.usd(r.value) : tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
-            <BarChart title="Antigravity" color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.a.tokens, raw: r.a }))}
-              render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+            <BarChart title={metric === 'cost' ? 'Antigravity (' + t('use.estimated') + ')' : 'Antigravity'} color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.a.cost || 0) : r.a.tokens, raw: r.a }))}
+              fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
+              render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
               empty={t('use.agyEmpty')} />
             <p className="muted small">{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</p>
           </div>
