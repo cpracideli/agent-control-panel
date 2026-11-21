@@ -4,6 +4,7 @@ import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
 import { ListGroup, ListRow, Row, useIsMobile } from '../native.jsx';
+import { provName } from '../prov.js';
 
 const statusKind = (s) => (String(s).startsWith('running') ? 'ok' : /exit|stop/.test(String(s)) ? 'err' : 'warn');
 const Stat = ({ icon: Icon, label, value, sub }) => (
@@ -78,7 +79,7 @@ export default function Overview() {
             <ListRow key={c.id} leading={<span className={'row-ic ' + (c.kind === 'web' ? 'ic-chat' : 'ic-install')}>{c.kind === 'web' ? <Globe size={17} /> : <Smartphone size={17} />}</span>}
               title={c.title}
               badges={c.running ? <Badge kind="warn">{t('common.running')}</Badge> : c.totals.errors ? <Badge kind="err">{t('common.errors', { n: c.totals.errors })}</Badge> : null}
-              subtitle={t('ov.chatLine', { p: c.provider === 'antigravity' ? 'Antigravity' : 'Claude', n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' })}
+              subtitle={t('ov.chatLine', { p: provName(c.provider), n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' })}
               onOpen={c.kind === 'web' ? () => { window.location.hash = '#/chat/' + c.id.slice(4); } : undefined} />
           ))}
         </ListGroup>
@@ -126,7 +127,7 @@ export default function Overview() {
             <div key={c.id} className={'list-row' + (c.kind === 'web' ? ' clickable' : '')} onClick={c.kind === 'web' ? () => { window.location.hash = '#/chat/' + c.id.slice(4); } : undefined}>
               <div className="grow">
                 <b className="with-ic">{c.kind === 'web' ? <Globe size={14} /> : <Smartphone size={14} />}<span className="ellipsis">{c.title}</span></b>
-                <div className="muted small">{t('ov.chatLine', { p: c.provider === 'antigravity' ? 'Antigravity' : 'Claude', n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' })}</div>
+                <div className="muted small">{t('ov.chatLine', { p: provName(c.provider), n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' })}</div>
               </div>
               {c.running ? <Badge kind="warn">{t('common.running')}</Badge> : c.totals.errors ? <Badge kind="err">{t('common.errors', { n: c.totals.errors })}</Badge> : <Badge>{t('common.ok')}</Badge>}
             </div>

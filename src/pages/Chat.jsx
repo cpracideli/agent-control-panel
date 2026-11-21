@@ -7,6 +7,7 @@ import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, speakChunk, waitSpeechIdle, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
+import { provName } from '../prov.js';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
 
@@ -65,7 +66,6 @@ function SwipeChatRow({ isOpen, onOpen, onClose, onRename, onDelete, className, 
     </div>
   );
 }
-const provName = (p) => (p === 'antigravity' ? 'Antigravity' : 'Claude');
 
 // Links in answers: our own files/pages open in the in-app viewer; other sites open in a new tab.
 function MdLink({ node, href, children, ...p }) {
