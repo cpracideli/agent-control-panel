@@ -384,7 +384,7 @@ function RouterShortcutsAndGuestsCard({ providers }) {
             <input type="checkbox" checked={routing.enabled} onChange={(e) => setRouting({ ...routing, enabled: e.target.checked })} />
             <span><b>Failover automático entre provedores</b> · Se um provedor falhar/der rate-limit, tenta o próximo da fila automaticamente</span>
           </label>
-          <Field label="Ordem de failover (vírgula)" hint="Valores: antigravity, claude, opencode, openai_compat">
+          <Field label="Ordem de failover (vírgula)" hint="Valores: antigravity, claude, copilot, opencode, openai_compat">
             <input className="mono" value={routing.fallbackOrder} onChange={(e) => setRouting({ ...routing, fallbackOrder: e.target.value })} />
           </Field>
           <label className="check">
