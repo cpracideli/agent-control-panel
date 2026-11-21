@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Code, Copy, Database, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
+import { LayoutTemplate, Code, Copy, Database, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { docLink } from '../viewer.jsx';
+import TemplateGallery from './PageTemplates.jsx';
 
 const MINI_APP_HTML = `<!doctype html>
 <html lang="pt-BR">
@@ -234,6 +235,7 @@ export default function Dashboards() {
   const [form, setForm] = useState(null);
   const [history, setHistory] = useState(null);
   const [dataModal, setDataModal] = useState(null);
+  const [gallery, setGallery] = useState(false);
   const [busy, run] = useAction();
 
   return (
@@ -242,6 +244,7 @@ export default function Dashboards() {
       <p className="muted page-intro">{t('pg.intro')}</p>
       <Card title={t('pg.title', { n: pages.data?.length || 0 })} icon={FileCode2}
         actions={<div className="row" style={{ gap: 6 }}>
+          <Btn icon={LayoutTemplate} className="ghost small" onClick={() => setGallery(true)}>Modelos</Btn>
           <Btn icon={Sparkles} className="ghost small" onClick={() => setForm({ title: 'Lista Interativa', description: 'Mini-App com estado persistente via window.PageData', html: MINI_APP_HTML })}>Novo Mini-App</Btn>
           <Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('pg.new')}</Btn>
         </div>}>
@@ -295,6 +298,7 @@ export default function Dashboards() {
       </Card>
       {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)} onEdit={(p) => setForm(p)} />}
       {form && <PageForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => pages.reload(true)} />}
+      {gallery && <TemplateGallery bots={bots.data || []} onClose={() => setGallery(false)} onCreated={() => pages.reload(true)} />}
       {history && <PageHistoryModal page={history} onClose={() => setHistory(null)} onRestored={() => pages.reload(true)} />}
       {dataModal && <PageDataModal page={dataModal} onClose={() => setDataModal(null)} onSaved={() => pages.reload(true)} />}
     </div>
