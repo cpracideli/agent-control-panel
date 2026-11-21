@@ -195,7 +195,7 @@ app.get('/api/me', async (req, res) => {
 });
 
 // ---------- per-user preferences (persisted in the bridge's settings.json) ----------
-const VALID_DOCK_PAGES = new Set(['chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs', 'more']);
+const VALID_DOCK_PAGES = new Set(['command', 'chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs', 'more']);
 function parseDockPref(raw) {
   if (raw === null || raw === undefined) return null;
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > 5) return undefined;
