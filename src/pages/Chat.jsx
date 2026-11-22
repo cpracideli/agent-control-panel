@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
@@ -99,11 +99,16 @@ function CodeBlock({ children, ...props }) {
   );
 }
 
-const Md = ({ text }) => (
+// Markdown parsing is the most expensive thing on screen: stable plugin/component refs and memo by text,
+// so a message is only re-parsed when its text actually changes (not on every scroll, keystroke or tick).
+const MD_PLUGINS = [remarkGfm];
+const MdTable = ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div>;
+const MD_COMPONENTS = { a: MdLink, table: MdTable, pre: CodeBlock };
+const Md = memo(({ text }) => (
   <div className="md">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: MdLink, table: ({ node, ...p }) => <div className="table-wrap"><table {...p} /></div>, pre: CodeBlock }}>{text || ''}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>{text || ''}</ReactMarkdown>
   </div>
-);
+));
 
 // Terminal style: tool calls as in Claude Code ("⏺ Bash(ls)" then "⎿ output"), output folded after the first line.
 function termArg(input) {
@@ -894,7 +899,8 @@ function MsgTime({ at, lang }) {
   return <time className="msg-time" dateTime={d.toISOString()} aria-hidden="true">{day && <span>{day}</span>}{time}</time>;
 }
 
-function Message({ m, chatId, onResend, onRetry, onQuote, onFork, onCorrect, bot, botsById, term }) {
+const Message = memo(function Message({ m, chatId, onResend, retryText, onRetryText, onQuote, onFork, onCorrect, bot, botsById, term }) {
+  const onRetry = retryText && onRetryText ? () => onRetryText(retryText) : undefined;
   const { t, lang } = useI18n();
   const f = useFmt();
   const toast = useToast();
@@ -967,7 +973,7 @@ function Message({ m, chatId, onResend, onRetry, onQuote, onFork, onCorrect, bot
       </div>
     </div>
   );
-}
+});
 
 function useTicker() {
   const [, set] = useState(0);
@@ -1188,6 +1194,25 @@ export default function Chat({ openMore, me }) {
     return q ? messages.filter((m) => (m.text || m.transcript || '').toLowerCase().includes(q)) : messages;
   }, [messages, msgSearch]);
 
+  // the user text before each assistant message (for "retry"), computed in one pass instead of per message
+  const retryTexts = useMemo(() => {
+    let last = null;
+    return shownMessages.map((m) => {
+      const r = m.role === 'assistant' ? last : null;
+      if (m.role === 'user' && m.text) last = m.text;
+      return r;
+    });
+  }, [shownMessages]);
+  // stable callbacks for <Message> (memoized): they read the latest closures through a ref
+  const latest = useRef({});
+  const msgActions = useMemo(() => ({
+    resend: (txt) => latest.current.resend(txt),
+    quote: (txt) => latest.current.quote(txt),
+    fork: (m) => latest.current.fork(m),
+    correct: (m) => latest.current.correct(m),
+    retry: (txt) => latest.current.retry(txt),
+  }), []);
+
   const select = (id, replace) => {
     store.set(LAST_CHAT_KEY, id);
     const h = '#/chat/' + id.slice(4);
@@ -1385,7 +1410,21 @@ export default function Chat({ openMore, me }) {
   const toBottom = (smooth) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
   useEffect(() => { if (atBottom) toBottom(); }, [messages, live]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setAtBottom(true); setTimeout(() => toBottom(), 0); }, [current]);
-  const onScroll = (e) => { const el = e.currentTarget; setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120); };
+  // scroll: read geometry once per frame and only touch React state when "at bottom" actually flips
+  const atBottomRef = useRef(true);
+  atBottomRef.current = atBottom;
+  const scrollRaf = useRef(0);
+  const onScroll = () => {
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      const el = scrollRef.current;
+      if (!el) return;
+      const b = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (b !== atBottomRef.current) { atBottomRef.current = b; setAtBottom(b); }
+    });
+  };
+  useEffect(() => () => cancelAnimationFrame(scrollRaf.current), []);
 
   const newChat = async () => {
     try {
@@ -1513,6 +1552,13 @@ export default function Chat({ openMore, me }) {
 
   const ml = modelLabel(info, providers.data);
   const empty = !text.trim() && !files.length;
+  latest.current = {
+    resend: (txt) => { setText(txt); inputRef.current?.focus(); },
+    quote: (txt) => { const snip = txt.trim().split('\n').slice(0, 3).map((l) => '> ' + l).join('\n'); setText((prev) => (prev ? prev + '\n' : '') + snip + '\n\n'); inputRef.current?.focus(); },
+    fork: forkFrom,
+    correct: (msg) => { setCorrectMsg(msg); setCorrectText(''); },
+    retry: (txt) => send(null, txt),
+  };
   const mentionQuery = useMemo(() => {
     if ((botsL.data || []).length <= 1) return null;
     const m = text.match(/(?:^|\s)@([\p{L}\p{N}_-]*)$/u);
@@ -1551,6 +1597,40 @@ export default function Chat({ openMore, me }) {
   const toggleArchive = async (c) => {
     try { await bridge.patchChat(c.id, { archived: !c.archived }); chats.reload(true); } catch (e) { toast(e.message, 'err'); }
   };
+  // the drawer list (dozens of rows with icons) only depends on these: keep it out of every keystroke/stream render
+  const chatRows = useMemo(() => filteredChats.map((c) => (
+              <SwipeChatRow
+                key={c.id}
+                isOpen={swipedId === c.id}
+                onOpen={() => setSwipedId(c.id)}
+                onClose={() => setSwipedId((s) => (s === c.id ? null : s))}
+                onRename={() => setRenaming({ id: c.id, title: c.title })}
+                onDelete={() => remove(c.id)}
+                className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}
+              >
+                <LongPressButton className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => { if (swipedId === c.id) { setSwipedId(null); return; } select(c.id); }}
+                  onLongPress={(rect) => openContextMenu({ rect, title: c.title, items: [
+                    { icon: Pin, label: c.pinned ? t('chat.unpin') : t('chat.pin'), onClick: () => togglePin(c) },
+                    { icon: Pencil, label: t('chat.rename'), onClick: () => setRenaming({ id: c.id, title: c.title }) },
+                    { icon: Archive, label: c.archived ? t('chat.unarchive') : t('chat.archive'), onClick: () => toggleArchive(c) },
+                    { icon: Trash2, label: t('chat.delete'), danger: true, onClick: () => remove(c.id) },
+                  ] })}>
+                  <span className="chat-title">
+                    {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
+                    <span className="ellipsis">{c.title}</span>
+                    {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
+                    {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
+                  </span>
+                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                </LongPressButton>
+                <div className="chat-item-actions">
+                  <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
+                  <IconButton icon={Archive} size={13} className="ghost bare" label={c.archived ? t('chat.unarchive') : t('chat.archive')} onClick={(e) => { e.stopPropagation(); toggleArchive(c); }} />
+                  <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
+                  <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
+                </div>
+              </SwipeChatRow>
+            )), [filteredChats, swipedId, current, botsById, t]); // eslint-disable-line react-hooks/exhaustive-deps
   const clearAllChats = async () => {
     if (!webChats.length) return;
     if (!(await confirm(t('chat.clearAll'), t('chat.clearAllQ', { n: webChats.length }), t('common.delete')))) return;
@@ -1590,39 +1670,7 @@ export default function Chat({ openMore, me }) {
           <>
             <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
             <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
-            {filteredChats.map((c) => (
-              <SwipeChatRow
-                key={c.id}
-                isOpen={swipedId === c.id}
-                onOpen={() => setSwipedId(c.id)}
-                onClose={() => setSwipedId((s) => (s === c.id ? null : s))}
-                onRename={() => setRenaming({ id: c.id, title: c.title })}
-                onDelete={() => remove(c.id)}
-                className={'chat-item-row' + (c.id === current ? ' active' : '') + (c.unread && c.id !== current ? ' unread' : '')}
-              >
-                <LongPressButton className={'chat-item' + (c.id === current ? ' active' : '')} onClick={() => { if (swipedId === c.id) { setSwipedId(null); return; } select(c.id); }}
-                  onLongPress={(rect) => openContextMenu({ rect, title: c.title, items: [
-                    { icon: Pin, label: c.pinned ? t('chat.unpin') : t('chat.pin'), onClick: () => togglePin(c) },
-                    { icon: Pencil, label: t('chat.rename'), onClick: () => setRenaming({ id: c.id, title: c.title }) },
-                    { icon: Archive, label: c.archived ? t('chat.unarchive') : t('chat.archive'), onClick: () => toggleArchive(c) },
-                    { icon: Trash2, label: t('chat.delete'), danger: true, onClick: () => remove(c.id) },
-                  ] })}>
-                  <span className="chat-title">
-                    {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
-                    <span className="ellipsis">{c.title}</span>
-                    {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
-                    {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
-                  </span>
-                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
-                </LongPressButton>
-                <div className="chat-item-actions">
-                  <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
-                  <IconButton icon={Archive} size={13} className="ghost bare" label={c.archived ? t('chat.unarchive') : t('chat.archive')} onClick={(e) => { e.stopPropagation(); toggleArchive(c); }} />
-                  <IconButton icon={Pencil} size={13} className="ghost bare" label={t('chat.rename')} onClick={(e) => { e.stopPropagation(); setRenaming({ id: c.id, title: c.title }); }} />
-                  <IconButton icon={Trash2} size={13} className="ghost bare danger-text" label={t('chat.delete')} onClick={(e) => { e.stopPropagation(); remove(c.id); }} />
-                </div>
-              </SwipeChatRow>
-            ))}
+            {chatRows}
             {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
             {(archivedCount > 0 || showArchived) && (
               <button type="button" className="ghost small block" style={{ marginTop: 6 }} onClick={() => setShowArchived((x) => !x)}>
@@ -1734,17 +1782,11 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           {msgSearch && !shownMessages.length && messages.length > 0 && <p className="muted small" style={{ textAlign: 'center', marginTop: 24 }}>{t('chat.noMatches')}</p>}
-          {shownMessages.map((m, idx) => {
-            const prevUser = m.role === 'assistant' ? [...shownMessages.slice(0, idx)].reverse().find((x) => x.role === 'user' && x.text) : null;
-            return (
-              <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} botsById={botsById} term={term}
-                onResend={(txt) => { setText(txt); inputRef.current?.focus(); }}
-                onQuote={(txt) => { const snip = txt.trim().split('\n').slice(0, 3).map((l) => '> ' + l).join('\n'); setText((prev) => (prev ? prev + '\n' : '') + snip + '\n\n'); inputRef.current?.focus(); }}
-                onFork={forkFrom}
-                onCorrect={(msg) => { setCorrectMsg(msg); setCorrectText(''); }}
-                onRetry={prevUser ? () => send(null, prevUser.text) : undefined} />
-            );
-          })}
+          {shownMessages.map((m, idx) => (
+            <Message key={m.id} m={m} chatId={current} bot={botsById[m.bot]} botsById={botsById} term={term}
+              onResend={msgActions.resend} onQuote={msgActions.quote} onFork={msgActions.fork} onCorrect={msgActions.correct}
+              retryText={retryTexts[idx]} onRetryText={msgActions.retry} />
+          ))}
           {activeSuggestions.length > 0 && (
             <div className="quick-suggestions" role="group" aria-label="Sugestões rápidas">
               {activeSuggestions.map((s, idx) => (

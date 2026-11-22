@@ -2,9 +2,8 @@
 // - every tab keeps its own stack of screens; switching tabs keeps screens mounted (state + scroll)
 // - push slides the new screen in from the right while the previous one moves -30% (parallax)
 // - pop: "‹ Back" in the nav bar, the system back (Android / browser history) or a drag from the left edge
-// - switching tabs crossfades with the View Transitions API when available
+// - switching tabs is instant (as on iOS); the dock lens slides to the new tab
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { haptic } from './ui.jsx';
 
 const DUR = 420;
@@ -72,12 +71,9 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
     if (push) { window.history.pushState({ acpDepth: 1 }, '', h); pushed.current += 1; } else window.history.replaceState(null, '', h);
   };
 
-  const commit = (next, { transition } = {}) => {
-    const apply = () => setNav(next);
-    if (transition && document.startViewTransition && !reduced()) {
-      document.startViewTransition(() => flushSync(apply));
-    } else apply();
-  };
+  // Tab switches are instant, like UITabBarController: a full-screen View Transition snapshot
+  // (rasterizing both pages, glass included) cost several frames on phones for a 200ms crossfade.
+  const commit = (next) => setNav(next);
 
   const switchTab = useCallback((tab) => {
     const n = navRef.current;
@@ -86,7 +82,7 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
     haptic(8);
     const stacks = n.stacks[tab] ? n.stacks : { ...n.stacks, [tab]: [tab] };
     const next = { ...n, tab, stacks, visited: n.visited.includes(tab) ? n.visited : [...n.visited, tab] };
-    commit(next, { transition: true });
+    commit(next);
     writeHash(stacks[tab][stacks[tab].length - 1], false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,7 +96,7 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
     if (n.tab !== tab) {
       // coming from another tab (dock, links, avatar sheet): land straight on the screen, no slide
       const stacks = { ...n.stacks, [tab]: [tab, id] };
-      commit({ ...n, tab, stacks, visited: n.visited.includes(tab) ? n.visited : [...n.visited, tab] }, { transition: true });
+      commit({ ...n, tab, stacks, visited: n.visited.includes(tab) ? n.visited : [...n.visited, tab] });
       writeHash(id, false);
       return;
     }

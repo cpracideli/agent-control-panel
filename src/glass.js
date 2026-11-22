@@ -1,27 +1,58 @@
-// Interactive Liquid Glass: the highlight follows the pointer/finger and the
-// dock swells while touched. Only elements that are actually tappable opt in.
+// Interactive Liquid Glass: the highlight follows the pointer/finger and the dock swells while touched.
+// Only elements that are actually tappable opt in. Performance: the element rect is measured once per
+// press (or once per hover entry), moves are coalesced to one style write per animation frame, and
+// touch moves are ignored unless a finger is down on a glass element.
 const SEL = '.glass-btn, .dock-capsule';
 
-function track(e) {
-  const el = e.target instanceof Element ? e.target.closest(SEL) : null;
-  if (!el) return;
-  const r = el.getBoundingClientRect();
-  el.style.setProperty('--mx', `${e.clientX - r.left}px`);
-  el.style.setProperty('--my', `${e.clientY - r.top}px`);
-  return el;
-}
-
+let cur = null;      // { el, rect }
+let pending = null;  // last pointer position waiting for the next frame
+let raf = 0;
 let held = null;
-function release() { if (held) { held.classList.remove('touching'); held = null; } }
+
+function flush() {
+  raf = 0;
+  if (!cur || !pending) return;
+  const { el, rect } = cur;
+  el.style.setProperty('--mx', `${pending.x - rect.left}px`);
+  el.style.setProperty('--my', `${pending.y - rect.top}px`);
+  pending = null;
+}
+function schedule(e) {
+  pending = { x: e.clientX, y: e.clientY };
+  if (!raf) raf = requestAnimationFrame(flush);
+}
+function target(e) { return e.target instanceof Element ? e.target.closest(SEL) : null; }
+
+function onDown(e) {
+  const el = target(e);
+  if (!el) return;
+  cur = { el, rect: el.getBoundingClientRect() };
+  schedule(e);
+  if (el.classList.contains('dock-capsule')) { held = el; el.classList.add('touching'); }
+}
+function onMove(e) {
+  if (e.pointerType === 'mouse') {
+    // hover: re-measure only when the pointer enters another glass element
+    const el = target(e);
+    if (!el) { cur = null; return; }
+    if (!cur || cur.el !== el) cur = { el, rect: el.getBoundingClientRect() };
+  } else if (!cur || !held) return; // touch/pen: only while pressing the dock
+  schedule(e);
+}
+function release() {
+  if (held) { held.classList.remove('touching'); held = null; }
+  if (cur && cur.el && !cur.el.matches(':hover')) cur = null;
+}
 
 export function initGlass() {
   if (typeof window === 'undefined') return;
-  document.addEventListener('pointermove', track, { passive: true });
-  document.addEventListener('pointerdown', (e) => {
-    const el = track(e);
-    if (el && el.classList.contains('dock-capsule')) { held = el; el.classList.add('touching'); }
-  }, { passive: true });
+  document.addEventListener('pointermove', onMove, { passive: true });
+  document.addEventListener('pointerdown', onDown, { passive: true });
   ['pointerup', 'pointercancel', 'blur'].forEach((t) => window.addEventListener(t, release, { passive: true }));
+  // rects go stale when anything scrolls or resizes
+  const drop = () => { if (!held) cur = null; };
+  window.addEventListener('scroll', drop, { passive: true, capture: true });
+  window.addEventListener('resize', drop, { passive: true });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -33,7 +64,9 @@ export function initGlass() {
 // feDisplacementMap used as a backdrop-filter. Only Chromium applies SVG filters in
 // backdrop-filter; Safari/Firefox keep the clear CSS glass from styles.css.
 // ---------------------------------------------------------------------------------------------
-const REFRACT_SEL = '.dock-capsule, .composer, .head-capsule, .glass-btn, .chat-head .nav-btn';
+// Only the big, mostly static chrome refracts. Small glass buttons keep the clear CSS glass: on a phone
+// a dozen SVG-filtered backdrops re-rendered on every scrolled frame was the main source of jank.
+const REFRACT_SEL = '.dock-capsule, .composer, .head-capsule';
 const N_GLASS = 1.5;
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -120,21 +153,30 @@ function filterFor(el) {
   f = document.createElementNS(NS, 'filter');
   f.id = id;
   for (const [k, v] of Object.entries({ x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' })) f.setAttribute(k, v);
-  // the edge also splits colours a little (dispersion): red bends a bit less than blue
+  // a single displacement pass: the old 3-channel dispersion (3 maps + 3 matrices + 2 blends) cost ~5x
+  // more per frame for a fringe that is barely visible at phone pixel densities
   f.innerHTML = `
     <feImage href="${url}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale * 0.92}" xChannelSelector="R" yChannelSelector="G" result="r"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="g"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale * 1.08}" xChannelSelector="R" yChannelSelector="G" result="b"/>
-    <feColorMatrix in="r" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="rr"/>
-    <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="gg"/>
-    <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="bb"/>
-    <feBlend in="rr" in2="gg" mode="screen" result="rg"/>
-    <feBlend in="rg" in2="bb" mode="screen"/>`;
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/>`;
   svgRoot.appendChild(f);
-  const value = `url(#${id}) blur(1.2px) saturate(165%) brightness(1.04)`;
+  el.dataset.lgFilter = `url(#${id}) blur(1.2px) saturate(165%) brightness(1.04)`;
+  applyFilter(el);
+}
+
+// While anything scrolls or a screen/sheet transition runs, the content under the glass changes every
+// frame and the SVG filter would be re-run each time. Fall back to the plain CSS glass meanwhile (same
+// tint and rim, just no bent edge) and bring the lens back once things settle.
+let paused = false;
+const PLAIN = 'blur(5px) saturate(175%) brightness(1.06)';
+function applyFilter(el) {
+  const value = paused || !el.dataset.lgFilter ? PLAIN : el.dataset.lgFilter;
   el.style.setProperty('backdrop-filter', value, 'important');
   el.style.setProperty('-webkit-backdrop-filter', value, 'important');
+}
+function setPaused(p) {
+  if (paused === p) return;
+  paused = p;
+  document.querySelectorAll('[data-lg-filter]').forEach(applyFilter);
 }
 
 export function initRefraction() {
@@ -148,6 +190,18 @@ export function initRefraction() {
   const ro = new ResizeObserver((entries) => entries.forEach((e) => queue(e.target)));
   const seen = new WeakSet();
   const scan = () => document.querySelectorAll(REFRACT_SEL).forEach((el) => { if (!seen.has(el)) { seen.add(el); ro.observe(el); queue(el); } });
-  new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+  let scanQueued = false;
+  new MutationObserver(() => {
+    if (scanQueued) return;
+    scanQueued = true;
+    requestAnimationFrame(() => { scanQueued = false; scan(); });
+  }).observe(document.body, { childList: true, subtree: true });
   scan();
+
+  let idle = 0;
+  const busy = () => { setPaused(true); clearTimeout(idle); idle = setTimeout(() => setPaused(false), 220); };
+  window.addEventListener('scroll', busy, { passive: true, capture: true });
+  window.addEventListener('touchmove', busy, { passive: true });
+  document.addEventListener('animationstart', busy, true);
+  document.addEventListener('transitionrun', (e) => { if (e.propertyName === 'transform') busy(); }, true);
 }

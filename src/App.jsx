@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, Bell, BellRing, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Send, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
@@ -301,6 +301,10 @@ function MoreSheet(props) {
 
 const hashOf = (id) => '#/' + id;
 
+// Pages only depend on these two props (plus context): memo keeps a tab switch, a push or the header
+// collapsing from re-rendering every mounted page (the chat with all its markdown, dashboards...).
+const PageView = memo(function PageView({ Page, openMore, me }) { return <Page openMore={openMore} me={me} />; });
+
 // One screen of a navigation stack: its own nav bar (back button, collapsing title, actions slot),
 // its own scroll position and pull-to-refresh. Chat draws its own header.
 function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, banners, cls, moreProps }) {
@@ -308,12 +312,26 @@ function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, ban
   const [el, setEl] = useState(null);
   const [actionsEl, setActionsEl] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
+  const collapsedRef = useRef(false);
+  const scrollRaf = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(scrollRaf.current), []);
+  // large title collapse: sample scrollTop once per frame, re-render only when the state flips
+  const onScroll = (e) => {
+    if (scrollRaf.current) return;
+    const target = e.currentTarget;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      const c = target.scrollTop > 40;
+      if (c !== collapsedRef.current) { collapsedRef.current = c; setCollapsed(c); }
+    });
+  };
+  const screenCtx = useMemo(() => ({ actionsEl, active: active && isTop }), [actionsEl, active, isTop]);
   const chat = id === 'chat';
   const Page = id === 'more' ? null : PAGES.find((p) => p.id === id).el;
   const title = t('nav.' + id);
   return (
     <section ref={setEl} className={'screen screen-' + id + (isTop ? ' top' : '') + (cls ? ' ' + cls : '')} data-screen={id} aria-hidden={!active || !isTop}
-      onScroll={chat ? undefined : (e) => { const c = e.currentTarget.scrollTop > 40; if (c !== collapsed) setCollapsed(c); }}>
+      onScroll={chat ? undefined : onScroll}>
       {!chat && (
         <header className={'topbar' + (collapsed ? ' collapsed' : '') + (depth > 0 ? ' has-back' : '')}>
           {depth > 0 && (
@@ -329,11 +347,11 @@ function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, ban
       {!chat && <h1 className="large-title serif-title ellipsis page-title">{title}</h1>}
       {!chat && <PullToRefresh enabled={active && isTop} onRefresh={refreshAll} scrollEl={el} />}
       {active && isTop && banners}
-      <ScreenCtx.Provider value={{ actionsEl, active: active && isTop }}>
+      <ScreenCtx.Provider value={screenCtx}>
         <ErrorBoundary resetKey={id}>
           {id === 'more'
             ? <div className="page page-list more-root"><MoreList {...moreProps} /></div>
-            : <Page openMore={openMore} me={me} />}
+            : <PageView Page={Page} openMore={openMore} me={me} />}
         </ErrorBoundary>
       </ScreenCtx.Provider>
     </section>
@@ -377,6 +395,7 @@ export default function App() {
   const { nav } = stackNav;
   const page = stackNav.top();
   const [more, setMore] = useState(false);
+  const openMoreSheet = useCallback(() => setMore(true), []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [navStatus, setNavStatus] = useState({ running: 0, webRunning: 0, unread: 0, pendingPrompts: 0, inboxCount: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
@@ -530,7 +549,7 @@ export default function App() {
   const renderScreen = (id, depth, isTop, cls, prev) => (
     <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
       backLabel={prev ? t('nav.' + prev) : ''} onBack={() => stackNav.pop()}
-      me={me} openMore={() => setMore(true)} banners={banners} moreProps={moreProps} />
+      me={me} openMore={openMoreSheet} banners={banners} moreProps={moreProps} />
   );
   const dockDot = (id) =>
     (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.webRunning > 0 || navStatus.unread > 0) && 'warn'))
