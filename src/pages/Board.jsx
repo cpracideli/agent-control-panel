@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { AlertTriangle, Bot, CheckSquare, ExternalLink, MessageSquare, Pencil, Play, Plus, RotateCcw, Send, Settings2, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Bot, CheckCircle2, CheckSquare, Circle, Clock, ExternalLink, Eye, MessageSquare, Pencil, Play, Plus, RotateCcw, Send, Settings2, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -7,6 +7,13 @@ import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../na
 
 const STATUSES = ['todo', 'in_progress', 'review', 'blocked', 'done'];
 const PRIO_KIND = { low: 'muted', medium: 'ok', high: 'warn', urgent: 'err' };
+const STATUS_META = {
+  todo: { icon: Circle, cls: 'st-todo' },
+  in_progress: { icon: Clock, cls: 'st-prog' },
+  review: { icon: Eye, cls: 'st-rev' },
+  blocked: { icon: AlertTriangle, cls: 'st-blk' },
+  done: { icon: CheckCircle2, cls: 'st-done' },
+};
 
 function TicketForm({ initial, bots, onClose, onSaved }) {
   const t = useT();
@@ -252,7 +259,14 @@ export default function Board() {
   const [form, setForm] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [runnerModal, setRunnerModal] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const [busy, run] = useAction();
+
+  useEffect(() => {
+    const onNew = () => setForm({});
+    window.addEventListener('acp:new-ticket', onNew);
+    return () => window.removeEventListener('acp:new-ticket', onNew);
+  }, []);
 
   const list = tickets.data || [];
   const detail = detailId ? list.find((x) => x.id === detailId) : null;
@@ -300,13 +314,16 @@ export default function Board() {
         {STATUSES.map((st) => {
           const col = list.filter((x) => x.status === st);
           if (!col.length) return null;
+          const visible = st === 'done' && !showDone ? col.slice(0, 5) : col;
+          const StIc = STATUS_META[st]?.icon || CheckSquare;
+          const stCls = STATUS_META[st]?.cls || 'st-todo';
           return (
             <ListGroup key={st} title={t('bd.st.' + st) + ' · ' + col.length}>
-              {col.map((tk) => (
+              {visible.map((tk) => (
                 <ListRow key={tk.id}
-                  leading={<span className={'row-ic ic-board prio-' + tk.priority}>{tk.running ? <span className="spin" /> : tk.interrupted ? <AlertTriangle size={18} /> : <CheckSquare size={18} />}</span>}
-                  title={tk.title}
-                  badges={<><Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>{tk.interrupted && <Badge kind="err">{t('bd.interrupted')}</Badge>}</>}
+                  leading={<span className={'row-ic ' + stCls}>{tk.running ? <span className="spin" /> : <StIc size={18} />}</span>}
+                  title={<span className="ellipsis-2">{tk.title}</span>}
+                  badges={<>{st !== 'done' && <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>}{tk.interrupted && <Badge kind="err">{t('bd.interrupted')}</Badge>}</>}
                   subtitle={'#' + tk.id + ' · ' + (tk.botName || t('bd.unassigned')) + ' · ' + f.ago(tk.updated) + ((tk.comments || []).length ? ' · 💬 ' + tk.comments.length : '')}
                   onOpen={() => setDetailId(tk.id)}
                   swipe={[
@@ -315,6 +332,11 @@ export default function Board() {
                     { icon: Pencil, label: t('common.edit'), kind: 'accent', onClick: () => setForm(tk) },
                   ].filter(Boolean)} />
               ))}
+              {st === 'done' && col.length > 5 && (
+                <button type="button" className="group-row press" style={{ justifyContent: 'center', color: 'var(--accent)', fontWeight: 500 }} onClick={() => setShowDone((v) => !v)}>
+                  {showDone ? t('bd.hideDone') : `${t('bd.showDone')} (${col.length})`}
+                </button>
+              )}
             </ListGroup>
           );
         })}
@@ -334,24 +356,28 @@ export default function Board() {
         <div className="kanban">
           {STATUSES.map((st) => {
             const col = list.filter((x) => x.status === st);
+            const visible = st === 'done' && !showDone ? col.slice(0, 5) : col;
+            const StIc = STATUS_META[st]?.icon || CheckSquare;
+            const stCls = STATUS_META[st]?.cls || 'st-todo';
             return (
               <div key={st} className="kanban-col">
                 <div className="kanban-head">
+                  <span className={'row-ic ' + stCls} style={{ width: 22, height: 22, borderRadius: 6 }}><StIc size={13} /></span>
                   <b>{t('bd.st.' + st)}</b>
                   <Badge>{col.length}</Badge>
                 </div>
                 <div className="kanban-items">
                   {!col.length && <div className="muted small" style={{ padding: '12px 4px', textAlign: 'center' }}>—</div>}
-                  {col.map((tk) => (
+                  {visible.map((tk) => (
                     <div key={tk.id} className="kanban-card press" onClick={() => setDetailId(tk.id)}>
                       <div className="row between" style={{ gap: 6 }}>
                         <span className="mono muted small">#{tk.id}{tk.goal ? ' 🎯' : ''}</span>
                         <div className="row" style={{ gap: 4 }}>
                           {tk.interrupted && <Badge kind="err">{t('bd.interrupted')}</Badge>}
-                          <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>
+                          {st !== 'done' && <Badge kind={PRIO_KIND[tk.priority] || 'muted'}>{t('bd.pr.' + tk.priority)}</Badge>}
                         </div>
                       </div>
-                      <b className="kanban-title">{tk.title}</b>
+                      <b className="kanban-title ellipsis-2">{tk.title}</b>
                       {tk.goal && tk.nextCheckAt && <div className="muted small">⏰ {f.date(tk.nextCheckAt)}</div>}
                       {tk.description && <div className="muted small ellipsis-2">{tk.description}</div>}
                       <div className="row between wrap" style={{ marginTop: 6 }}>

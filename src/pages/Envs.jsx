@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Search, Shield, Trash2, Upload } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
 
@@ -34,6 +34,7 @@ function VaultTab() {
   const sec = useLoad(() => bridge.secrets(), [], { cacheKey: '/bridge/secrets' });
   const bots = useLoad(() => bridge.bots(), [], { cacheKey: '/bridge/bots' });
   const [form, setForm] = useState({ name: '', label: '', value: '', username: '', domain: '', totpSecret: '', scope: 'global', kind: 'api_key', note: '' });
+  const [selected, setSelected] = useState(null);
   const [busy, run] = useAction();
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -70,7 +71,7 @@ function VaultTab() {
         <ErrorBox error={sec.error} onRetry={() => sec.reload()} />
         {sec.data && !sec.data.length && <p className="muted">{t('vlt.none')}</p>}
         {(sec.data || []).map((s) => (
-          <div key={s.name} className="list-row wrap">
+          <button key={s.name} type="button" className="list-row wrap press" style={{ width: '100%', textAlign: 'left', background: 'transparent' }} onClick={() => setSelected(s)}>
             <div className="grow">
               <div className="row wrap">
                 <Lock size={14} className="muted" />
@@ -85,10 +86,40 @@ function VaultTab() {
                 {s.domain ? s.domain + ' · ' : ''}{s.username ? s.username + ' · ' : ''}{s.note ? s.note + ' · ' : ''}{f.ago(s.updated)}
               </div>
             </div>
-            <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')} disabled={busy === 'd' + s.name}
-              onClick={async () => (await confirm(t('vlt.removeConfirm', { n: s.name }))) && run('d' + s.name, () => bridge.deleteSecret(s.name), t('common.removed')).then(() => sec.reload(true))} />
-          </div>
+          </button>
         ))}
+        {selected && (
+          <Modal title={selected.label || selected.name} onClose={() => setSelected(null)}>
+            <div className="stack">
+              <div className="row wrap" style={{ gap: 6 }}>
+                <code className="mono muted small">{selected.name}</code>
+                <Badge>{selected.hint}</Badge>
+                <Badge kind="muted">{selected.kind}</Badge>
+                {selected.hasTotp && <Badge kind="ok">2FA/TOTP</Badge>}
+                {selected.scope !== 'global' && <Badge kind="muted">{selected.scope}</Badge>}
+              </div>
+              {selected.domain && <div className="small"><b>Domínio:</b> {selected.domain}</div>}
+              {selected.username && <div className="small"><b>Usuário:</b> {selected.username}</div>}
+              {selected.note && <div className="small muted">{selected.note}</div>}
+              <div className="small muted">Atualizado {f.ago(selected.updated)}</div>
+              <div className="row between" style={{ marginTop: 8 }}>
+                <Btn
+                  icon={Trash2}
+                  className="ghost danger-text small"
+                  disabled={busy === 'd' + selected.name}
+                  onClick={async () => {
+                    if (!(await confirm(t('vlt.removeConfirm', { n: selected.name })))) return;
+                    const res = await run('d' + selected.name, () => bridge.deleteSecret(selected.name), t('common.removed'));
+                    if (res !== undefined) { setSelected(null); sec.reload(true); }
+                  }}
+                >
+                  {t('common.remove')}
+                </Btn>
+                <button type="button" className="ghost small" onClick={() => setSelected(null)}>{t('common.close')}</button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </Card>
       <Card title={t('vlt.new')} icon={Plus}>
         <form className="stack" onSubmit={save}>

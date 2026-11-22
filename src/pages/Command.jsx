@@ -1,7 +1,8 @@
 // Command center: bot cards that light up while running, plus an animated timeline of today's events.
-import { useMemo } from 'react';
-import { CalendarClock, CheckSquare, Inbox, ListTodo, Zap } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CalendarClock, CheckSquare, FileCode2, Inbox, ListTodo, MessageSquare, Sparkles, X, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
+import { useT } from '../i18n.jsx';
 import { Card, ErrorBox, useFmt, useLoad } from '../ui.jsx';
 
 const sameDay = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
@@ -44,7 +45,15 @@ function BotCard({ bot, entry, tickets, f }) {
 }
 
 export default function Command() {
+  const t = useT();
   const f = useFmt();
+  const [onboardDismissed, setOnboardDismissed] = useState(() => {
+    try { return localStorage.getItem('acp_onboard_dismissed') === '1'; } catch { return false; }
+  });
+  const dismissOnboard = () => {
+    setOnboardDismissed(true);
+    try { localStorage.setItem('acp_onboard_dismissed', '1'); } catch {}
+  };
   const bots = useLoad(() => bridge.bots(), [], { interval: 60000, cacheKey: '/bridge/bots' });
   const ov = useLoad(() => bridge.overview(), [], { interval: 4000 });
   const activity = useLoad(() => bridge.activity(), [], { interval: 4000 });
@@ -106,22 +115,74 @@ export default function Command() {
   const pending = Array.isArray(inbox.data) ? inbox.data : inbox.data?.items || [];
   const icon = { task: Zap, done: CheckSquare, err: Zap, sched: CalendarClock, ticket: ListTodo };
   const botList = Array.isArray(bots.data) ? bots.data : [];
+  const activeBots = botList.filter((b) => Boolean(byBot[b.id]));
+  const idleBots = botList.filter((b) => !byBot[b.id]);
 
   return (
     <div className="page">
       <ErrorBox error={ov.error && 'Ponte: ' + ov.error} onRetry={() => ov.reload()} />
+      {!onboardDismissed && (
+        <Card
+          title={t('cc.onboardTitle')}
+          icon={Sparkles}
+          actions={<button type="button" className="ghost small" aria-label={t('common.close')} onClick={dismissOnboard}><X size={15} /></button>}
+        >
+          <div className="cc-onboard-grid">
+            <button type="button" className="group-row press" onClick={() => { window.location.hash = '#/chat'; }}>
+              <span className="row-ic ic-chat"><MessageSquare size={16} /></span>
+              <span className="grow"><b>{t('cc.onboardChat')}</b><small className="muted">{t('cc.onboardChatSub')}</small></span>
+            </button>
+            <button type="button" className="group-row press" onClick={() => { window.location.hash = '#/schedules'; }}>
+              <span className="row-ic ic-schedules"><CalendarClock size={16} /></span>
+              <span className="grow"><b>{t('cc.onboardRoutine')}</b><small className="muted">{t('cc.onboardRoutineSub')}</small></span>
+            </button>
+            <button type="button" className="group-row press" onClick={() => { window.location.hash = '#/dashboards'; }}>
+              <span className="row-ic ic-dashboards"><FileCode2 size={16} /></span>
+              <span className="grow"><b>{t('cc.onboardApp')}</b><small className="muted">{t('cc.onboardAppSub')}</small></span>
+            </button>
+          </div>
+        </Card>
+      )}
       <div className="cc-head">
-        <div className="stat"><small>Em execução</small><b>{running.length}</b></div>
-        <div className="stat"><small>Aprovações pendentes</small><b>{pending.length}</b></div>
-        <div className="stat"><small>Eventos hoje</small><b>{events.length}</b></div>
+        <button type="button" className="stat press" onClick={() => { window.location.hash = '#/board'; }}>
+          <small>{t('cc.running')}</small><b>{running.length}</b>
+        </button>
+        <button type="button" className="stat press" onClick={() => { window.location.hash = '#/board'; }}>
+          <small>{t('cc.pending')}</small><b>{pending.length}</b>
+        </button>
+        <button type="button" className="stat press" onClick={() => document.getElementById('cc-timeline')?.scrollIntoView({ behavior: 'smooth' })}>
+          <small>{t('cc.today')}</small><b>{events.length}</b>
+        </button>
       </div>
       <Card title="Bots" icon={Zap}>
-        <div className="cc-grid">
-          {botList.map((b) => <BotCard key={b.id} bot={b} f={f} entry={byBot[b.id]} tickets={openTickets[b.id]} />)}
-          {!botList.length && <p className="muted small">Carregando…</p>}
-        </div>
+        {activeBots.length > 0 && (
+          <div className="cc-grid" style={{ marginBottom: idleBots.length ? 12 : 0 }}>
+            {activeBots.map((b) => <BotCard key={b.id} bot={b} f={f} entry={byBot[b.id]} tickets={openTickets[b.id]} />)}
+          </div>
+        )}
+        {idleBots.length > 0 && (
+          <div className="cc-idle-grid">
+            {idleBots.map((b) => {
+              const botColor = typeof b.color === 'string' && b.color.trim() ? b.color.trim() : '#0a84ff';
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  className="cc-idle-chip press"
+                  style={{ '--bot': botColor }}
+                  onClick={() => { window.location.hash = '#/bots'; }}
+                >
+                  <span className="cc-avatar sm">{b.avatar ? <img src={b.avatar} alt="" /> : <span>{b.emoji || '🤖'}</span>}</span>
+                  <span className="ellipsis small"><b>{b.name}</b></span>
+                  {openTickets[b.id] > 0 && <span className="muted small">· {openTickets[b.id]}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {!botList.length && <p className="muted small">Carregando…</p>}
       </Card>
-      <Card title="Linha do tempo de hoje" icon={Inbox}>
+      <Card id="cc-timeline" title="Linha do tempo de hoje" icon={Inbox}>
         {!events.length && <p className="muted small">Nada ainda hoje.</p>}
         <ol className="cc-tl">
           {events.map((e, i) => { const Ic = icon[e.kind] || Zap; return (

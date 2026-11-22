@@ -30,25 +30,27 @@ import Schedules from './pages/Schedules.jsx';
 import Envs from './pages/Envs.jsx';
 import Logs from './pages/Logs.jsx';
 
+const PAGE_GROUPS = ['work', 'auto', 'knowledge', 'system'];
+
 const PAGES = [
-  { id: 'command', icon: LayoutDashboard, el: Command },
-  { id: 'status', icon: Activity, el: Status },
-  { id: 'workflows', icon: GitBranch, el: Workflows },
-  { id: 'chat', icon: MessageSquare, el: Chat },
-  { id: 'bots', icon: Bot, el: Bots },
-  { id: 'computer', icon: Monitor, el: Computer },
-  { id: 'skills', icon: Wand2, el: Skills },
-  { id: 'board', icon: CheckSquare, el: Board },
-  { id: 'dashboards', icon: FileCode2, el: Dashboards },
-  { id: 'schedules', icon: CalendarClock, el: Schedules },
-  { id: 'artifacts', icon: FolderArchive, el: Artifacts },
-  { id: 'memory', icon: Brain, el: Memory },
-  { id: 'usage', icon: BarChart3, el: Usage },
-  { id: 'overview', icon: Gauge, el: Overview },
-  { id: 'providers', icon: Sparkles, el: Providers },
-  { id: 'mcp', icon: Plug, el: Mcp },
-  { id: 'envs', icon: KeyRound, el: Envs },
-  { id: 'logs', icon: ScrollText, el: Logs },
+  { id: 'command', group: 'work', icon: LayoutDashboard, el: Command },
+  { id: 'chat', group: 'work', icon: MessageSquare, el: Chat },
+  { id: 'board', group: 'work', icon: CheckSquare, el: Board },
+  { id: 'bots', group: 'work', icon: Bot, el: Bots },
+  { id: 'computer', group: 'work', icon: Monitor, el: Computer },
+  { id: 'schedules', group: 'auto', icon: CalendarClock, el: Schedules },
+  { id: 'workflows', group: 'auto', icon: GitBranch, el: Workflows },
+  { id: 'dashboards', group: 'knowledge', icon: FileCode2, el: Dashboards },
+  { id: 'artifacts', group: 'knowledge', icon: FolderArchive, el: Artifacts },
+  { id: 'skills', group: 'knowledge', icon: Wand2, el: Skills },
+  { id: 'memory', group: 'knowledge', icon: Brain, el: Memory },
+  { id: 'status', group: 'system', icon: Activity, el: Status },
+  { id: 'usage', group: 'system', icon: BarChart3, el: Usage },
+  { id: 'providers', group: 'system', icon: Sparkles, el: Providers },
+  { id: 'mcp', group: 'system', icon: Plug, el: Mcp },
+  { id: 'envs', group: 'system', icon: KeyRound, el: Envs },
+  { id: 'logs', group: 'system', icon: ScrollText, el: Logs },
+  { id: 'overview', group: 'system', icon: Gauge, el: Overview },
 ];
 
 const pageFromHash = () => {
@@ -218,32 +220,54 @@ function MoreList({ me, page, go, install, logout, onClose, dock, morePages, ope
       : notif.enabled
         ? (notif.pushSubscribed ? t('notif.pushActive') : t('notif.browserActive'))
         : t('notif.hint');
+  const showSearchShortcut = !dock.includes('search');
+  const showInboxShortcut = !dock.includes('inbox');
+  const dockLabel = (id) => (t('dock.label.' + id) !== 'dock.label.' + id ? t('dock.label.' + id) : t('nav.' + id));
   return (
     <>
-      <div className="group-label">Atalhos rápidos</div>
-      <div className="group">
-        <button type="button" className="group-row press" onClick={() => { onClose?.(); openSearch(); }}>
-          <span className="row-ic ic-search"><Search size={17} /></span>
-          <span className="grow">{t('dock.sub.search')}</span>
-          <ChevronRight size={17} className="chev" />
-        </button>
-        <button type="button" className="group-row press" onClick={() => { onClose?.(); openInbox(); }}>
-          <span className="row-ic ic-inbox"><Inbox size={17} /></span>
-          <span className="grow">{t('dock.sub.inbox')}</span>
-          {inboxCount > 0 && <span className="nav-dot err" style={{ marginRight: 6 }} />}
-          <ChevronRight size={17} className="chev" />
-        </button>
-      </div>
-      <div className="group-label">{t('nav.pages')}</div>
-      <div className="group">
-        {morePages.map(({ id, icon: Icon }) => (
-          <button key={id} className={'group-row press' + (id === page ? ' on' : '')} onClick={() => { go(id); onClose?.(); }}>
-            <span className={'row-ic ic-' + id}><Icon size={17} /></span>
-            <span className="grow">{t('nav.' + id)}</span>
-            <ChevronRight size={17} className="chev" />
-          </button>
-        ))}
-      </div>
+      {(showSearchShortcut || showInboxShortcut) && (
+        <>
+          <div className="group-label">Atalhos rápidos</div>
+          <div className="group">
+            {showSearchShortcut && (
+              <button type="button" className="group-row press" onClick={() => { onClose?.(); openSearch(); }}>
+                <span className="row-ic ic-search"><Search size={17} /></span>
+                <span className="grow"><b>{t('dock.sub.search')}</b></span>
+                <ChevronRight size={17} className="chev" />
+              </button>
+            )}
+            {showInboxShortcut && (
+              <button type="button" className="group-row press" onClick={() => { onClose?.(); openInbox(); }}>
+                <span className="row-ic ic-inbox"><Inbox size={17} /></span>
+                <span className="grow"><b>{t('dock.sub.inbox')}</b></span>
+                {inboxCount > 0 && <span className="nav-dot err" style={{ marginRight: 6 }} />}
+                <ChevronRight size={17} className="chev" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {PAGE_GROUPS.map((g) => {
+        const items = morePages.filter((p) => p.group === g);
+        if (!items.length) return null;
+        return (
+          <div key={g}>
+            <div className="group-label">{t('nav.g.' + g)}</div>
+            <div className="group">
+              {items.map(({ id, icon: Icon }) => (
+                <button key={id} className={'group-row press' + (id === page ? ' on' : '')} onClick={() => { go(id); onClose?.(); }}>
+                  <span className={'row-ic ic-' + id}><Icon size={17} /></span>
+                  <span className="grow">
+                    <b>{t('nav.' + id)}</b>
+                    <small className="muted ellipsis">{t('nav.sub.' + id)}</small>
+                  </span>
+                  <ChevronRight size={17} className="chev" />
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
       <div className="group-label">{t('nav.appearance')}</div>
       <div className="group">
         <div className="group-row"><span className="row-ic ic-theme"><Moon size={17} /></span><span className="grow">{t('theme.label')}</span><ThemeSwitch labels /></div>
@@ -252,7 +276,7 @@ function MoreList({ me, page, go, install, logout, onClose, dock, morePages, ope
           <span className="row-ic ic-dock"><PanelBottom size={17} /></span>
           <span className="grow">
             <span>{t('dock.title')}</span>
-            <small className="muted ellipsis">{dock.map((id) => t('nav.' + id)).join(' · ')}</small>
+            <small className="muted ellipsis">{dock.map(dockLabel).join(' · ')}</small>
           </span>
           <ChevronRight size={17} className="chev" />
         </button>
@@ -573,18 +597,23 @@ export default function App() {
           <DesktopNotifButton />
         </div>
         <nav>
-          {PAGES.map(({ id, icon: Icon }) => (
-            <button key={id} className={'nav-item' + (id === page ? ' active' : '')} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
-              <span className={'row-ic ic-' + id}><Icon size={15} /></span>
-              <span className="grow">{t('nav.' + id)}</span>
-              {id === 'chat' && (navStatus.pendingPrompts > 0
-                ? <span className="nav-dot err" aria-label={t('prp.pending')} />
-                : (navStatus.webRunning > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
-              {id === 'computer' && (navStatus.computerNeedsHuman
-                ? <span className="nav-dot err" aria-label={t('comp.needsYou')} />
-                : navStatus.computerRunning && <span className="nav-dot ok" aria-label={t('comp.running')} />)}
-              {id === 'overview' && navStatus.offline && <span className="nav-dot err" aria-label={t('ov.offline')} />}
-            </button>
+          {PAGE_GROUPS.map((g) => (
+            <div key={g} className="nav-group">
+              <div className="nav-group-label">{t('nav.g.' + g)}</div>
+              {PAGES.filter((p) => p.group === g).map(({ id, icon: Icon }) => (
+                <button key={id} className={'nav-item' + (id === page ? ' active' : '')} onClick={() => go(id)} aria-current={id === page ? 'page' : undefined}>
+                  <span className={'row-ic ic-' + id}><Icon size={15} /></span>
+                  <span className="grow">{t('nav.' + id)}</span>
+                  {id === 'chat' && (navStatus.pendingPrompts > 0
+                    ? <span className="nav-dot err" aria-label={t('prp.pending')} />
+                    : (navStatus.webRunning > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
+                  {id === 'computer' && (navStatus.computerNeedsHuman
+                    ? <span className="nav-dot err" aria-label={t('comp.needsYou')} />
+                    : navStatus.computerRunning && <span className="nav-dot ok" aria-label={t('comp.running')} />)}
+                  {id === 'overview' && navStatus.offline && <span className="nav-dot err" aria-label={t('ov.offline')} />}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="nav-foot">
@@ -622,7 +651,7 @@ export default function App() {
                 aria-current={!action && active ? 'page' : undefined}
                 aria-expanded={action ? active : undefined}
               >
-                <span className="dock-ic"><Icon size={21} strokeWidth={active ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
+                <span className="dock-ic"><Icon size={21} strokeWidth={active ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('dock.label.' + id) !== 'dock.label.' + id ? t('dock.label.' + id) : t('nav.' + id)}</span>
               </button>
             );
           })}

@@ -956,7 +956,7 @@ const Message = memo(function Message({ m, chatId, onResend, retryText, onRetryT
           {bot && bot.id !== 'default' && <span>{(bot.emoji ? bot.emoji + ' ' : '') + bot.name}</span>}
           {m.provider && <ProvMark id={m.provider} size={13} />}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
-          {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
+          {m.usage?.turns ? <span>{m.usage.turns === 1 ? t('chat.stepOne') : t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{(m.usage.estimated || m.provider === 'antigravity' ? '~' : '') + f.usd(m.usage.cost)}</span> : null}
           {m.meta?.fallbackFrom && <Badge kind="warn" title={'Failover de ' + provName(m.meta.fallbackFrom)}>failover</Badge>}
           {m.meta?.routedReason === 'light' && <Badge kind="ok">econômico</Badge>}
@@ -1790,9 +1790,14 @@ export default function Chat({ openMore, me }) {
               </button>
             )}
             {webChats.length > 0 && (
-              <button type="button" className="ghost small block danger-text" style={{ marginTop: 6 }} onClick={clearAllChats}>
-                <Trash2 size={13} /> {t('chat.clearAll')}
-              </button>
+              <details className="drawer-danger-menu" style={{ marginTop: 8 }}>
+                <summary className="ghost small block muted" style={{ listStyle: 'none', cursor: 'pointer', textAlign: 'center', padding: '6px 8px' }}>
+                  ⋯ {t('pg.more')}
+                </summary>
+                <button type="button" className="ghost small block danger-text" style={{ marginTop: 4 }} onClick={clearAllChats}>
+                  <Trash2 size={13} /> {t('chat.clearAll')}
+                </button>
+              </details>
             )}
           </>
         ) : (

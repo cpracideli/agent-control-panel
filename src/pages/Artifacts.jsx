@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, FileText, FolderArchive, Image as ImageIcon, MessageSquare, Music, PenTool, Search, Send, Trash2 } from 'lucide-react';
+import { Download, FileText, FolderArchive, Image as ImageIcon, MessageSquare, MoreHorizontal, Music, PenTool, Search, Send, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -14,6 +14,7 @@ function AnnotateArtifactModal({ item, onClose }) {
   const [rect, setRect] = useState(null);
   const [drag, setDrag] = useState(null);
   const imgRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [busy, run] = useAction();
   const imgUrl = bridge.artifactFileUrl(item.name);
 
@@ -100,6 +101,7 @@ export default function Artifacts() {
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [annotating, setAnnotating] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [busy, run] = useAction();
 
   const allItems = arts.data || [];
@@ -142,9 +144,22 @@ export default function Artifacts() {
           </div>
           <label className="search"><Search size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('common.filter')} /></label>
           {list.length > 0 && (
-            <Btn icon={Trash2} className="ghost small danger-text" disabled={busy === 'delAll'} onClick={removeAll}>
-              {isFiltered ? t('art.removeFilteredBtn') : t('art.removeAllBtn')}
-            </Btn>
+            <div style={{ position: 'relative' }}>
+              <IconButton icon={MoreHorizontal} label={t('pg.more')} onClick={() => setMenuOpen((v) => !v)} />
+              {menuOpen && (
+                <div className="pg-more-menu">
+                  <button
+                    type="button"
+                    className="pg-menu-item danger-text"
+                    disabled={busy === 'delAll'}
+                    onClick={() => { setMenuOpen(false); removeAll(); }}
+                  >
+                    <Trash2 size={14} />
+                    <span>{isFiltered ? t('art.removeFilteredBtn') : t('art.removeAllBtn')}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       }>

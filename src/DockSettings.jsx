@@ -8,11 +8,19 @@ export const MIN_DOCK = 1;
 export const MAX_DOCK = 5;
 
 export function normalizeDock(list, validIds) {
-  if (!Array.isArray(list) || list.length < MIN_DOCK || list.length > MAX_DOCK) return [...DEFAULT_DOCK];
   const valid = new Set(validIds);
-  const clean = list.map((x) => String(x || '').trim());
-  if (clean.some((x) => !valid.has(x)) || new Set(clean).size !== clean.length) return [...DEFAULT_DOCK];
-  return clean;
+  const raw = Array.isArray(list) ? list.map((x) => String(x || '').trim()) : [];
+  const seen = new Set();
+  const screens = [];
+  for (const id of raw) {
+    if (!valid.has(id) || id === 'more' || seen.has(id)) continue;
+    seen.add(id);
+    screens.push(id);
+  }
+  if (!screens.length) return [...DEFAULT_DOCK];
+  const out = screens.slice(0, MAX_DOCK - 1);
+  out.push('more');
+  return out;
 }
 
 export function isSameList(a, b) {
@@ -38,7 +46,6 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
   const isDefault = isSameList(draft, DEFAULT_DOCK);
   const dirty = !isSameList(draft, dock);
   const canSave = draft.length >= MIN_DOCK && draft.length <= MAX_DOCK && dirty && !saving;
-  const hasMore = draft.includes('more');
 
   const remove = (id) => {
     if (draft.length <= MIN_DOCK) return;
@@ -163,7 +170,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
               return (
                 <div key={id} className="dock-preview-slot">
                   <Icon size={18} strokeWidth={2} />
-                  <span className="ellipsis">{t('nav.' + id)}</span>
+                  <span className="ellipsis">{t('dock.label.' + id) !== 'dock.label.' + id ? t('dock.label.' + id) : t('nav.' + id)}</span>
                 </div>
               );
             })}
@@ -206,7 +213,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
                 <button
                   type="button"
                   className="dock-act-btn remove press"
-                  disabled={draft.length <= MIN_DOCK}
+                  disabled={draft.length <= MIN_DOCK || id === 'more'}
                   aria-label={`${t('dock.remove')}: ${t('nav.' + id)}`}
                   onClick={() => remove(id)}
                 >
@@ -217,8 +224,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
           })}
         </div>
         <p className="dock-hint muted">
-          {draft.length <= MIN_DOCK ? t('dock.minHint') : t('dock.dragHint')}
-          {!hasMore && (' ' + t('dock.noMoreHint'))}
+          {t('dock.keepMore')}
         </p>
 
         <div className="group">

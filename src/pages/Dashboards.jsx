@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutTemplate, Code, Copy, Database, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
+import { LayoutTemplate, Code, Copy, Database, ExternalLink, FileCode2, Globe, History, Lock, Maximize2, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -234,6 +234,7 @@ export default function Dashboards() {
   const [viewer, setViewer] = useState(null);
   const [form, setForm] = useState(null);
   const [history, setHistory] = useState(null);
+  const [openMenu, setOpenMenu] = useState(null);
   const [dataModal, setDataModal] = useState(null);
   const [gallery, setGallery] = useState(false);
   const [busy, run] = useAction();
@@ -279,17 +280,40 @@ export default function Dashboards() {
                     <IconButton icon={Copy} size={14} label={t('pg.copyLink')} onClick={() => { navigator.clipboard.writeText(pubUrl); toast(t('common.copied')); }} />
                   </div>
                 )}
-                <div className="row bot-actions">
+                <div className="row bot-actions" style={{ position: 'relative' }}>
                   <Btn icon={Maximize2} className="small" onClick={() => setViewer(p)}>{t('pg.open')}</Btn>
-                  <a className="btn ghost small" {...docLink(bridge.pageRawUrl(p.id), p.title, 'text/html')} aria-label={t('pg.full')}><ExternalLink size={14} /></a>
                   <span className="grow" />
-                  <IconButton icon={Database} label="Dados do Mini-App" onClick={() => setDataModal(p)} />
-                  <IconButton icon={ p.public ? Globe : Lock } label={t('pg.public')} disabled={busy === 'pub' + p.id}
-                    onClick={() => run('pub' + p.id, () => bridge.patchPage(p.id, { public: !p.public }), t('pg.saved')).then(() => pages.reload(true))} />
-                  <IconButton icon={Code} label={t('common.edit')} onClick={() => setForm(p)} />
-                  <IconButton icon={History} label={t('bots.history')} disabled={!p.history?.length} onClick={() => setHistory(p)} />
-                  <IconButton icon={Trash2} className="ghost danger-text" label={t('common.remove')}
-                    onClick={async () => (await confirm(t('pg.removeConfirm', { n: p.title }))) && run('d' + p.id, () => bridge.deletePage(p.id), t('common.removed')).then(() => pages.reload(true))} />
+                  <IconButton icon={MoreHorizontal} label={t('pg.more')} onClick={() => setOpenMenu(openMenu === p.id ? null : p.id)} />
+                  {openMenu === p.id && (
+                    <div className="pg-more-menu">
+                      <a className="pg-menu-item" {...docLink(bridge.pageRawUrl(p.id), p.title, 'text/html')} onClick={() => setOpenMenu(null)}>
+                        <ExternalLink size={14} /><span>{t('pg.full')}</span>
+                      </a>
+                      <button type="button" className="pg-menu-item" disabled={busy === 'pub' + p.id}
+                        onClick={() => { setOpenMenu(null); run('pub' + p.id, () => bridge.patchPage(p.id, { public: !p.public }), t('pg.saved')).then(() => pages.reload(true)); }}>
+                        {p.public ? <Globe size={14} /> : <Lock size={14} />}
+                        <span>{t('pg.public')}</span>
+                      </button>
+                      <button type="button" className="pg-menu-item" onClick={() => { setOpenMenu(null); setDataModal(p); }}>
+                        <Database size={14} /><span>Dados do Mini-App</span>
+                      </button>
+                      <button type="button" className="pg-menu-item" onClick={() => { setOpenMenu(null); setForm(p); }}>
+                        <Code size={14} /><span>{t('common.edit')}</span>
+                      </button>
+                      <button type="button" className="pg-menu-item" disabled={!p.history?.length} onClick={() => { setOpenMenu(null); setHistory(p); }}>
+                        <History size={14} /><span>{t('bots.history')}</span>
+                      </button>
+                      <button type="button" className="pg-menu-item danger-text"
+                        onClick={async () => {
+                          setOpenMenu(null);
+                          if (await confirm(t('pg.removeConfirm', { n: p.title }))) {
+                            run('d' + p.id, () => bridge.deletePage(p.id), t('common.removed')).then(() => pages.reload(true));
+                          }
+                        }}>
+                        <Trash2 size={14} /><span>{t('common.remove')}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CalendarClock, Eye, GitBranch, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Smartphone, Sun, Trash2, Webhook, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CalendarClock, Clock, Eye, GitBranch, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Smartphone, Sun, Trash2, Webhook, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -10,6 +10,45 @@ const STATUS_KIND = { ok: 'ok', quiet: 'muted', skipped: 'muted', deferred: 'war
 
 const CRON_HELP = [['0 8 * * *', 'daily'], ['0 9 * * 1-5', 'weekdays'], ['*/30 * * * *', '30'], ['0 18 * * 5', 'fri']];
 const ChatIc = ({ id }) => (id.startsWith('web:') ? <Globe size={13} /> : <Smartphone size={13} />);
+
+function humanCron(expr) {
+  if (!expr) return '';
+  const parts = String(expr).trim().split(/\s+/);
+  if (parts.length !== 5) return expr;
+  const [m, h, dom, mon, dow] = parts;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (/^\*\/(\d+)$/.test(m) && h === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `A cada ${m.slice(2)} min`;
+  }
+  if (/^\d+$/.test(m) && h === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return m === '0' ? 'De hora em hora' : `A cada hora (:${pad(m)})`;
+  }
+  if (/^\d+$/.test(m) && /^(\d+)-(\d+)$/.test(h) && dom === '*' && mon === '*' && dow === '*') {
+    const [, h1, h2] = h.match(/^(\d+)-(\d+)$/);
+    return `De hora em hora (${h1}h–${h2}h)`;
+  }
+  if (/^\d+$/.test(m) && /^\d+$/.test(h) && dom === '*' && mon === '*') {
+    const hm = `${pad(h)}:${pad(m)}`;
+    if (dow === '*') return `Todo dia às ${hm}`;
+    if (dow === '1-5') return `Seg–Sex às ${hm}`;
+    if (dow === '0,6' || dow === '6,0') return `Fim de semana às ${hm}`;
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    if (/^[0-6]$/.test(dow)) return `${days[Number(dow)]} às ${hm}`;
+  }
+  return expr;
+}
+
+function schedIcon(s) {
+  const Icon = s.paused ? Pause : s.webhook ? Link2 : s.watch ? Eye : s.at ? Clock : CalendarClock;
+  const cls = s.paused
+    ? 'ic-paused'
+    : s.lastRunInfo?.status === 'error'
+      ? 'ic-err'
+      : s.lastRunInfo?.status === 'ok'
+        ? 'ic-ok'
+        : 'ic-schedules';
+  return { Icon, cls };
+}
 
 function matchField(expr, val, min, max) {
   for (const part of expr.split(',')) {
@@ -323,6 +362,11 @@ export default function Schedules() {
   const list = (sch.data || []).filter((s) => filter === 'all' || (filter === 'paused' ? s.paused : !s.paused));
   const mobile = useIsMobile();
   const [detail, setDetail] = useState(null);
+  useEffect(() => {
+    const onNew = () => setForm({});
+    window.addEventListener('acp:new-schedule', onNew);
+    return () => window.removeEventListener('acp:new-schedule', onNew);
+  }, []);
   const removeSch = async (s) => (await confirm(t('sch.removeConfirm', { id: s.id }))) && run('d' + s.id, () => bridge.deleteSchedule(s.id), t('common.removed')).then(() => sch.reload(true));
   const togglePause = (s) => run('p' + s.id, () => bridge.patchSchedule(s.id, { paused: !s.paused })).then(() => sch.reload(true));
   const modals = (
@@ -341,7 +385,7 @@ export default function Schedules() {
 
   if (mobile) {
     const sel = (sch.data || []).find((s) => s.id === detail);
-    const when = (s) => (s.cron ? s.cron : s.at ? t('sch.once', { d: f.date(s.at) }) : s.webhook ? 'webhook' : s.watch ? t('sch.watchBadge', { n: s.watch.every }) : '');
+    const when = (s) => (s.cron ? humanCron(s.cron) : s.at ? t('sch.once', { d: f.date(s.at) }) : s.webhook ? 'webhook' : s.watch ? t('sch.watchBadge', { n: s.watch.every }) : '');
     return (
       <div className="page page-list">
         <HeaderActions>
@@ -354,12 +398,13 @@ export default function Schedules() {
           <ListGroup>
             {list.map((s) => {
               const nextAt = !s.paused && s.cron ? nextCronRun(s.cron) : null;
+              const { Icon, cls } = schedIcon(s);
               return (
                 <ListRow key={s.id}
-                  leading={<span className={'row-ic ' + (s.paused ? 'ic-paused' : 'ic-schedules')}>{s.paused ? <Pause size={18} /> : <CalendarClock size={18} />}</span>}
-                  title={s.description || '#' + s.id}
+                  leading={<span className={'row-ic ' + cls}><Icon size={18} /></span>}
+                  title={<span className="ellipsis-2">{s.description || '#' + s.id}</span>}
                   badges={<>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}{s.lastRunInfo && s.lastRunInfo.status !== 'ok' && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status)}</Badge>}</>}
-                  subtitle={<span className="meta-line"><span className="mono">{when(s)}</span>{nextAt && <span>{t('sch.nextRun', { d: f.date(nextAt) })}</span>}{s.botName && <span>{s.botName}</span>}</span>}
+                  subtitle={<span className="meta-line"><span>{when(s)}</span>{nextAt && <span>{t('sch.nextRun', { d: f.date(nextAt) })}</span>}{s.botName && <span>{s.botName}</span>}</span>}
                   onOpen={() => setDetail(s.id)}
                   swipe={[
                     { icon: s.paused ? Play : Pause, label: s.paused ? t('sch.resume') : t('sch.pause'), kind: 'warn', onClick: () => togglePause(s) },
@@ -398,7 +443,9 @@ export default function Schedules() {
             ]} />
         )}
         {modals}
-        <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
+        <Disclosure summary={t('sch.advanced')}>
+          <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
+        </Disclosure>
       </div>
     );
   }
@@ -429,7 +476,7 @@ export default function Schedules() {
                   {s.deferred && <Badge kind="warn">adiada</Badge>}
                   {s.lastRunInfo && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status) || s.lastRunInfo.status}</Badge>}</div>
                 <div className="muted small meta-line">
-                  {(s.cron || s.at) && <span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span>}
+                  {(s.cron || s.at) && <span>{s.cron ? humanCron(s.cron) : t('sch.once', { d: f.date(s.at) })}</span>}
                   <span className="with-ic"><ChatIc id={s.chatId} />{s.chatTitle}</span>
                   {s.botName && <span>{s.botName}</span>}
                   {nextAt && <span>{t('sch.nextRun', { d: f.date(nextAt) })}</span>}
@@ -448,7 +495,9 @@ export default function Schedules() {
           );
         })}
       </Card>
-      <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
+      <Disclosure summary={t('sch.advanced')}>
+        <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />
+      </Disclosure>
       {modals}
     </div>
   );

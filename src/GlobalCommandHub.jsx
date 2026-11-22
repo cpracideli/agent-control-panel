@@ -1,9 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, Brain, Check, CheckSquare, Clock, FileCode2, FolderArchive, GitBranch, Inbox, Mail, MessageSquare, Pencil, Plus, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { Activity, BarChart3, Bot, Brain, CalendarClock, Check, CheckSquare, Clock, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, KeyRound, LayoutDashboard, Mail, MessageSquare, Monitor, Pencil, Plug, Plus, ScrollText, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { bridge } from './api.js';
 import { useI18n } from './i18n.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, useAction, useFmt, useLoad, useToast } from './ui.jsx';
+
+const PALETTE_PAGES = [
+  { id: 'command', icon: LayoutDashboard, kw: 'inicio home centro bots resumo dashboard' },
+  { id: 'chat', icon: MessageSquare, kw: 'chat conversa mensagem whatsapp' },
+  { id: 'board', icon: CheckSquare, kw: 'board tarefas kanban tickets pendencias' },
+  { id: 'schedules', icon: CalendarClock, kw: 'agendamentos rotinas cron webhook watch horario' },
+  { id: 'workflows', icon: GitBranch, kw: 'fluxos workflows automacao pipeline' },
+  { id: 'dashboards', icon: FileCode2, kw: 'mini-apps paginas html dashboards' },
+  { id: 'artifacts', icon: FolderArchive, kw: 'arquivos artefatos imagens audios pdf' },
+  { id: 'bots', icon: Bot, kw: 'bots agentes personas instrucoes' },
+  { id: 'computer', icon: Monitor, kw: 'computador navegador chromium login 2fa' },
+  { id: 'skills', icon: Wand2, kw: 'skills habilidades comandos' },
+  { id: 'memory', icon: Brain, kw: 'memoria fatos sessoes grafo obsidian ai-memory' },
+  { id: 'status', icon: Activity, kw: 'saude estado status servicos semaforo' },
+  { id: 'usage', icon: BarChart3, kw: 'consumo uso tokens custo gasto' },
+  { id: 'providers', icon: Sparkles, kw: 'providers modelos canais claude antigravity' },
+  { id: 'mcp', icon: Plug, kw: 'mcp integracoes servidores ferramentas' },
+  { id: 'envs', icon: KeyRound, kw: 'cofre variaveis segredos senhas env' },
+  { id: 'logs', icon: ScrollText, kw: 'logs servidor erros debug' },
+  { id: 'overview', icon: Gauge, kw: 'painel tecnico container rede deploy' },
+];
+
+const QUICK_ACTIONS = [
+  { id: 'new-chat', label: 'Nova conversa', sub: 'Abrir o chat e iniciar uma sessão', icon: MessageSquare, page: 'chat', event: 'acp:new-chat' },
+  { id: 'new-ticket', label: 'Nova tarefa', sub: 'Criar card no Board de tarefas', icon: CheckSquare, page: 'board', event: 'acp:new-ticket' },
+  { id: 'new-schedule', label: 'Nova rotina', sub: 'Agendar tarefa automática ou webhook', icon: CalendarClock, page: 'schedules', event: 'acp:new-schedule' },
+];
+
+const DEFAULT_PALETTE_IDS = ['command', 'chat', 'board', 'schedules', 'dashboards', 'envs', 'status'];
 
 const GROUP_META = [
   ['chats', 'Conversas', MessageSquare, 'chat'],
@@ -85,6 +114,24 @@ export function GlobalSearchModal({ onClose, go }) {
     onClose();
   };
 
+  const runQuickAction = (act) => {
+    go(act.page);
+    if (act.event) setTimeout(() => window.dispatchEvent(new CustomEvent(act.event)), 80);
+    onClose();
+  };
+
+  const norm = q.trim().toLowerCase();
+  const matchedPages = norm
+    ? PALETTE_PAGES.filter((p) => {
+        const label = t('nav.' + p.id).toLowerCase();
+        const sub = t('nav.sub.' + p.id).toLowerCase();
+        return label.includes(norm) || sub.includes(norm) || p.id.includes(norm) || p.kw.includes(norm);
+      })
+    : PALETTE_PAGES.filter((p) => DEFAULT_PALETTE_IDS.includes(p.id));
+  const matchedActions = norm
+    ? QUICK_ACTIONS.filter((a) => a.label.toLowerCase().includes(norm) || a.sub.toLowerCase().includes(norm))
+    : QUICK_ACTIONS;
+
   return createPortal(
     <div
       ref={bgRef}
@@ -98,27 +145,29 @@ export function GlobalSearchModal({ onClose, go }) {
         aria-label={t('dock.sub.search')}
       >
         <form className="gsearch-head" onSubmit={(e) => e.preventDefault()}>
-          <div className="gsearch-bar">
+          <div className="gsearch-bar glass-btn">
             <Search size={17} className="gsearch-ic" aria-hidden />
-            <input
-              ref={inputRef}
-              type="search"
-              inputMode="search"
-              enterKeyHint="search"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              autoFocus
-              className="gsearch-input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar em conversas, tickets, páginas, skills, memórias, Obsidian e ai-memory…"
-              aria-label={t('nav.search')}
-            />
+            <div className="glass-input-wrapper">
+              <input
+                ref={inputRef}
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                autoFocus
+                className="glass-input"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar telas, conversas, tarefas…"
+                aria-label={t('nav.search')}
+              />
+            </div>
             {q && (
               <button
                 type="button"
-                className="gsearch-clear"
+                className="gsearch-clear glass-btn"
                 aria-label="Limpar"
                 onClick={() => { setQ(''); inputRef.current?.focus(); }}
               >
@@ -133,13 +182,53 @@ export function GlobalSearchModal({ onClose, go }) {
 
         <div className="gsearch-body">
           {err && <ErrorBox error={err} />}
-          {loading && <p className="muted small gsearch-status">Buscando em todas as fontes…</p>}
-          {!q.trim() && (
-            <p className="muted small gsearch-hint">
-              Dica: digite qualquer termo para pesquisar simultaneamente em chats, Board, Mini-Apps, artefatos, memórias locais, vault Obsidian e busca semântica.
-            </p>
+          {!norm && <p className="muted small gsearch-hint">{t('nav.paletteHint')}</p>}
+          {matchedActions.length > 0 && (
+            <div className="gsearch-group" style={{ marginBottom: 12 }}>
+              <div className="gsearch-group-h">
+                <Plus size={14} className="muted" />
+                <b className="small">Ações rápidas</b>
+              </div>
+              <div className="gsearch-list">
+                {matchedActions.map((act) => {
+                  const Icon = act.icon;
+                  return (
+                    <button key={act.id} type="button" className="list-row gsearch-item press" onClick={() => runQuickAction(act)}>
+                      <span className={'row-ic ic-' + act.page}><Icon size={15} /></span>
+                      <div className="grow">
+                        <b>{act.label}</b>
+                        <div className="muted small ellipsis">{act.sub}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
-          {res && !loading && res.total === 0 && (
+          {matchedPages.length > 0 && (
+            <div className="gsearch-group" style={{ marginBottom: 12 }}>
+              <div className="gsearch-group-h">
+                <LayoutDashboard size={14} className="muted" />
+                <b className="small">{t('nav.palette')}</b>
+              </div>
+              <div className="gsearch-list">
+                {matchedPages.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <button key={p.id} type="button" className="list-row gsearch-item press" onClick={() => jump(p.id)}>
+                      <span className={'row-ic ic-' + p.id}><Icon size={15} /></span>
+                      <div className="grow">
+                        <b>{t('nav.' + p.id)}</b>
+                        <div className="muted small ellipsis">{t('nav.sub.' + p.id)}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {loading && <p className="muted small gsearch-status">Buscando em todas as fontes…</p>}
+          {res && !loading && res.total === 0 && !matchedPages.length && !matchedActions.length && (
             <p className="muted gsearch-empty">Nenhum resultado para "{res.query}".</p>
           )}
           {res && res.total > 0 && (
@@ -366,6 +455,9 @@ export function ActionInboxModal({ onClose, go }) {
             ))}
           </div>
         )}
+      </div>
+      <div className="row end" style={{ marginTop: 12 }}>
+        <button type="button" className="ghost small" onClick={onClose}>Fechar</button>
       </div>
     </Modal>
   );
