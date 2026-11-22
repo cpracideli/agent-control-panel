@@ -359,7 +359,7 @@ export default function Schedules() {
                   leading={<span className={'row-ic ' + (s.paused ? 'ic-paused' : 'ic-schedules')}>{s.paused ? <Pause size={18} /> : <CalendarClock size={18} />}</span>}
                   title={s.description || '#' + s.id}
                   badges={<>{s.paused && <Badge kind="warn">{t('sch.paused')}</Badge>}{s.lastRunInfo && s.lastRunInfo.status !== 'ok' && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status)}</Badge>}</>}
-                  subtitle={<><span className="mono">{when(s)}</span>{nextAt ? ' · ' + t('sch.nextRun', { d: f.date(nextAt) }) : ''}{s.botName ? ' · ' + s.botName : ''}</>}
+                  subtitle={<span className="meta-line"><span className="mono">{when(s)}</span>{nextAt && <span>{t('sch.nextRun', { d: f.date(nextAt) })}</span>}{s.botName && <span>{s.botName}</span>}</span>}
                   onOpen={() => setDetail(s.id)}
                   swipe={[
                     { icon: s.paused ? Play : Pause, label: s.paused ? t('sch.resume') : t('sch.pause'), kind: 'warn', onClick: () => togglePause(s) },
@@ -428,10 +428,12 @@ export default function Schedules() {
                   {s.respectQuietHours && <Badge kind="muted">silêncio</Badge>}
                   {s.deferred && <Badge kind="warn">adiada</Badge>}
                   {s.lastRunInfo && <Badge kind={STATUS_KIND[s.lastRunInfo.status] || 'muted'}>{t('sch.st.' + s.lastRunInfo.status) || s.lastRunInfo.status}</Badge>}</div>
-                <div className="muted small with-ic">
-                  {(s.cron || s.at) && <><span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span> · </>}<ChatIc id={s.chatId} />{s.chatTitle}{s.botName && ' · ' + s.botName}
-                  {nextAt && ' · ' + t('sch.nextRun', { d: f.date(nextAt) })}
-                  {s.lastRun && ' · ' + t('sch.last', { d: f.date(s.lastRun) })}
+                <div className="muted small meta-line">
+                  {(s.cron || s.at) && <span className="mono">{s.cron ? s.cron : t('sch.once', { d: f.date(s.at) })}</span>}
+                  <span className="with-ic"><ChatIc id={s.chatId} />{s.chatTitle}</span>
+                  {s.botName && <span>{s.botName}</span>}
+                  {nextAt && <span>{t('sch.nextRun', { d: f.date(nextAt) })}</span>}
+                  {s.lastRun && <span>{t('sch.last', { d: f.date(s.lastRun) })}</span>}
                 </div>
               </div>
               <div className="row">

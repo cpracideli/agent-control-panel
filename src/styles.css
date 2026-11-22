@@ -1768,7 +1768,12 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 /* Board Auto-Executor bar */
 .runner-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 10px 14px; margin-bottom: 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--sep); box-shadow: var(--shadow); }
 .runner-bar.on { border-color: color-mix(in srgb, var(--ok) 45%, var(--sep)); }
-.runner-bar-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.runner-bar-meta { flex: 1 1 260px; }
+@media (max-width: 640px) {
+  .runner-bar { gap: 10px; }
+  .runner-bar-meta { flex-basis: 100%; order: 1; }
+  .runner-bar > .row { order: 2; }
+}
 .runner-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .runner-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .runner-switch-track { width: 38px; height: 22px; border-radius: 999px; background: var(--sep); position: relative; transition: background .18s; flex: none; }
@@ -2220,3 +2225,15 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity
 /* provider brand icons (Claude, Antigravity, Copilot, OpenCode) shown instead of the name */
 .prov-ic { flex: none; display: inline-block; vertical-align: -0.15em; }
 .msg-meta .prov-ic, .chat-item small .prov-ic { vertical-align: -0.2em; }
+
+/* ---------- shared: header + metadata rows that must not get squeezed on mobile ---------- */
+/* A .grow child inside a wrapping row gets basis 0 and is squeezed into a narrow column (one word per line).
+   Give it a real basis so it drops to its own line instead when space runs out. */
+.row.wrap > .grow { flex: 1 1 min(100%, 220px); }
+.card-h > h3 { min-width: 0; flex: 1 1 auto; }
+.card-h > .row { min-width: 0; max-width: 100%; }
+/* .meta-line: inline metadata (a · b · c) that wraps as whole items. The "·" lives in the gap before each item and is
+   clipped at the start of every line (negative margin + clip-path), so separators are never orphaned. */
+.meta-line { --meta-gap: 14px; display: flex; flex-wrap: wrap; align-items: center; row-gap: 3px; min-width: 0; margin-left: calc(-1 * var(--meta-gap)); clip-path: inset(-6px -6px -6px var(--meta-gap)); }
+.meta-line > * { position: relative; margin-left: var(--meta-gap); white-space: nowrap; min-width: 0; max-width: calc(100% - var(--meta-gap)); }
+.meta-line > *::before { content: '\00B7'; position: absolute; right: 100%; width: var(--meta-gap); text-align: center; color: var(--muted); font-weight: 400; font-family: -apple-system, system-ui, sans-serif; }

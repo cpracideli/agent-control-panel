@@ -157,14 +157,12 @@ function BoardRunnerBar({ runner, bots, onToggle, onConfigure, onTick, busy }) {
         <span className="runner-switch-track" aria-hidden />
         <span className="runner-switch-lbl"><b>{t('bd.runnerAuto')}</b></span>
       </label>
-      <div className="runner-bar-meta muted small grow">
+      <div className="runner-bar-meta meta-line muted small">
         <span>{t('bd.runnerEvery', { n: runner.intervalMin })}</span>
-        <span>·</span>
         <span><Bot size={12} style={{ verticalAlign: '-2px' }} /> {botName}</span>
-        <span>·</span>
         <span>{t('bd.runnerQueue', { n: runner.queueCount ?? 0 })}</span>
-        {activeCount > 0 && <><span>·</span><Badge kind="warn"><span className="spin" /> {t('bd.runnerActive', { n: activeCount })}</Badge></>}
-        {runner.lastScanAt && <><span>·</span><span>{t('bd.runnerLastScan', { t: f.ago(runner.lastScanAt) })}</span></>}
+        {activeCount > 0 && <Badge kind="warn"><span className="spin" /> {t('bd.runnerActive', { n: activeCount })}</Badge>}
+        {runner.lastScanAt && <span>{t('bd.runnerLastScan', { t: f.ago(runner.lastScanAt) })}</span>}
       </div>
       <div className="row wrap" style={{ gap: 6 }}>
         <Btn icon={Play} className="ghost small" disabled={busy === 'tick'} onClick={onTick}>{t('bd.runnerNow')}</Btn>

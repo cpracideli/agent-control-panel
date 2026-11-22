@@ -243,7 +243,7 @@ export default function Dashboards() {
       <ErrorBox error={pages.error} onRetry={() => pages.reload()} />
       <p className="muted page-intro">{t('pg.intro')}</p>
       <Card title={t('pg.title', { n: pages.data?.length || 0 })} icon={FileCode2}
-        actions={<div className="row" style={{ gap: 6 }}>
+        actions={<div className="row wrap" style={{ gap: 6 }}>
           <Btn icon={LayoutTemplate} className="ghost small" onClick={() => setGallery(true)}>Modelos</Btn>
           <Btn icon={Sparkles} className="ghost small" onClick={() => setForm({ title: 'Lista Interativa', description: 'Mini-App com estado persistente via window.PageData', html: MINI_APP_HTML })}>Novo Mini-App</Btn>
           <Btn icon={Plus} className="small" onClick={() => setForm({})}>{t('pg.new')}</Btn>
