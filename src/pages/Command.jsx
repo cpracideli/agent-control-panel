@@ -6,17 +6,38 @@ import { Card, ErrorBox, useFmt, useLoad } from '../ui.jsx';
 
 const sameDay = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const SYS_PROMPT_RE = /^(Você está conversando com o usuário|IMPORTANTE:\s*agora você atende um PEDIDO DE OUTRO BOT|\[Pedido do bot |\[Contexto recuperado automaticamente|\[Conversa em grupo:)/i;
 
-function BotCard({ bot, run, task, tickets, f }) {
+function runLabel(run, task, act, chat) {
+  if (task?.title) return task.title;
+  const raw = String(run?.prompt || '').replace(/\s+/g, ' ').trim();
+  if (raw && !SYS_PROMPT_RE.test(raw)) return '"' + raw.slice(0, 60) + '"';
+  const actTitle = String(act?.title || '').replace(/^[^←]+←\s*/, '').trim();
+  if (actTitle) return actTitle.slice(0, 60);
+  if (chat?.title) return String(chat.title).slice(0, 60);
+  return 'Em execução…';
+}
+
+function BotCard({ bot, entry, tickets, f }) {
+  const run = entry?.run;
+  const task = entry?.task;
+  const count = entry?.count || 0;
   const on = Boolean(run);
   const elapsed = run ? Math.max(0, Date.now() - run.started) : 0;
+  const botColor = typeof bot.color === 'string' && bot.color.trim() ? bot.color.trim() : '#0a84ff';
   return (
-    <div className={'cc-bot' + (on ? ' on' : '')} style={{ '--bot': bot.color || '#0a84ff' }}>
+    <div className={'cc-bot' + (on ? ' on' : '')} style={{ '--bot': botColor }}>
       <span className="cc-avatar">{bot.avatar ? <img src={bot.avatar} alt="" /> : <span>{bot.emoji || '🤖'}</span>}{on && <i className="cc-dot" aria-label="em execução" />}</span>
       <div className="cc-info">
         <b className="ellipsis">{bot.name}</b>
-        <span className="muted small ellipsis">{on ? (task?.title || '"' + String(run.prompt).slice(0, 60) + '"') : (tickets ? `${tickets} no board` : 'ocioso')}</span>
-        {on && <span className="small cc-live">{f.dur(elapsed)}{task?.cost ? ' · $' + task.cost.toFixed(2) : ''}</span>}
+        <span className="muted small ellipsis">{on ? runLabel(run, task, entry.act, entry.chat) : (tickets ? `${tickets} no board` : 'ocioso')}</span>
+        {on && (
+          <span className="small cc-live ellipsis">
+            {f.dur(elapsed)}
+            {count > 1 ? ` · ${count} ativas` : ''}
+            {task?.cost ? ' · $' + task.cost.toFixed(2) : ''}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -26,6 +47,8 @@ export default function Command() {
   const f = useFmt();
   const bots = useLoad(() => bridge.bots(), [], { interval: 60000, cacheKey: '/bridge/bots' });
   const ov = useLoad(() => bridge.overview(), [], { interval: 4000 });
+  const activity = useLoad(() => bridge.activity(), [], { interval: 4000 });
+  const chats = useLoad(() => bridge.chats(), [], { interval: 15000, cacheKey: '/bridge/chats' });
   const tasks = useLoad(() => bridge.tasks(), [], { interval: 6000 });
   const tickets = useLoad(() => bridge.tickets(), [], { interval: 20000 });
   const scheds = useLoad(() => bridge.schedules(), [], { interval: 30000 });
@@ -34,14 +57,32 @@ export default function Command() {
   const taskList = Array.isArray(tasks.data) ? tasks.data : [];
   const running = ov.data?.running || [];
   const byBot = useMemo(() => {
+    const chatById = {};
+    for (const c of Array.isArray(chats.data) ? chats.data : []) chatById[c.id] = c;
+    const actByChat = {};
+    for (const a of Array.isArray(activity.data) ? activity.data : []) {
+      if (a.kind === 'running' && a.chatId) actByChat[a.chatId] = a;
+    }
     const m = {};
     for (const r of running) {
       const task = taskList.find((t) => t.chatId === r.chatId);
-      const id = task?.bot || r.bot || 'default';
-      m[id] = { run: r, task };
+      const act = actByChat[r.chatId];
+      const chat = chatById[r.chatId];
+      const id = r.bot || task?.bot || act?.bot || chat?.bot || 'default';
+      if (!m[id]) {
+        m[id] = { run: r, task, act, chat, count: 1 };
+      } else {
+        m[id].count += 1;
+        if ((r.started || 0) >= (m[id].run?.started || 0)) {
+          m[id].run = r;
+          m[id].task = task || m[id].task;
+          m[id].act = act || m[id].act;
+          m[id].chat = chat || m[id].chat;
+        }
+      }
     }
     return m;
-  }, [running, taskList]);
+  }, [running, taskList, activity.data, chats.data]);
   const openTickets = useMemo(() => {
     const m = {};
     for (const t of Array.isArray(tickets.data) ? tickets.data : []) if (t.status !== 'done') m[t.bot] = (m[t.bot] || 0) + 1;
@@ -76,7 +117,7 @@ export default function Command() {
       </div>
       <Card title="Bots" icon={Zap}>
         <div className="cc-grid">
-          {botList.map((b) => <BotCard key={b.id} bot={b} f={f} run={byBot[b.id]?.run} task={byBot[b.id]?.task} tickets={openTickets[b.id]} />)}
+          {botList.map((b) => <BotCard key={b.id} bot={b} f={f} entry={byBot[b.id]} tickets={openTickets[b.id]} />)}
           {!botList.length && <p className="muted small">Carregando…</p>}
         </div>
       </Card>
