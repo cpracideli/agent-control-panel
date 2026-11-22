@@ -5,7 +5,7 @@ import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
 import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
 import { ActionInboxModal, GlobalSearchModal } from './GlobalCommandHub.jsx';
 import { LANGS, store, useI18n } from './i18n.jsx';
-import { IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
+import { ErrorBoundary, IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
 import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
 import { useEdgeBack, useNavStack } from './stack.jsx';
 import { ViewerHost } from './viewer.jsx';
@@ -266,9 +266,11 @@ function Screen({ id, depth, backLabel, onBack, isTop, active, me, openMore, ban
       {!chat && <PullToRefresh enabled={active && isTop} onRefresh={refreshAll} scrollEl={el} />}
       {active && isTop && banners}
       <ScreenCtx.Provider value={{ actionsEl, active: active && isTop }}>
-        {id === 'more'
-          ? <div className="page page-list more-root"><MoreList {...moreProps} /></div>
-          : <Page openMore={openMore} me={me} />}
+        <ErrorBoundary resetKey={id}>
+          {id === 'more'
+            ? <div className="page page-list more-root"><MoreList {...moreProps} /></div>
+            : <Page openMore={openMore} me={me} />}
+        </ErrorBoundary>
       </ScreenCtx.Provider>
     </section>
   );

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { Component, createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react';
 import { localCache } from './api.js';
@@ -438,4 +438,40 @@ export function Sheet({ title, onClose, children }) {
       </div>
     </div>
   );
+}
+
+// Catches render errors inside a screen so a single view failure never freezes the whole app.
+export class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidUpdate(prevProps) {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+  componentDidCatch(error) {
+    // Keep console visibility without crashing the whole tree
+    console.error('[ErrorBoundary]', error);
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    const msg = error?.message || String(error);
+    return (
+      <div className="page">
+        <div className="errbox" role="alert">
+          <AlertTriangle size={16} />
+          <span className="grow">Erro nesta tela: {msg}</span>
+          <button type="button" className="ghost small" onClick={() => this.setState({ error: null })}>
+            <RotateCcw size={14} />Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 }
