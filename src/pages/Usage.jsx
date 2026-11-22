@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Download, Gauge, Save, Sparkles, Wallet } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
+import { ProvIcon, provIconFor } from '../ProvIcon.jsx';
+import { PROVIDER_NAMES } from '../prov.js';
 import { Badge, Btn, Card, ErrorBox, Field, Skeleton, useAction, useFmt, useLoad } from '../ui.jsx';
 import { ListGroup, useIsMobile } from '../native.jsx';
 
@@ -103,6 +105,16 @@ function BarChart({ title, rows, color, render, empty, fmtMax }) {
 const providerAliases = { 'github-copilot': 'copilot' };
 const providerKey = (id) => providerAliases[String(id || '').trim().toLowerCase()] || String(id || '').trim().toLowerCase();
 const metricFields = ['tokens', 'runs', 'cost'];
+const CLAUDE_KIND_KEYS = { session: 'use.session', weekly: 'use.weekly', weekly_opus: 'use.weeklyOpus', weekly_sonnet: 'use.weeklySonnet' };
+const PROVIDER_CHART_COLORS = {
+  claude: 'var(--chart-1)',
+  antigravity: 'var(--chart-2)',
+  copilot: 'var(--chart-3)',
+  opencode: 'var(--chart-4)',
+};
+const CopilotIcon = provIconFor('copilot');
+const OpencodeIcon = provIconFor('opencode');
+const fmtDec = (lang, n) => new Intl.NumberFormat(lang, { maximumFractionDigits: n >= 100 ? 0 : 2 }).format(n || 0);
 
 function providerEntries(collection) {
   if (Array.isArray(collection)) {
@@ -123,13 +135,19 @@ function providerRecord(collection, id) {
 function usageMetrics(record) {
   const source = record?.metrics && typeof record.metrics === 'object' ? record.metrics : record;
   if (!source || typeof source !== 'object') return {};
+  const telemetry = record?.telemetry || source?.telemetry;
   const result = {};
   const numeric = (value) => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
   for (const field of metricFields) {
+    if (field === 'cost' && telemetry?.cost === false) continue;
     const value = source[field];
     if (numeric(value)) result[field] = Number(value);
   }
   if (result.runs == null && numeric(source.msgs)) result.msgs = Number(source.msgs);
+  else if (numeric(source.msgs)) result.msgs = Number(source.msgs);
+  if (numeric(source.cacheRead)) result.cacheRead = Number(source.cacheRead);
+  if (numeric(source.totalTokens)) result.totalTokens = Number(source.totalTokens);
+  if (numeric(source.credits) && (Number(source.credits) > 0 || telemetry?.credits === true)) result.credits = Number(source.credits);
   return result;
 }
 
@@ -138,54 +156,94 @@ function metricValue(metrics, field) {
   return metrics[field] ?? null;
 }
 
+const hasPositiveMetric = (m) => ['tokens', 'runs', 'cost', 'msgs', 'credits', 'cacheRead'].some((k) => Number(m?.[k]) > 0);
+
 function providerUsageRows(data, metadata) {
-  const rows = new Map();
+  const metaMap = new Map();
   for (const provider of Array.isArray(metadata) ? metadata : []) {
-    if (!provider?.id || provider.installed === false) continue;
+    if (!provider?.id) continue;
     const key = providerKey(provider.id);
-    rows.set(key, { id: provider.id, name: provider.name || provider.id });
+    metaMap.set(key, {
+      id: provider.id,
+      name: provider.name || PROVIDER_NAMES[key] || provider.id,
+      installed: provider.installed !== false,
+    });
   }
 
+  const candidates = new Map();
+  for (const [key, meta] of metaMap) candidates.set(key, { id: meta.id, record: null });
   const addIds = (collection) => {
     for (const [id, record] of providerEntries(collection)) {
       const key = providerKey(id);
-      if (!rows.has(key)) rows.set(key, { id, name: record?.name || record?.displayName || id });
+      if (!candidates.has(key)) candidates.set(key, { id, record });
     }
   };
   addIds(data?.providers);
   for (const day of Array.isArray(data?.days) ? data.days : []) {
     addIds(day?.providers);
-    for (const id of ['claude', 'antigravity', 'copilot']) {
+    for (const id of ['claude', 'antigravity', 'copilot', 'opencode']) {
       if (day?.[id]) addIds({ [id]: day[id] });
     }
   }
 
-  return [...rows.values()].map((provider) => {
-    const total = usageMetrics(providerRecord(data?.providers, provider.id));
+  const rows = [];
+  for (const [key, cand] of candidates) {
+    const meta = metaMap.get(key);
+    const rawTotal = providerRecord(data?.providers, cand.id);
+    const total = usageMetrics(rawTotal);
     const days = (Array.isArray(data?.days) ? data.days : []).map((day) => {
-      const generic = providerRecord(day?.providers, provider.id);
-      return usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : day?.[providerKey(provider.id)]);
+      const generic = providerRecord(day?.providers, cand.id);
+      return usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : day?.[key]);
     });
-    return { ...provider, total, days };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+    const hasDayAvailable = (Array.isArray(data?.days) ? data.days : []).some((day) => Boolean(providerRecord(day?.providers, cand.id)?.telemetry?.available));
+    const hasActivity = Boolean(rawTotal?.telemetry?.available || hasDayAvailable || hasPositiveMetric(total) || days.some(hasPositiveMetric));
+    if (meta && !meta.installed && !hasActivity) continue;
+    const name = meta?.name || rawTotal?.name || rawTotal?.displayName || cand.record?.name || cand.record?.displayName || PROVIDER_NAMES[key] || cand.id;
+    const costSupported = rawTotal?.telemetry?.cost !== false && key !== 'copilot';
+    rows.push({ id: cand.id, key, name, costSupported, total, days });
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function ProviderSummary({ providers, lang, f }) {
+function ProviderSummary({ providers, lang, f, t }) {
   if (!providers.length) return <p className="muted small">Nenhum provider configurado ou com métricas registradas.</p>;
   return (
     <div className="usage-provider-grid">
       {providers.map((provider) => {
-        const hasMetrics = metricFields.some((field) => provider.total[field] != null) || provider.total.msgs != null;
-        const hasHistory = provider.days.some((day) => metricFields.some((field) => day[field] != null) || day.msgs != null);
-        const estimatedCost = providerKey(provider.id) === 'antigravity';
+        const key = providerKey(provider.id);
+        const hasMetrics = metricFields.some((field) => provider.total[field] != null) || provider.total.msgs != null || provider.total.credits != null;
+        const hasHistory = provider.days.some((day) => metricFields.some((field) => day[field] != null) || day.msgs != null || day.credits != null);
+        const estimatedCost = key === 'antigravity';
+        const showCredits = provider.total.cost == null && (provider.total.credits != null || key === 'copilot');
+        const runsVal = metricValue(provider.total, 'runs');
         return (
-          <section className="usage-provider" key={providerKey(provider.id)}>
-            <h4 title={provider.id}>{provider.name}</h4>
+          <section className="usage-provider" key={key}>
+            <div className="usage-provider-head">
+              <ProvIcon id={key} size={15} />
+              <h4 title={provider.id}>{provider.name}</h4>
+            </div>
             {hasMetrics ? (
               <div className="usage-provider-metrics">
-                <div><span className="muted small">Tokens</span><b>{provider.total.tokens == null ? '—' : compact(lang, provider.total.tokens)}</b></div>
-                <div><span className="muted small">{provider.total.msgs != null && provider.total.runs == null ? 'Respostas' : 'Execuções'}</span><b>{metricValue(provider.total, 'runs') == null ? '—' : compact(lang, metricValue(provider.total, 'runs'))}</b></div>
-                <div><span className="muted small">{estimatedCost ? 'Custo estimado' : 'Custo'}</span><b>{provider.total.cost == null ? '—' : `${estimatedCost ? '~' : ''}${f.usd(provider.total.cost)}`}</b></div>
+                <div>
+                  <span className="muted small">Tokens</span>
+                  <b>{provider.total.tokens == null ? '—' : compact(lang, provider.total.tokens)}</b>
+                  {provider.total.cacheRead > 0 && <span className="muted usage-provider-sub">{t('use.cacheHint', { n: compact(lang, provider.total.cacheRead) })}</span>}
+                </div>
+                <div>
+                  <span className="muted small">{provider.total.msgs != null && provider.total.runs == null ? 'Respostas' : 'Execuções'}</span>
+                  <b>{runsVal == null ? '—' : compact(lang, runsVal)}</b>
+                  {provider.total.runs != null && provider.total.msgs > 0 && provider.total.msgs !== provider.total.runs && (
+                    <span className="muted usage-provider-sub">{t('use.msgs', { n: compact(lang, provider.total.msgs) })}</span>
+                  )}
+                </div>
+                <div>
+                  <span className="muted small">{showCredits ? t('use.credits') : (estimatedCost ? 'Custo estimado' : 'Custo')}</span>
+                  <b>
+                    {showCredits
+                      ? (provider.total.credits == null ? '—' : fmtDec(lang, provider.total.credits))
+                      : (provider.total.cost == null ? '—' : `${estimatedCost ? '~' : ''}${f.usd(provider.total.cost)}`)}
+                  </b>
+                </div>
               </div>
             ) : <p className="muted small usage-provider-empty">{hasHistory ? 'Sem totais agregados; consulte o histórico abaixo.' : 'Sem métricas disponíveis.'}</p>}
           </section>
@@ -294,6 +352,100 @@ function BudgetAlert({ sp }) {
   );
 }
 
+function CopilotBody({ cp, lang, t }) {
+  const quotas = Array.isArray(cp.quotas) ? cp.quotas : [];
+  const m = cp.month || {};
+  const hasMonth = (m.tokens || 0) > 0 || (m.credits || 0) > 0 || (m.requests || 0) > 0;
+  return (
+    <>
+      {quotas.map((q) => (q.unlimited ? (
+        <div className="meter" key={q.id || q.label}>
+          <div className="meter-h">
+            <span className="meter-label">{q.label}</span>
+            <Badge kind="ok">{t('use.unlimited')}</Badge>
+          </div>
+        </div>
+      ) : (
+        <Meter
+          key={q.id || q.label}
+          label={q.label}
+          percent={q.percent}
+          resetsAt={q.resetsAt || cp.resetsAt}
+          sub={q.entitlement > 0 ? `${q.used ?? 0}/${q.entitlement} ${t('use.creditsShort')}` : undefined}
+        />
+      )))}
+      {hasMonth && (
+        <div className="usage-card-meta">
+          <div className="usage-inline-metrics">
+            <div>
+              <span className="muted small">{t('use.monthSummary')}</span>
+              <b>{compact(lang, m.tokens)} tok</b>
+              {m.cacheRead > 0 && <span className="muted usage-provider-sub">{t('use.cacheHint', { n: compact(lang, m.cacheRead) })}</span>}
+            </div>
+            <div>
+              <span className="muted small">{t('use.credits')}</span>
+              <b>{fmtDec(lang, m.credits)}</b>
+            </div>
+            <div>
+              <span className="muted small">{lang?.startsWith('en') ? 'Requests' : 'Pedidos'}</span>
+              <b>{fmtDec(lang, m.requests)}</b>
+            </div>
+          </div>
+          {Array.isArray(m.models) && m.models.length > 0 && (
+            <div className="usage-models">{m.models.join(', ')}</div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function OpencodeBody({ oc, lang, f, t }) {
+  const m = oc.month || {};
+  const when = (iso) => new Date(iso).toLocaleString(lang, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const hasActivity = (m.tokens || 0) > 0 || (m.messages || 0) > 0 || (m.cacheRead || 0) > 0;
+  return (
+    <>
+      {oc.error ? (
+        <p className="small meter-stale" role="status">
+          <AlertTriangle size={13} />
+          <span>{oc.error}{oc.limitHitAt ? ` (${when(oc.limitHitAt)})` : ''}</span>
+        </p>
+      ) : (
+        <>
+          <LimitStatus v={oc} />
+          <p className="small muted" style={{ margin: 0 }}>{t('use.ocFreeMode')}</p>
+        </>
+      )}
+      {hasActivity ? (
+        <div className="usage-card-meta">
+          <div className="usage-inline-metrics">
+            <div>
+              <span className="muted small">Tokens</span>
+              <b>{compact(lang, m.tokens)}</b>
+              {m.cacheRead > 0 && <span className="muted usage-provider-sub">{t('use.cacheHint', { n: compact(lang, m.cacheRead) })}</span>}
+            </div>
+            <div>
+              <span className="muted small">{lang?.startsWith('en') ? 'Replies' : 'Respostas'}</span>
+              <b>{compact(lang, m.messages)}</b>
+              {m.sessions > 0 && <span className="muted usage-provider-sub">{t('use.sessions', { n: compact(lang, m.sessions) })}</span>}
+            </div>
+            <div>
+              <span className="muted small">{lang?.startsWith('en') ? 'Cost' : 'Custo'}</span>
+              <b>{m.costUsd > 0 ? f.usd(m.costUsd) : t('use.freeLabel')}</b>
+            </div>
+          </div>
+          {Array.isArray(m.models) && m.models.length > 0 && (
+            <div className="usage-models">{m.models.join(', ')}</div>
+          )}
+        </div>
+      ) : (
+        <p className="muted small" style={{ marginTop: 8 }}>{t('use.ocNoActivity')}</p>
+      )}
+    </>
+  );
+}
+
 export default function Usage() {
   const t = useT();
   const f = useFmt();
@@ -325,6 +477,7 @@ export default function Usage() {
       week.days.push(day);
       weeks.set(key, week);
     }
+    const weekFields = ['tokens', 'runs', 'cost', 'msgs', 'cacheRead', 'credits'];
     return [...weeks.values()].slice(-8).map((week) => ({
       ...week,
       label: t('use.weekOf', { d: fmtDay(week.key, { day: '2-digit', month: '2-digit' }) }),
@@ -336,9 +489,11 @@ export default function Usage() {
           return usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : legacy);
         });
         const fields = {};
-        for (const field of metricFields) {
-          const values = daily.map((entry) => metricValue(entry, field));
-          fields[field] = values.every((value) => value != null) ? values.reduce((sum, value) => sum + value, 0) : null;
+        for (const field of weekFields) {
+          const values = daily.map((entry) => (field === 'runs' ? metricValue(entry, 'runs') : entry[field] ?? null));
+          fields[field] = values.some((value) => value != null)
+            ? values.reduce((sum, value) => sum + (value || 0), 0)
+            : null;
         }
         return [providerKey(provider.id), fields];
       })),
@@ -364,31 +519,46 @@ export default function Usage() {
   const charts = series && providers.length > 0 && (
     <div className="stack">
       {providers.map((provider, index) => {
-        const estimatedCost = metric === 'cost' && providerKey(provider.id) === 'antigravity';
+        const key = providerKey(provider.id);
+        const estimatedCost = metric === 'cost' && key === 'antigravity';
         const rows = series.map((entry) => {
           let raw;
           if (range === 'day') {
             const generic = providerRecord(entry.day?.providers, provider.id);
-            raw = usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : entry.day?.[providerKey(provider.id)]);
-          } else raw = entry.values[providerKey(provider.id)] || {};
+            raw = usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : entry.day?.[key]);
+          } else raw = entry.values[key] || {};
           return { key: entry.key, label: entry.label, short: entry.short, value: metricValue(raw, metric), raw };
         });
-        const color = `var(--chart-${(index % 6) + 1}, var(--accent))`;
+        const color = PROVIDER_CHART_COLORS[key] || `var(--chart-${(index % 6) + 1}, var(--accent))`;
         const countLabel = (record) => record.msgs != null && record.runs == null ? t('use.msgs', { n: record.msgs }) : t('use.runs', { n: record.runs ?? 0 });
+        const noUsdCost = metric === 'cost' && !provider.costSupported && rows.every((r) => r.value == null);
         return (
-          <BarChart key={providerKey(provider.id)} title={provider.name + (estimatedCost ? ' (' + t('use.estimated') + ')' : '')} color={color} rows={rows}
+          <BarChart key={key} title={provider.name + (estimatedCost ? ' (' + t('use.estimated') + ')' : '')} color={color} rows={rows}
             fmtMax={metric === 'cost' ? (value) => `${estimatedCost ? '~' : ''}${f.usd(value)}` : undefined}
-            render={(row) => <><b>{row.label}</b> · {metric === 'cost' ? `${estimatedCost ? '~' : ''}${f.usd(row.value)}` : tok(row.value)}{row.raw.runs != null || row.raw.msgs != null ? <> · {countLabel(row.raw)}</> : null}</>}
-            empty="Sem métricas disponíveis para este provider no período." />
+            render={(row) => (
+              <>
+                <b>{row.label}</b> · {metric === 'cost' ? `${estimatedCost ? '~' : ''}${f.usd(row.value)}` : tok(row.value)}
+                {metric === 'tokens' && row.raw.cacheRead > 0 ? <> ({t('use.cacheHint', { n: compact(lang, row.raw.cacheRead) })})</> : null}
+                {row.raw.runs != null || row.raw.msgs != null ? <> · {countLabel(row.raw)}</> : null}
+                {row.raw.credits > 0 ? <> · {fmtDec(lang, row.raw.credits)} {t('use.creditsShort')}</> : null}
+              </>
+            )}
+            empty={noUsdCost ? t('use.copilotNoCost') : 'Sem métricas disponíveis para este provider no período.'} />
         );
       })}
     </div>
   );
 
-  const claudeMeters = d?.claude?.limits?.map((l) => <Meter key={l.kind} label={l.kind} percent={l.percent} resetsAt={l.resetsAt} />);
+  const claudeMeters = d?.claude?.limits?.map((l) => (
+    <Meter key={l.kind} label={CLAUDE_KIND_KEYS[l.kind] ? t(CLAUDE_KIND_KEYS[l.kind]) : l.kind} percent={l.percent} resetsAt={l.resetsAt} />
+  ));
   const agyMeters = d?.antigravity?.groups?.map((g) => (
     <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
   ));
+  const showCopilot = Boolean(d?.copilot && (d.copilot.installed !== false || d.copilot.quotas?.length || d.copilot.month?.tokens > 0 || d.copilot.month?.credits > 0));
+  const showOpencode = Boolean(d?.opencode && (d.opencode.installed !== false || d.opencode.month?.tokens > 0 || d.opencode.month?.messages > 0 || d.opencode.rateLimited));
+  const cpBadge = d?.copilot?.planLabel || d?.copilot?.plan;
+  const ocBadge = d?.opencode?.rateLimited ? t('use.ocLimitTitle') : (d?.opencode?.planLabel || t('use.freeLabel'));
   const spending = d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />;
 
   if (mobile) {
@@ -406,11 +576,26 @@ export default function Usage() {
           {agyMeters}
           {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
         </ListGroup>
+        {showCopilot && (
+          <ListGroup title={<span className="with-ic"><ProvIcon id="copilot" size={14} /> GitHub Copilot {cpBadge && <Badge>{cpBadge}</Badge>}</span>}
+            footer={<LimitStatus v={d.copilot} as="span" />}>
+            <div className="group-form">
+              <CopilotBody cp={d.copilot} lang={lang} t={t} />
+            </div>
+          </ListGroup>
+        )}
+        {showOpencode && (
+          <ListGroup title={<span className="with-ic"><ProvIcon id="opencode" size={14} /> OpenCode <Badge kind={d.opencode.rateLimited ? 'warn' : 'muted'}>{ocBadge}</Badge></span>}>
+            <div className="group-form">
+              <OpencodeBody oc={d.opencode} lang={lang} f={f} t={t} />
+            </div>
+          </ListGroup>
+        )}
         {spending}
         <ListGroup title={t('use.history')} footer={historyNote}>
           <div className="group-form stack">
             {providerState.error && <p className="muted small">Não foi possível carregar os nomes dos providers; identificadores de uso ainda podem aparecer.</p>}
-            {d && <ProviderSummary providers={providers} lang={lang} f={f} />}
+            {d && <ProviderSummary providers={providers} lang={lang} f={f} t={t} />}
             {segs}
             {charts}
             {d && <p className="muted small">{historyNote}</p>}
@@ -437,11 +622,26 @@ export default function Usage() {
           {!d && !u.error && <Skeleton rows={2} avatar={false} />}
         </Card>
       </div>
+      {(showCopilot || showOpencode) && (
+        <div className={showCopilot && showOpencode ? 'grid2' : ''}>
+          {showCopilot && (
+            <Card title="GitHub Copilot" icon={CopilotIcon} actions={cpBadge && <Badge>{cpBadge}</Badge>}>
+              <LimitStatus v={d.copilot} />
+              <CopilotBody cp={d.copilot} lang={lang} t={t} />
+            </Card>
+          )}
+          {showOpencode && (
+            <Card title="OpenCode" icon={OpencodeIcon} actions={<Badge kind={d.opencode.rateLimited ? 'warn' : 'muted'}>{ocBadge}</Badge>}>
+              <OpencodeBody oc={d.opencode} lang={lang} f={f} t={t} />
+            </Card>
+          )}
+        </div>
+      )}
       {spending}
       <Card title={t('use.history')} icon={BarChart3} actions={segs}>
         <div className="stack">
           {providerState.error && <p className="muted small">Não foi possível carregar os nomes dos providers; identificadores de uso ainda podem aparecer.</p>}
-          {d && <ProviderSummary providers={providers} lang={lang} f={f} />}
+          {d && <ProviderSummary providers={providers} lang={lang} f={f} t={t} />}
           {charts}
           {d && <p className="muted small">{historyNote}</p>}
           {!d && !u.error && <Skeleton rows={3} avatar={false} />}

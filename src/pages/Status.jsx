@@ -38,6 +38,20 @@ export default function Status() {
     if (u) {
       r.push({ s: u.antigravity?.error ? (u.antigravity.stale ? 'warn' : 'err') : 'ok', t: 'Antigravity (cota)', d: u.antigravity?.error ? 'dado antigo: ' + u.antigravity.error : 'leitura em dia' });
       r.push({ s: u.claude?.error ? 'warn' : 'ok', t: 'Claude (limites)', d: u.claude?.error || 'leitura em dia' });
+      if (u.copilot) {
+        const qs = Array.isArray(u.copilot.quotas) ? u.copilot.quotas : [];
+        const maxQ = Math.max(0, ...qs.filter((q) => !q.unlimited && q.percent != null).map((q) => q.percent));
+        const cpState = u.copilot.error ? (u.copilot.stale ? 'warn' : 'err') : maxQ >= 85 ? 'warn' : 'ok';
+        const cpDetail = u.copilot.error
+          ? (u.copilot.stale ? 'dado antigo: ' : '') + u.copilot.error
+          : [u.copilot.planLabel || u.copilot.plan, ...qs.map((q) => `${q.label} ${q.unlimited ? '∞' : q.percent + '%'}`)].filter(Boolean).join(' · ') || 'leitura em dia';
+        r.push({ s: cpState, t: 'GitHub Copilot (cota)', d: cpDetail });
+      }
+      if (u.opencode) {
+        const ocState = u.opencode.rateLimited ? 'warn' : u.opencode.error ? 'err' : 'ok';
+        const ocDetail = u.opencode.error || [u.opencode.planLabel || 'Gratuito', u.opencode.month?.messages ? `${u.opencode.month.messages} resp. no mês` : ''].filter(Boolean).join(' · ');
+        r.push({ s: ocState, t: 'OpenCode', d: ocDetail });
+      }
       const sp = u.spending;
       if (sp) r.push({ s: sp.limitReached ? 'err' : sp.monthlyLimitUsd && sp.monthForecastUsd > sp.monthlyLimitUsd ? 'warn' : 'ok', t: 'Orçamento do mês', d: `$${sp.monthSpendUsd.toFixed(2)} gasto · previsão $${sp.monthForecastUsd.toFixed(2)}${sp.monthlyLimitUsd ? ' · teto $' + sp.monthlyLimitUsd : ''}` });
     }
