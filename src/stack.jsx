@@ -183,7 +183,7 @@ export function useEdgeBack(layerRef, { enabled, onPop }) {
       if (e.touches.length !== 1) return;
       const p = e.touches[0];
       if (p.clientX > 24) return;
-      if (e.target.closest?.('.sheet-bg, .modal-bg, .ctx-bg, .iv-bg, .doc-bg')) return;
+      if (e.target.closest?.('.sheet-bg, .modal-bg, .ctx-bg, .iv-bg, .doc-bg, .gsearch-bg')) return;
       if (e.cancelable) e.preventDefault(); // claim the edge so iOS Safari doesn't run its own back swipe
       const { topEl, under } = parts();
       if (!topEl || !under) return;

@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Bot, Brain, Check, CheckSquare, Clock, FileCode2, FolderArchive, GitBranch, Inbox, Mail, MessageSquare, Pencil, Plus, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { bridge } from './api.js';
+import { useI18n } from './i18n.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, useAction, useFmt, useLoad, useToast } from './ui.jsx';
 
 const GROUP_META = [
@@ -16,16 +18,19 @@ const GROUP_META = [
 ];
 
 export function GlobalSearchModal({ onClose, go }) {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [res, setRes] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const bgRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const clean = q.trim();
     if (!clean) { setRes(null); setErr(''); return undefined; }
     let cancel = false;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setLoading(true);
       setErr('');
       bridge.search(clean, 30)
@@ -33,8 +38,43 @@ export function GlobalSearchModal({ onClose, go }) {
         .catch((e) => { if (!cancel) setErr(e.message || 'Erro na busca'); })
         .finally(() => { if (!cancel) setLoading(false); });
     }, 220);
-    return () => { cancel = true; clearTimeout(t); };
+    return () => { cancel = true; clearTimeout(timer); };
   }, [q]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    const el = bgRef.current;
+    if (!el) return undefined;
+    const vv = window.visualViewport;
+    const sync = () => {
+      const h = vv ? Math.round(vv.height) : window.innerHeight;
+      const top = vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+      el.style.setProperty('--gsearch-vv-h', `${h}px`);
+      el.style.setProperty('--gsearch-vv-top', `${top}px`);
+    };
+    const blockBgScroll = (e) => { if (e.target === el && e.cancelable) e.preventDefault(); };
+    sync();
+    vv?.addEventListener('resize', sync);
+    vv?.addEventListener('scroll', sync);
+    window.addEventListener('resize', sync);
+    el.addEventListener('touchmove', blockBgScroll, { passive: false });
+    return () => {
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+      el.removeEventListener('touchmove', blockBgScroll);
+    };
+  }, []);
 
   const jump = (pageId, item) => {
     if (pageId === 'chat' && item?.id?.startsWith('web:')) {
@@ -45,67 +85,105 @@ export function GlobalSearchModal({ onClose, go }) {
     onClose();
   };
 
-  return (
-    <Modal title="Busca Global (Cmd+K)" onClose={onClose} wide>
-      <div className="stack">
-        <div className="row" style={{ gap: 8 }}>
-          <Search size={17} className="muted" />
-          <input
-            autoFocus
-            className="grow"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar em conversas, tickets, páginas, skills, memórias, Obsidian e ai-memory…"
-          />
-          {q && <IconButton icon={X} label="Limpar" onClick={() => setQ('')} />}
-        </div>
-        {err && <ErrorBox error={err} />}
-        {loading && <p className="muted small" style={{ margin: 0 }}>Buscando em todas as fontes…</p>}
-        {!q.trim() && (
-          <p className="muted small" style={{ margin: 0 }}>
-            Dica: digite qualquer termo para pesquisar simultaneamente em chats, Board, Mini-Apps, artefatos, memórias locais, vault Obsidian e busca semântica.
-          </p>
-        )}
-        {res && !loading && res.total === 0 && <p className="muted">Nenhum resultado para "{res.query}".</p>}
-        {res && res.total > 0 && (
-          <div className="stack" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            {GROUP_META.map(([key, label, Icon, pageId]) => {
-              const items = res.groups?.[key] || [];
-              if (!items.length) return null;
-              return (
-                <div key={key} className="stack" style={{ gap: 6 }}>
-                  <div className="row" style={{ gap: 6 }}>
-                    <Icon size={14} className="muted" />
-                    <b className="small">{label}</b>
-                    <Badge kind="muted">{items.length}</Badge>
-                  </div>
-                  {items.map((it, idx) => (
-                    <button
-                      key={it.id || it.slug || it.file || it.path || it.name || idx}
-                      type="button"
-                      className="list-row press"
-                      style={{ textAlign: 'left', width: '100%', cursor: 'pointer', borderRadius: 10 }}
-                      onClick={() => jump(pageId, it)}
-                    >
-                      <div className="grow">
-                        <div className="row wrap" style={{ gap: 6 }}>
-                          <b>{it.title || it.name || it.slug || it.file || it.path}</b>
-                          {it.status && <Badge kind="muted">{it.status}</Badge>}
-                          {it.hasData && <Badge kind="ok">Mini-App</Badge>}
-                        </div>
-                        {(it.snippet || it.description) && (
-                          <div className="muted small ellipsis-2">{it.snippet || it.description}</div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
+  return createPortal(
+    <div
+      ref={bgRef}
+      className="gsearch-bg"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="gsearch-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('dock.sub.search')}
+      >
+        <form className="gsearch-head" onSubmit={(e) => e.preventDefault()}>
+          <div className="gsearch-bar">
+            <Search size={17} className="gsearch-ic" aria-hidden />
+            <input
+              ref={inputRef}
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+              className="gsearch-input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar em conversas, tickets, páginas, skills, memórias, Obsidian e ai-memory…"
+              aria-label={t('nav.search')}
+            />
+            {q && (
+              <button
+                type="button"
+                className="gsearch-clear"
+                aria-label="Limpar"
+                onClick={() => { setQ(''); inputRef.current?.focus(); }}
+              >
+                <X size={13} strokeWidth={2.5} />
+              </button>
+            )}
           </div>
-        )}
+          <button type="button" className="gsearch-cancel" onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+        </form>
+
+        <div className="gsearch-body">
+          {err && <ErrorBox error={err} />}
+          {loading && <p className="muted small gsearch-status">Buscando em todas as fontes…</p>}
+          {!q.trim() && (
+            <p className="muted small gsearch-hint">
+              Dica: digite qualquer termo para pesquisar simultaneamente em chats, Board, Mini-Apps, artefatos, memórias locais, vault Obsidian e busca semântica.
+            </p>
+          )}
+          {res && !loading && res.total === 0 && (
+            <p className="muted gsearch-empty">Nenhum resultado para "{res.query}".</p>
+          )}
+          {res && res.total > 0 && (
+            <div className="gsearch-results">
+              {GROUP_META.map(([key, label, Icon, pageId]) => {
+                const items = res.groups?.[key] || [];
+                if (!items.length) return null;
+                return (
+                  <div key={key} className="gsearch-group">
+                    <div className="gsearch-group-h">
+                      <Icon size={14} className="muted" />
+                      <b className="small">{label}</b>
+                      <Badge kind="muted">{items.length}</Badge>
+                    </div>
+                    <div className="gsearch-list">
+                      {items.map((it, idx) => (
+                        <button
+                          key={it.id || it.slug || it.file || it.path || it.name || idx}
+                          type="button"
+                          className="list-row gsearch-item press"
+                          onClick={() => jump(pageId, it)}
+                        >
+                          <div className="grow">
+                            <div className="row wrap" style={{ gap: 6 }}>
+                              <b>{it.title || it.name || it.slug || it.file || it.path}</b>
+                              {it.status && <Badge kind="muted">{it.status}</Badge>}
+                              {it.hasData && <Badge kind="ok">Mini-App</Badge>}
+                            </div>
+                            {(it.snippet || it.description) && (
+                              <div className="muted small ellipsis-2">{it.snippet || it.description}</div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </Modal>
+    </div>,
+    document.body,
   );
 }
 
