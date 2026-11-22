@@ -8,10 +8,12 @@ import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, 
 const COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff375f', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 const EMOJIS = ['🤖', '🔎', '📊', '✍️', '💼', '🧑‍💻', '📅', '💰', '🏠', '❤️', '🎯', '✨'];
 
-export function BotAvatar({ bot, size = 40 }) {
+export function BotAvatar({ bot, size = 40, className = '' }) {
+  const [imgErr, setImgErr] = useState(false);
+  useEffect(() => { setImgErr(false); }, [bot?.avatar]);
   return (
-    <span className="bot-avatar" style={{ width: size, height: size, fontSize: size * 0.5, background: (bot?.color || '#8e8e93') + '33', borderColor: (bot?.color || '#8e8e93') + '66' }} aria-hidden>
-      {bot?.avatar ? <img src={bot.avatar} alt="" /> : (bot?.emoji || <Bot size={size * 0.5} />)}
+    <span className={'bot-avatar' + (className ? ' ' + className : '')} style={{ width: size, height: size, fontSize: size * 0.5, background: (bot?.color || '#8e8e93') + '33', borderColor: (bot?.color || '#8e8e93') + '66' }} aria-hidden>
+      {bot?.avatar && !imgErr ? <img src={bot.avatar} alt="" onError={() => setImgErr(true)} /> : (bot?.emoji || <Bot size={size * 0.5} />)}
     </span>
   );
 }

@@ -1055,6 +1055,7 @@ button.link, a { color: var(--accent); }
 .bot-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 30%; border: 1px solid; line-height: 1; overflow: hidden; }
 .bot-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .msg .bot-avatar { margin-top: 2px; }
+.bot-avatar.chat-empty-avatar { display: flex; margin: 0 auto 14px; border-radius: 20px; box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--text) 22%, transparent); }
 .bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .bot-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 18px; background: var(--sunken); min-width: 0; }
 .bot-card .row { align-items: center; }
@@ -1143,6 +1144,7 @@ button.link, a { color: var(--accent); }
 .term-dim { color: var(--t-dim); }
 .chat.term .chat-empty { color: var(--t-fg); }
 .chat.term .hero-ic { background: var(--t-accent); border-radius: 8px; box-shadow: none; }
+.chat.term .bot-avatar.chat-empty-avatar { border-radius: 10px; box-shadow: none; }
 .chat.term .chat-empty .muted { color: var(--t-dim); }
 .chat.term .suggest button { background: transparent; color: var(--t-fg); border: 1px solid var(--t-line); border-radius: 4px; box-shadow: none; font-family: var(--mono); font-size: 12.5px; }
 .chat.term .composer { background: var(--t-bg) !important; box-shadow: none !important; -webkit-backdrop-filter: none; backdrop-filter: none; border: 1px solid #5a5853; border-radius: 8px; padding: 8px 8px 8px 30px; max-width: 980px; }

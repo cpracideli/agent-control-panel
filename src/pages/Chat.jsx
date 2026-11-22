@@ -1517,7 +1517,12 @@ export default function Chat({ openMore, me }) {
     </button>
   );
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
-  const change = async (b) => { try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); } catch (e) { toast(e.message, 'err'); } };
+  const change = async (b) => {
+    const prev = chatInfo;
+    if (b.bot && info) setChatInfo({ ...info, ...b });
+    try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); }
+    catch (e) { setChatInfo(prev); toast(e.message, 'err'); }
+  };
   const remove = async (targetId = current) => {
     if (!(await confirm(t('chat.deleteConfirm')))) return;
     try {
@@ -1539,7 +1544,8 @@ export default function Chat({ openMore, me }) {
   const reset = async () => { await change({ reset: true }); toast(t('chat.resetDone')); };
   const stop = async () => { try { await bridge.stopChat(current); } catch (e) { toast(e.message, 'err'); } };
 
-  const info = chatInfo || webChats.find((c) => c.id === current);
+  const info = (chatInfo && (!chatInfo.id || chatInfo.id === current) ? chatInfo : null) || webChats.find((c) => c.id === current);
+  const activeBot = botsById[info?.bot || 'default'] || botsById.default || (botsL.data || []).find((b) => b.isDefault) || null;
 
   const ml = modelLabel(info, providers.data);
   const empty = !text.trim() && !files.length;
@@ -1754,7 +1760,9 @@ export default function Chat({ openMore, me }) {
           <ErrorBox error={loadErr} />
           {!messages.length && !live && (
             <div className="chat-empty">
-              <div className="hero-ic"><Bot size={28} /></div>
+              {activeBot
+                ? <BotAvatar bot={activeBot} size={64} className="chat-empty-avatar" />
+                : <div className="hero-ic"><Bot size={28} /></div>}
               <h2>{t('chat.emptyTitle')}</h2>
               <p className="muted">{t('chat.emptyText')}</p>
               <div className="suggest">
