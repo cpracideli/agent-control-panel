@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, Copy, Download, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Laptop, Maximize2, Monitor, PenTool, Play, Plus, Power, RefreshCw, Send, SkipForward, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
@@ -219,11 +219,21 @@ export default function Computer() {
   const human = d?.control === 'human';
   const needs = d?.needsHuman?.active;
 
-  useEffect(() => {
-    if (frameRef.current?.contentWindow) {
-      frameRef.current.contentWindow.postMessage({ type: 'viewOnly', value: !human }, '*');
-    }
+  const syncViewerControl = useCallback(() => {
+    const viewer = frameRef.current?.contentWindow;
+    if (!viewer) return;
+    viewer.postMessage({ type: 'viewOnly', value: !human }, window.location.origin);
+    if (human) viewer.postMessage({ type: 'computer-focus' }, window.location.origin);
   }, [human]);
+
+  useEffect(() => { syncViewerControl(); }, [syncViewerControl]);
+
+  const openViewerKeyboard = () => {
+    frameRef.current?.contentWindow?.postMessage(
+      { type: 'computer-keyboard', action: 'open' },
+      window.location.origin,
+    );
+  };
 
   const start = async () => {
     const r = await run('start', () => bridge.computerStart(url.trim()), t('comp.started'));
@@ -264,7 +274,7 @@ export default function Computer() {
   const screen = (
     <div ref={wrapRef} className={'computer-screen' + (human ? ' human' : '')}>
       {running ? (
-        <iframe key={viewerKey} ref={frameRef} src={bridge.computerViewerUrl(!human)} title={t('comp.title')} className="computer-frame" />
+        <iframe key={viewerKey} ref={frameRef} src={bridge.computerViewerUrl(true)} title={t('comp.title')} className="computer-frame" tabIndex={0} onLoad={syncViewerControl} />
       ) : (
         <div className="computer-off">
           <Monitor size={42} className="muted" />
@@ -310,6 +320,7 @@ export default function Computer() {
           ) : (
             <>
               <Row icon={human ? Eye : Hand} tint={human ? 'ic-schedules' : 'ic-overview'} label={human ? t('comp.releaseControl') : t('comp.takeControl')} kind="accent" disabled={busy === 'ctrl'} onClick={toggleControl} chevron />
+              {human && <Row icon={KeyRound} tint="ic-plain" label="Digitar no navegador" onClick={openViewerKeyboard} chevron />}
               <Row icon={GraduationCap} tint="ic-skills" label={t('comp.teach')} onClick={teach} chevron />
               <Row icon={Camera} tint="ic-dashboards" label={t('comp.screenshot')} onClick={() => openImage(bridge.computerScreenshotUrl(), t('comp.screenshot'))} chevron />
               <Row icon={RefreshCw} tint="ic-plain" label={t('comp.reconnect')} onClick={() => setViewerKey((k) => k + 1)} />
@@ -357,6 +368,7 @@ export default function Computer() {
             <Btn icon={Play} className="small" disabled={busy === 'start'} onClick={start}>{t('comp.start')}</Btn>
           ) : (
             <>
+              {human && <Btn icon={KeyRound} className="ghost small" onClick={openViewerKeyboard}>Digitar</Btn>}
               <Btn icon={human ? Eye : Hand} className={human ? 'warn small' : 'small'} disabled={busy === 'ctrl'} onClick={toggleControl}>
                 {human ? t('comp.releaseControl') : t('comp.takeControl')}
               </Btn>
@@ -402,9 +414,11 @@ export default function Computer() {
             <iframe
               key={viewerKey}
               ref={frameRef}
-              src={bridge.computerViewerUrl(!human)}
+              src={bridge.computerViewerUrl(true)}
               title={t('comp.title')}
               className="computer-frame"
+              tabIndex={0}
+              onLoad={syncViewerControl}
             />
           ) : (
             <div className="computer-off">
