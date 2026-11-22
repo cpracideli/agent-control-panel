@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bell, BellRing, Bot, Check, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
-import { bridge, localCache, webPush } from '../api.js';
+import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
+import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar } from './Bots.jsx';
 import CameraCapture from './CameraCapture.jsx';
 import { provName } from '../prov.js';
-import { Disclosure, LongPressButton, openContextMenu, useLongPress } from '../native.jsx';
+import { Disclosure, LongPressButton, openContextMenu, useLongPress, useScreen } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
@@ -1066,6 +1066,7 @@ function modelLabel(chat, providers) {
 
 export default function Chat({ openMore, me }) {
   const { t, lang } = useI18n();
+  const screen = useScreen();
   const f = useFmt();
   const toast = useToast();
   const confirm = useConfirm();
@@ -1160,42 +1161,6 @@ export default function Chat({ openMore, me }) {
   // Chat style follows the global theme ('terminal' renders Claude Code terminal layout).
   const { theme } = useTheme();
   const term = theme === 'terminal';
-  const [pushOn, setPushState] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0');
-  const togglePush = async () => {
-    if (typeof Notification === 'undefined') return;
-    const ensureSub = async () => {
-      try {
-        if ('serviceWorker' in navigator && 'PushManager' in window) {
-          const { publicKey } = await webPush.key();
-          const pad = '='.repeat((4 - (publicKey.length % 4)) % 4);
-          const raw = window.atob((publicKey + pad).replace(/-/g, '+').replace(/_/g, '/'));
-          const key = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-          const reg = await navigator.serviceWorker.ready;
-          let sub = await reg.pushManager.getSubscription();
-          if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-          await webPush.subscribe(sub.toJSON());
-        }
-      } catch {}
-    };
-    if (Notification.permission !== 'granted') {
-      const p = await Notification.requestPermission();
-      if (p !== 'granted') return;
-      store.set('acp_push', '1'); setPushState(true);
-      await ensureSub();
-      toast(t('chat.pushOn'));
-    } else {
-      const next = !pushOn;
-      store.set('acp_push', next ? '1' : '0'); setPushState(next);
-      if (next) { await ensureSub(); toast(t('chat.pushOn')); }
-    }
-  };
-  const notifyBrowser = (title, body) => {
-    try {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && store.get('acp_push') !== '0' && document.hidden) {
-        new Notification(title, { body: String(body || '').slice(0, 180), icon: '/pwa-192.png' });
-      }
-    } catch {}
-  };
   const setVoiceMode = (on) => { store.set('acp_voice', on ? '1' : '0'); setVoiceModeState(on); if (!on) stopSpeaking(); else unlockSpeech(); };
   const rec = useRecorder(lang);
   const fileRef = useRef(null);
@@ -1233,13 +1198,13 @@ export default function Chat({ openMore, me }) {
     if (!current || (chats.data && !webChats.some((c) => c.id === current))) select(webChats[0].id, true);
   }, [webChats.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (current) {
-      store.set(LAST_CHAT_KEY, current);
-      if (window.location.hash === '#/chat' || window.location.hash === '' || window.location.hash === '#/') {
-        window.history.replaceState(null, '', '#/chat/' + current.slice(4));
-      }
+    if (!current) return;
+    store.set(LAST_CHAT_KEY, current);
+    const targetHash = '#/chat/' + current.slice(4);
+    if (screen.active && window.location.hash !== targetHash) {
+      window.history.replaceState(null, '', targetHash);
     }
-  }, [current]);
+  }, [current, screen.active]);
   useEffect(() => {
     // the chat stays mounted under the tab bar now, so links that open a chat with a prefilled
     // command (e.g. Skills > Use in chat) are picked up here as well as on first mount
@@ -1280,7 +1245,6 @@ export default function Chat({ openMore, me }) {
           }
           if (!ev.message.error && !ev.message.stopped) {
             if (!sp.liveCall && (sp.voiceMode || sp.lastVoice)) speak(ev.message.id, ev.message.text, sp.lang, current);
-            notifyBrowser('Agent Control', ev.message.text);
           }
         }
       }
@@ -1293,7 +1257,6 @@ export default function Chat({ openMore, me }) {
       else if (ev.type === 'delegation') setLive((l) => l && { ...l, delegations: (l.delegations || []).some((d) => d.id === ev.ask.id) ? l.delegations.map((d) => (d.id === ev.ask.id ? ev.ask : d)) : [...(l.delegations || []), ev.ask] });
       else if (ev.type === 'prompt') {
         setLive((l) => l && { ...l, prompts: (l.prompts || []).some((p) => p.id === ev.prompt.id) ? l.prompts.map((p) => (p.id === ev.prompt.id ? ev.prompt : p)) : [...(l.prompts || []), ev.prompt] });
-        if (ev.prompt.status === 'pending') notifyBrowser(ev.prompt.title || 'Aprovação pendente', ev.prompt.question);
         chats.reload(true);
         notifyNav();
       }
@@ -1722,9 +1685,6 @@ export default function Chat({ openMore, me }) {
           <IconButton icon={Undo2} className="ghost voice-toggle only-desktop" label="Checkpoints & Desfazer no Workspace" onClick={() => setUndoOpen(true)} />
           {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
-          {typeof Notification !== 'undefined' && (
-            <IconButton icon={pushOn ? BellRing : Bell} className={'ghost voice-toggle only-desktop' + (pushOn ? ' on' : '')} label={pushOn ? t('chat.pushOn') : t('chat.pushOff')} onClick={togglePush} />
-          )}
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
           )}
@@ -1932,15 +1892,6 @@ export default function Chat({ openMore, me }) {
                 <span className="row-ic ic-chat"><AudioLines size={17} /></span>
                 <span className="grow"><b>{t('chat.voiceMode')}</b><small className="muted">{t('chat.voiceModeHint')}</small></span>
                 <input type="checkbox" checked={voiceMode} onChange={(e) => setVoiceMode(e.target.checked)} />
-              </label>
-            </div>
-          )}
-          {typeof Notification !== 'undefined' && (
-            <div className="group">
-              <label className="group-row">
-                <span className="row-ic ic-schedules"><Bell size={17} /></span>
-                <span className="grow"><b>{t('chat.pushOff')}</b></span>
-                <input type="checkbox" checked={pushOn} onChange={togglePush} />
               </label>
             </div>
           )}

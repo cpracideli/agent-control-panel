@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BarChart3, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { Activity, BarChart3, Bell, BellRing, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Send, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
 import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
 import { ActionInboxModal, GlobalSearchModal } from './GlobalCommandHub.jsx';
 import { LANGS, store, useI18n } from './i18n.jsx';
+import { NotificationsProvider, useNotifications } from './notifications.jsx';
 import { ErrorBoundary, IconButton, Sheet, haptic, refreshAll, useTheme } from './ui.jsx';
 import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
 import { useEdgeBack, useNavStack } from './stack.jsx';
@@ -181,9 +182,42 @@ function Avatar({ me, size = 34 }) {
   );
 }
 
+function DesktopNotifButton() {
+  const { t } = useI18n();
+  const notif = useNotifications();
+  if (!notif.supported) return null;
+  const label = notif.permission === 'denied'
+    ? t('notif.deniedShort')
+    : notif.enabled
+      ? t('notif.toggleOn')
+      : t('notif.toggleOff');
+  return (
+    <button
+      type="button"
+      className={'ghost small notif-nav-btn' + (notif.enabled ? ' on' : '')}
+      style={{ padding: '6px 9px' }}
+      disabled={notif.busy}
+      aria-pressed={notif.enabled}
+      aria-label={label}
+      title={label}
+      onClick={() => notif.toggle()}
+    >
+      {notif.enabled ? <BellRing size={15} /> : <Bell size={15} />}
+    </button>
+  );
+}
+
 // Pages + appearance + account. Root of the "Mais" tab, and also the sheet behind the avatar.
 function MoreList({ me, page, go, install, logout, onClose, dock, morePages, openDockSettings, openSearch, openInbox, inboxCount }) {
   const { t } = useI18n();
+  const notif = useNotifications();
+  const notifSub = !notif.supported
+    ? t('notif.unsupported')
+    : notif.permission === 'denied'
+      ? t('notif.deniedShort')
+      : notif.enabled
+        ? (notif.pushSubscribed ? t('notif.pushActive') : t('notif.browserActive'))
+        : t('notif.hint');
   return (
     <>
       <div className="group-label">Atalhos rápidos</div>
@@ -222,6 +256,30 @@ function MoreList({ me, page, go, install, logout, onClose, dock, morePages, ope
           </span>
           <ChevronRight size={17} className="chev" />
         </button>
+      </div>
+      <div className="group-label">{t('notif.title')}</div>
+      <div className="group">
+        <label className="group-row">
+          <span className="row-ic ic-notif">{notif.enabled ? <BellRing size={17} /> : <Bell size={17} />}</span>
+          <span className="grow">
+            <b>{t('notif.title')}</b>
+            <small className="muted">{notifSub}</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={notif.enabled}
+            disabled={!notif.supported || notif.busy}
+            onChange={() => notif.toggle()}
+            aria-label={t('notif.title')}
+          />
+        </label>
+        {notif.enabled && (
+          <button type="button" className="group-row press" disabled={notif.busy} onClick={() => notif.test()}>
+            <span className="row-ic ic-plain"><Send size={15} /></span>
+            <span className="grow">{t('notif.test')}</span>
+            <ChevronRight size={17} className="chev" />
+          </button>
+        )}
       </div>
       <div className="group-label">{t('nav.account')}</div>
       <div className="group">
@@ -421,11 +479,13 @@ export default function App() {
     </>
   );
 
-  if (authed === null) return <div className="boot"><img src="/pwa-192.png" alt="" width="56" height="56" className="app-icon" /></div>;
+  if (authed === null) return <NotificationsProvider authed={false}><div className="boot"><img src="/pwa-192.png" alt="" width="56" height="56" className="app-icon" /></div></NotificationsProvider>;
   if (!authed) {
     return (
-      <>{banners}<Login config={me || {}} initialError={authError} onLogin={() => { setAuthed(true); setMe((m) => ({ ...m, ok: true })); }}
-        extras={<><LangSelect compact glass /><ThemeSwitch compact glass /></>} /></>
+      <NotificationsProvider authed={false}>
+        <>{banners}<Login config={me || {}} initialError={authError} onLogin={() => { setAuthed(true); setMe((m) => ({ ...m, ok: true })); }}
+          extras={<><LangSelect compact glass /><ThemeSwitch compact glass /></>} /></>
+      </NotificationsProvider>
     );
   }
 
@@ -479,6 +539,7 @@ export default function App() {
     || (id === 'overview' && navStatus.offline && 'err');
 
   return (
+    <NotificationsProvider authed={Boolean(authed)}>
     <div className={'shell' + (page === 'chat' ? ' on-chat' : '') + (nav.anim ? ' navigating' : '')}>
       <aside className="nav">
         <div className="brand"><img src="/pwa-192.png" alt="" width="26" height="26" className="app-icon sm" />Agent Control</div>
@@ -490,6 +551,7 @@ export default function App() {
             <Inbox size={15} />
             {navStatus.inboxCount > 0 && <span className="nav-dot err" style={{ position: 'absolute', top: 3, right: 3 }} />}
           </button>
+          <DesktopNotifButton />
         </div>
         <nav>
           {PAGES.map(({ id, icon: Icon }) => (
@@ -555,5 +617,6 @@ export default function App() {
       {searchOpen && <GlobalSearchModal onClose={() => setSearchOpen(false)} go={go} />}
       {inboxOpen && <ActionInboxModal onClose={() => setInboxOpen(false)} go={go} />}
     </div>
+    </NotificationsProvider>
   );
 }

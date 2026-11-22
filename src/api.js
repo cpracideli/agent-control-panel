@@ -75,6 +75,7 @@ export const bridge = {
   tts: (id, msgId) => post('/bridge/web/' + id.replace(/^web:/, '') + '/tts', { id: msgId }),
   fileUrl: (file) => '/api/bridge/web/files/' + encodeURIComponent(file),
   eventsUrl: (id) => '/api/bridge/web/' + id.replace(/^web:/, '') + '/events',
+  webEventsUrl: () => '/api/bridge/web/events',
   schedules: () => get('/bridge/schedules'),
   addSchedule: (b) => post('/bridge/schedules', b),
   patchSchedule: (id, b) => patch('/bridge/schedules/' + id, b),

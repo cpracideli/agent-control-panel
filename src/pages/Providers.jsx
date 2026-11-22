@@ -1,18 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Bell, Copy, KeyRound, Lock, Moon, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, Shield, SlidersHorizontal, Smartphone, Sparkles, Trash2, Users } from 'lucide-react';
-import { bridge, coolify, webPush } from '../api.js';
+import { Bell, BellRing, Copy, KeyRound, Lock, Moon, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, Shield, SlidersHorizontal, Smartphone, Sparkles, Trash2, Users } from 'lucide-react';
+import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
+import { useNotifications } from '../notifications.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-}
-
 function ProactivityAndChannelsCard({ providers }) {
-  const toast = useToast();
+  const t = useT();
+  const notif = useNotifications();
   const cfg = useLoad(() => bridge.getSettings(), []);
   const [busy, run] = useAction();
   const [qh, setQh] = useState({ enabled: false, start: '22:00', end: '07:00' });
@@ -22,7 +17,6 @@ function ProactivityAndChannelsCard({ providers }) {
   const [dc, setDc] = useState({ enabled: false, token: '', allowedUsers: '', allowedChannels: '' });
   const [sl, setSl] = useState({ enabled: false, botToken: '', signingSecret: '', allowedUsers: '', allowedChannels: '' });
   const [byom, setByom] = useState({ enabled: false, baseUrl: '', defaultModel: 'gpt-4.1-mini', models: 'gpt-4.1-mini, gpt-4.1', apiKey: '' });
-  const [pushSubscribed, setPushSubscribed] = useState(false);
 
   useEffect(() => {
     const s = cfg.data;
@@ -49,42 +43,12 @@ function ProactivityAndChannelsCard({ providers }) {
     }
   }, [cfg.data]);
 
-  useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((sub) => setPushSubscribed(Boolean(sub))).catch(() => {});
-    }
-  }, []);
-
   const savePro = () => run('pro', () => bridge.settings({ proactivity: { quietHours: qh, ...models } }), 'Proatividade salva').then(() => cfg.reload(true));
   const savePin = (val) => run('pin', () => bridge.settings({ securityPin: val }), val ? 'PIN de segurança salvo' : 'PIN removido').then(() => { setPin(''); cfg.reload(true); });
   const saveTg = () => run('tg', () => bridge.settings({ telegram: { enabled: tg.enabled, allowedUsers: tg.allowedUsers, ...(tg.token.trim() ? { token: tg.token.trim() } : {}) } }), 'Telegram atualizado').then(() => { setTg((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
   const saveDc = () => run('dc', () => bridge.settings({ discord: { enabled: dc.enabled, allowedUsers: dc.allowedUsers, allowedChannels: dc.allowedChannels, ...(dc.token.trim() ? { token: dc.token.trim() } : {}) } }), 'Discord atualizado').then(() => { setDc((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
   const saveSl = () => run('sl', () => bridge.settings({ slack: { enabled: sl.enabled, allowedUsers: sl.allowedUsers, allowedChannels: sl.allowedChannels, ...(sl.botToken.trim() ? { botToken: sl.botToken.trim() } : {}), ...(sl.signingSecret.trim() ? { signingSecret: sl.signingSecret.trim() } : {}) } }), 'Slack atualizado').then(() => { setSl((cur) => ({ ...cur, botToken: '', signingSecret: '' })); cfg.reload(true); });
   const saveByom = () => run('byom', () => bridge.settings({ openaiCompat: { enabled: byom.enabled, baseUrl: byom.baseUrl.trim(), defaultModel: byom.defaultModel.trim(), models: byom.models, ...(byom.apiKey.trim() ? { apiKey: byom.apiKey.trim() } : {}) } }), 'API Direta (BYOM) salva').then(() => { setByom((cur) => ({ ...cur, apiKey: '' })); cfg.reload(true); });
-
-  const enableWebPush = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return toast('Navegador sem suporte a Web Push', 'err');
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return toast('Permissão de notificação negada', 'err');
-    const r = await run('push', async () => {
-      const { publicKey } = await webPush.key();
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
-      await webPush.subscribe(sub.toJSON());
-      setPushSubscribed(true);
-      return true;
-    }, 'Web Push ativado neste dispositivo');
-    if (r) cfg.reload(true);
-  };
-  const disableWebPush = async () => {
-    await run('push', async () => {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) { await webPush.unsubscribe(sub.endpoint); await sub.unsubscribe(); }
-      setPushSubscribed(false);
-    }, 'Web Push desativado');
-  };
 
   const s = cfg.data || {};
   return (
@@ -161,19 +125,26 @@ function ProactivityAndChannelsCard({ providers }) {
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
 
           <div className="row wrap">
-            <Bell size={14} className="muted" />
-            <b>Web Push (aba fechada / PWA)</b>
-            <Badge kind={pushSubscribed ? 'ok' : 'muted'}>{pushSubscribed ? 'Inscrito' : 'Inativo'}</Badge>
+            {notif.enabled ? <BellRing size={14} className="muted" /> : <Bell size={14} className="muted" />}
+            <b>{t('notif.globalTitle')}</b>
+            <Badge kind={notif.enabled ? 'ok' : notif.permission === 'denied' ? 'err' : 'muted'}>
+              {notif.enabled
+                ? (notif.pushSubscribed ? t('notif.badgePush') : t('notif.badgeBrowser'))
+                : notif.permission === 'denied'
+                  ? t('notif.badgeBlocked')
+                  : t('notif.badgeOff')}
+            </Badge>
             <span className="grow" />
-            {!pushSubscribed ? (
-              <Btn icon={Bell} className="small" disabled={busy === 'push'} onClick={enableWebPush}>Ativar Push</Btn>
+            {!notif.enabled ? (
+              <Btn icon={Bell} className="small" disabled={notif.busy || !notif.supported} onClick={() => notif.enable()}>{t('notif.enableBtn')}</Btn>
             ) : (
               <>
-                <Btn icon={Send} className="ghost small" disabled={busy === 'ptest'} onClick={() => run('ptest', webPush.test, 'Push de teste enviado')}>Testar</Btn>
-                <button type="button" className="ghost small" disabled={busy === 'push'} onClick={disableWebPush}>Desativar</button>
+                <Btn icon={Send} className="ghost small" disabled={notif.busy} onClick={() => notif.test()}>{t('notif.test')}</Btn>
+                <button type="button" className="ghost small" disabled={notif.busy} onClick={() => notif.disable()}>{t('notif.disableBtn')}</button>
               </>
             )}
           </div>
+          <p className="muted small" style={{ margin: 0 }}>{notif.permission === 'denied' ? t('notif.denied') : t('notif.hint')}</p>
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
 

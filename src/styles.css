@@ -1684,6 +1684,9 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .ic-more { background: var(--gray); }
 .ic-search { background: var(--indigo); }
 .ic-inbox { background: var(--pink); }
+.ic-notif { background: var(--err); }
+.notif-nav-btn.on { background: var(--active); color: var(--accent); }
+:root[data-theme="terminal"] .notif-nav-btn.on { background: var(--t-accent); color: #141413; }
 .nav-user-btn { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 4px; margin: -4px 0 -4px -4px; background: transparent; color: inherit; border-radius: 10px; text-align: left; }
 @media (hover: hover) { .nav-user-btn:hover { background: var(--hover); } }
 .dock-cfg { display: flex; flex-direction: column; gap: 12px; }
