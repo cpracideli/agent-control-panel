@@ -470,7 +470,9 @@ app.post('/api/push/unsubscribe', auth, async (req, res) => {
 
 app.post('/api/push/test', auth, async (req, res) => {
   try {
-    const out = await sendPushToAll({ title: 'Agent Control', body: 'Notificações Web Push ativas neste dispositivo!', tag: 'push-test' }, baseUrl(req));
+    const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    const safeUrl = (rawUrl.startsWith('/') || rawUrl.startsWith('#')) ? rawUrl.slice(0, 240) : '';
+    const out = await sendPushToAll({ title: 'Agent Control', body: 'Notificações Web Push ativas neste dispositivo!', tag: 'push-test', ...(safeUrl ? { url: safeUrl } : {}) }, baseUrl(req));
     res.json(out);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });

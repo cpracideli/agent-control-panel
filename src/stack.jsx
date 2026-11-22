@@ -67,7 +67,7 @@ export function useNavStack({ tabs, tabOf, initial, hashOf, parseHash }) {
   };
   const writeHash = (id, push) => {
     const h = hashOf(id);
-    if (window.location.hash === h || (id === 'chat' && window.location.hash.startsWith('#/chat'))) return;
+    if (window.location.hash === h || window.location.hash.startsWith(h + '/')) return;
     if (push) { window.history.pushState({ acpDepth: 1 }, '', h); pushed.current += 1; } else window.history.replaceState(null, '', h);
   };
 

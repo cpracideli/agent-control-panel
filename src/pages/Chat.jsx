@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, Archive, ArrowDown, ArrowRight, ArrowUp, AudioLines, Bot, Check, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, ArrowDown, ArrowLeftRight, ArrowRight, ArrowUp, AudioLines, Bot, Check, Clock, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, RefreshCw, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
@@ -12,11 +12,14 @@ import { provName } from '../prov.js';
 import { ProvIcon, ProvMark } from '../ProvIcon.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress, useScreen } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
+import { formatResetInfo, getProviderLimitStatus, getProviderPickerLimit, isBridgeControlCommand } from '../providerLimits.js';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
 const chatFromHash = () => {
-  const m = window.location.hash.match(/^#\/chat\/([a-f0-9]+)/);
-  return m ? 'web:' + m[1] : null;
+  const m = window.location.hash.match(/^#\/chat\/([^/?#]+)/);
+  if (!m) return null;
+  const raw = decodeURIComponent(m[1]);
+  return raw.startsWith('web:') ? raw : 'web:' + raw;
 };
 
 // Swipe-left gesture on mobile chat list rows to reveal Rename & Delete actions without closing the drawer.
@@ -221,7 +224,21 @@ function DelegationList({ delegations, botsById, term }) {
   );
 }
 
-function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) {
+function formatLimitReason(t, limit) {
+  if (!limit) return '';
+  const p = limit.providerName || provName(limit.provider);
+  if (limit.reason) return limit.reason;
+  if (limit.kind === 'session') return t('limit.reason.session', { p });
+  if (limit.kind === 'weekly') return t('limit.reason.weekly', { p });
+  if (limit.kind === 'weekly_opus') return t('limit.reason.weekly_opus', { p });
+  if (limit.kind === 'weekly_sonnet') return t('limit.reason.weekly_sonnet', { p });
+  if (limit.kind === 'group' && limit.groupLabel) return t('limit.reason.group', { g: limit.groupLabel, p });
+  if (limit.kind === 'all_groups') return t('limit.reason.all_groups', { p });
+  return t('limit.reason.generic', { p });
+}
+
+function LiveVoiceCallModal({ chatId, botName, lang, messages, live, checkLimit, onLimitBlocked, onClose }) {
+  const t = useT();
   const toast = useToast();
   const [status, setStatus] = useState('idle'); // listening | sending | thinking | speaking | muted | idle
   const [muted, setMuted] = useState(false);
@@ -280,6 +297,20 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
   const runTurn = async ({ text, audio }) => {
     const cleanText = String(text || '').trim();
     if (!cleanText && !audio) return;
+    if (!(!audio && isBridgeControlCommand(cleanText))) {
+      const blocked = checkLimit?.();
+      if (blocked) {
+        haptic('medium');
+        const r = formatResetInfo(blocked.resetsAt, Date.now(), lang);
+        const reason = formatLimitReason(t, blocked);
+        const msg = r.countdown ? `${reason} (${t('limit.resetsInLabel')}: ${r.countdown})` : reason;
+        setErr(msg);
+        toast(msg, 'err');
+        setStatus('idle');
+        onLimitBlocked?.(blocked);
+        return;
+      }
+    }
     const myTurn = ++turnIdRef.current;
     stopSpeaking();
     setErr('');
@@ -545,6 +576,19 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, onClose }) 
     e.preventDefault();
     const v = typed.trim();
     if (!v || status === 'sending' || status === 'thinking') return;
+    if (!isBridgeControlCommand(v)) {
+      const blocked = checkLimit?.();
+      if (blocked) {
+        haptic('medium');
+        const r = formatResetInfo(blocked.resetsAt, Date.now(), lang);
+        const reason = formatLimitReason(t, blocked);
+        const msg = r.countdown ? `${reason} (${t('limit.resetsInLabel')}: ${r.countdown})` : reason;
+        setErr(msg);
+        toast(msg, 'err');
+        onLimitBlocked?.(blocked);
+        return;
+      }
+    }
     prepareCallAudio();
     setTyped('');
     await cleanupRecorder(false);
@@ -1061,9 +1105,75 @@ function ChatSettings({ chat, providers, bots, onChange }) {
 
 const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 
-function ModelPickerSheet({ chat, providers, onChange, onClose }) {
+function ProviderLimitModal({ limit, lang, refreshing, onRefresh, onSwitchProvider, onClose }) {
   const t = useT();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!limit) return null;
+  const reset = formatResetInfo(limit.resetsAt, now, lang);
+  const reason = formatLimitReason(t, limit);
+  const pct = Math.round(Number(limit.percent) || 100);
+
+  return (
+    <Modal title={t('limit.title')} onClose={onClose}>
+      <div className="stack limit-modal">
+        <div className="limit-hero">
+          <span className="limit-hero-ic" aria-hidden="true"><AlertTriangle size={20} /></span>
+          <div className="limit-hero-meta">
+            <span className="limit-hero-prov">
+              <ProvIcon id={limit.provider} size={18} title={false} />
+              <span className="ellipsis">{limit.providerName || provName(limit.provider)}</span>
+            </span>
+            {limit.groupLabel && <small className="muted">{limit.groupLabel}</small>}
+          </div>
+          <Badge kind="err">{pct}%</Badge>
+        </div>
+
+        <p className="limit-reason">{reason}</p>
+        <p className="muted small limit-draft-note">{t('limit.keptDraft')}</p>
+        {limit.stale && <p className="small meter-stale" role="status"><AlertTriangle size={13} /><span>{t('limit.staleNote')}</span></p>}
+
+        <div className={'limit-reset-box' + (reset.expired ? ' expired' : '')}>
+          {!limit.resetsAt ? (
+            <>
+              <span className="limit-reset-at">{t('limit.resetUnknown')}</span>
+              <Btn icon={RefreshCw} className="ghost small" disabled={refreshing} onClick={onRefresh}>
+                {refreshing ? t('limit.refreshing') : t('limit.refreshStatus')}
+              </Btn>
+            </>
+          ) : reset.expired ? (
+            <>
+              <span className="limit-reset-at">{t('limit.mayHaveReset')}</span>
+              <Btn icon={RefreshCw} className="small" disabled={refreshing} onClick={onRefresh}>
+                {refreshing ? t('limit.refreshing') : t('limit.refreshStatus')}
+              </Btn>
+            </>
+          ) : (
+            <>
+              <span className="limit-reset-label"><Clock size={13} /> {t('limit.resetsInLabel')}</span>
+              <b className="limit-countdown" data-testid="limit-countdown">{reset.countdown}</b>
+              {reset.resetAtLabel && <span className="limit-reset-at">{t('limit.resetAt', { t: reset.resetAtLabel })}</span>}
+            </>
+          )}
+        </div>
+
+        <div className="limit-actions">
+          <button type="button" className="ghost" onClick={onClose}>{t('common.close')}</button>
+          <Btn icon={ArrowLeftRight} onClick={onSwitchProvider}>{t('limit.switchProvider')}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ModelPickerSheet({ chat, providers, usage, onChange, onClose }) {
+  const { t, lang } = useI18n();
   if (!chat || !providers) return null;
+  const now = Date.now();
   const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
   const agy = chat.provider === 'antigravity';
   const currentModel = agy ? chat.agyModel : chat.model;
@@ -1077,6 +1187,7 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
       ? t('common.defaultModel')
       : t('chat.accountDefault', { m: defModelObj ? defModelObj.label : (rawDef || '—') })
   );
+  const provPickerLimit = getProviderPickerLimit(usage, prov.id, providers, now);
 
   return (
     <Sheet title={t('chat.model')} onClose={onClose}>
@@ -1084,12 +1195,14 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
       <div className="group">
         {providers.providers.map((p) => {
           const active = p.id === prov.id;
+          const pLimit = p.installed ? getProviderPickerLimit(usage, p.id, providers, now) : null;
+          const pReset = pLimit?.resetsAt ? formatResetInfo(pLimit.resetsAt, now, lang) : null;
           return (
             <button
               key={p.id}
               type="button"
               disabled={!p.installed}
-              className={'group-row press' + (active ? ' on' : '')}
+              className={'group-row press' + (active ? ' on' : '') + (pLimit ? ' limited' : '')}
               onClick={() => { if (!active) { haptic('light'); onChange({ provider: p.id }); } }}
             >
               <span className="row-ic ic-prov">
@@ -1098,7 +1211,14 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
               <span className="grow">
                 <b>{p.name}</b>
                 {!p.installed && <small className="muted">{t('common.notInstalled')}</small>}
+                {pLimit && (
+                  <small className="limit-sub">
+                    <AlertTriangle size={12} />
+                    <span>{pReset?.compactCountdown ? t('limit.pickerSubIn', { t: pReset.compactCountdown }) : t('limit.pickerSub')}</span>
+                  </small>
+                )}
               </span>
+              {pLimit && <Badge kind="err">{Math.round(pLimit.percent)}%</Badge>}
               {active && <Check size={17} />}
             </button>
           );
@@ -1117,14 +1237,27 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
         </button>
         {prov.models.map((m) => {
           const active = currentModel === m.id;
+          const mLimit = !provPickerLimit
+            ? getProviderLimitStatus(usage, { ...chat, provider: prov.id, ...(agy ? { agyModel: m.id } : { model: m.id }) }, providers, now)
+            : null;
+          const mReset = mLimit?.resetsAt ? formatResetInfo(mLimit.resetsAt, now, lang) : null;
           return (
             <button
               key={m.id}
               type="button"
-              className={'group-row press' + (active ? ' on' : '')}
+              className={'group-row press' + (active ? ' on' : '') + (mLimit ? ' limited' : '')}
               onClick={() => { if (!active) { haptic('light'); onChange(agy ? { agyModel: m.id, agyEffort: '' } : { model: m.id }); } }}
             >
-              <span className="grow"><b className="ellipsis">{m.label}</b></span>
+              <span className="grow">
+                <b className="ellipsis">{m.label}</b>
+                {mLimit && (
+                  <small className="limit-sub">
+                    <AlertTriangle size={12} />
+                    <span>{mReset?.compactCountdown ? t('limit.pickerSubIn', { t: mReset.compactCountdown }) : t('limit.pickerSub')}</span>
+                  </small>
+                )}
+              </span>
+              {mLimit && <Badge kind="err">{Math.round(mLimit.percent)}%</Badge>}
               {active && <Check size={17} />}
             </button>
           );
@@ -1188,6 +1321,7 @@ export default function Chat({ openMore, me }) {
   const confirm = useConfirm();
   const chats = useLoad(() => bridge.chats(), [], { interval: 15000, cacheKey: '/bridge/chats' });
   const providers = useLoad(() => bridge.providers(), [], { cacheKey: '/bridge/providers' });
+  const usage = useLoad(() => bridge.usage(), [], { interval: 60000, cacheKey: '/bridge/usage' });
   const botsL = useLoad(() => bridge.bots(), [], { interval: 60000, cacheKey: '/bridge/bots' });
   const skillsL = useLoad(() => bridge.skills(), [], { interval: 60000, cacheKey: '/bridge/skills' });
   const activityL = useLoad(() => bridge.activity(), [], { interval: 15000, cacheKey: '/bridge/activity' });
@@ -1228,15 +1362,37 @@ export default function Chat({ openMore, me }) {
   const undoL = useLoad(() => (undoOpen ? bridge.undoList() : Promise.resolve([])), [undoOpen]);
   const [undoBusy, setUndoBusy] = useState(false);
 
+  const chatsReloadRef = useRef(chats.reload);
+  chatsReloadRef.current = chats.reload;
+
   useEffect(() => {
+    const openChatId = (cid) => {
+      if (!cid || !cid.startsWith('web:')) return;
+      store.set(LAST_CHAT_KEY, cid);
+      setCurrent(cid);
+      setShowList(false);
+      setShowOpts(false);
+      setShowModelPicker(false);
+      setShowMsgSearch(false);
+      setSwipedId(null);
+      chatsReloadRef.current?.(true);
+    };
     const openPending = () => {
       try {
         const cid = localStorage.getItem('acp_chat_open');
-        if (cid && cid.startsWith('web:')) { localStorage.removeItem('acp_chat_open'); setCurrent(cid); }
+        if (cid && cid.startsWith('web:')) {
+          localStorage.removeItem('acp_chat_open');
+          openChatId(cid);
+        }
       } catch {}
     };
     openPending();
-    const onOpen = (e) => { if (e?.detail?.chatId) setCurrent(e.detail.chatId); };
+    const onOpen = (e) => {
+      if (e?.detail?.chatId) {
+        try { localStorage.removeItem('acp_chat_open'); } catch {}
+        openChatId(e.detail.chatId);
+      }
+    };
     window.addEventListener('acp:open-chat', onOpen);
     return () => window.removeEventListener('acp:open-chat', onOpen);
   }, []);
@@ -1268,6 +1424,9 @@ export default function Chat({ openMore, me }) {
   openRef.current = showList;
   const [showOpts, setShowOpts] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [limitModal, setLimitModal] = useState(null);
+  const [refreshingLimit, setRefreshingLimit] = useState(false);
+  const [limitNow, setLimitNow] = useState(() => Date.now());
   const [liveCallOpen, setLiveCallOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const chatTasks = useLoad(() => (current ? bridge.tasks(current) : Promise.resolve([])), [current], { interval: 8000 });
@@ -1330,14 +1489,28 @@ export default function Chat({ openMore, me }) {
     setCurrent(id); setShowList(false); setSwipedId(null);
   };
   useEffect(() => {
-    if (!webChats.length) return;
-    if (!current || (chats.data && !webChats.some((c) => c.id === current))) select(webChats[0].id, true);
-  }, [webChats.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    const hashChat = chatFromHash();
+    if (hashChat) {
+      if (current !== hashChat) setCurrent(hashChat);
+      return;
+    }
+    if (!webChats.length || chats.loading) return;
+    if (!current || !webChats.some((c) => c.id === current)) select(webChats[0].id, true);
+  }, [webChats, current, chats.loading]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!current) return;
     store.set(LAST_CHAT_KEY, current);
+    if (!screen.active) return;
+    const h = window.location.hash || '';
+    if (h && !h.startsWith('#/chat')) return;
+    const hashId = chatFromHash();
+    if (hashId && hashId !== current) {
+      setCurrent(hashId);
+      setShowList(false);
+      return;
+    }
     const targetHash = '#/chat/' + current.slice(4);
-    if (screen.active && window.location.hash !== targetHash) {
+    if (h !== targetHash) {
       window.history.replaceState(null, '', targetHash);
     }
   }, [current, screen.active]);
@@ -1345,7 +1518,13 @@ export default function Chat({ openMore, me }) {
     // the chat stays mounted under the tab bar now, so links that open a chat with a prefilled
     // command (e.g. Skills > Use in chat) are picked up here as well as on first mount
     const onHash = () => {
-      const id = chatFromHash(); if (id) setCurrent(id);
+      const id = chatFromHash();
+      if (id) {
+        setCurrent(id);
+        setShowList(false);
+        setShowOpts(false);
+        setShowModelPicker(false);
+      }
       const pf = sessionStorage.getItem('acp_prefill');
       if (pf) { sessionStorage.removeItem('acp_prefill'); setText(pf); }
     };
@@ -1359,7 +1538,8 @@ export default function Chat({ openMore, me }) {
     let closed = false;
     const msgKey = '/bridge/web/' + current.slice(4) + '/messages';
     const cached = localCache.get(msgKey);
-    setMessages(cached?.messages || []); setChatInfo(cached?.chat || null);
+    const cachedChat = cached?.chat?.id && cached.chat.id !== current ? null : cached;
+    setMessages(cachedChat?.messages || []); setChatInfo(cachedChat?.chat || null);
     setLive(null); setLoadErr(null); setQueuedAhead(0); setMsgSearch(''); setShowMsgSearch(false);
     const notifyNav = () => window.dispatchEvent(new Event('acp:nav-refresh'));
     const load = () => bridge.messages(current)
@@ -1547,7 +1727,15 @@ export default function Chat({ openMore, me }) {
   const send = async (voice, overrideText) => {
     const msg = (overrideText !== undefined ? overrideText : text).trim();
     const pending = overrideText !== undefined ? [] : files;
-    if (!msg && !pending.length && !voice) return;
+    if (!msg && !pending.length && !voice) return false;
+    if (!(!voice && isBridgeControlCommand(msg))) {
+      const blocked = getProviderLimitStatus(usage.data, info, providers.data, Date.now());
+      if (blocked) {
+        haptic('medium');
+        setLimitModal(blocked);
+        return false;
+      }
+    }
     // Unlock reply audio only when a reply will be spoken: on iOS it interrupts the user's music.
     if (voice || voiceMode) unlockSpeech();
     if (!voice) haptic(8); // voice notes already buzz on release
@@ -1663,6 +1851,43 @@ export default function Chat({ openMore, me }) {
   const activeBot = botsById[info?.bot || 'default'] || botsById.default || (botsL.data || []).find((b) => b.isDefault) || null;
 
   const ml = modelLabel(info, providers.data);
+  const activeLimit = useMemo(
+    () => getProviderLimitStatus(usage.data, info, providers.data, limitNow),
+    [usage.data, info, providers.data, limitNow],
+  );
+  useEffect(() => {
+    if (!activeLimit?.resetsAt) return undefined;
+    const ms = new Date(activeLimit.resetsAt).getTime() - Date.now();
+    if (!Number.isFinite(ms) || ms <= 0) {
+      setLimitNow(Date.now());
+      return undefined;
+    }
+    const wait = Math.min(ms + 500, 60000);
+    const id = setTimeout(() => setLimitNow(Date.now()), wait);
+    return () => clearTimeout(id);
+  }, [activeLimit?.resetsAt, limitNow]);
+  const activeLimitReset = activeLimit?.resetsAt ? formatResetInfo(activeLimit.resetsAt, limitNow, lang) : null;
+  const refreshLimitStatus = async () => {
+    setRefreshingLimit(true);
+    try {
+      const fresh = await bridge.usage();
+      localCache.set('/bridge/usage', fresh);
+      await usage.reload(true);
+      const now = Date.now();
+      setLimitNow(now);
+      const next = getProviderLimitStatus(fresh, info, providers.data, now);
+      if (next) {
+        setLimitModal(next);
+      } else {
+        setLimitModal(null);
+        toast(t('limit.clearedToast'));
+      }
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setRefreshingLimit(false);
+    }
+  };
   const empty = !text.trim() && !files.length;
   latest.current = {
     resend: (txt) => { setText(txt); inputRef.current?.focus(); },
@@ -1908,7 +2133,7 @@ export default function Chat({ openMore, me }) {
             <div className="quick-suggestions" role="group" aria-label="Sugestões rápidas">
               {activeSuggestions.map((s, idx) => (
                 <button key={(s.label || '') + idx} type="button" className="quick-sug-btn press" disabled={sending}
-                  onClick={() => { setDismissedSugMsgId(lastMsg.id); send(null, s.text || s.label); }}>
+                  onClick={async () => { const sent = await send(null, s.text || s.label); if (sent !== false) setDismissedSugMsgId(lastMsg.id); }}>
                   <b>{s.label}</b>
                   {s.description && <small>{s.description}</small>}
                 </button>
@@ -1983,8 +2208,17 @@ export default function Chat({ openMore, me }) {
                 <IconButton icon={Plus} className="ghost cbtn" size={21} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
                 <CameraCapture onPhoto={(f) => addFiles([f])} />
                 {ml && (
-                  <button type="button" className="model-pill press" onClick={() => setShowModelPicker(true)} aria-label={t('chat.model')}>
-                    <ProvIcon id={info?.provider} size={14} /><span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
+                  <button
+                    type="button"
+                    className={'model-pill press' + (activeLimit ? ' limited' : '')}
+                    onClick={() => setShowModelPicker(true)}
+                    aria-label={t('chat.model')}
+                    title={activeLimit ? (activeLimitReset?.compactCountdown ? t('limit.pillHint', { t: activeLimitReset.compactCountdown }) : t('limit.pillHintNoTime')) : undefined}
+                  >
+                    <ProvIcon id={info?.provider} size={14} />
+                    <span className="ellipsis">{ml.name}</span>
+                    {ml.effort && <span className="model-effort">{ml.effort}</span>}
+                    {activeLimit && <AlertTriangle size={13} className="model-limit-ic" aria-hidden="true" />}
                   </button>
                 )}
               </div>
@@ -1996,7 +2230,7 @@ export default function Chat({ openMore, me }) {
                 </div>
               )}
               {!hold && (!empty
-                ? <IconButton icon={ArrowUp} className="cmain" size={20} label={t('chat.send')} type="submit" disabled={sending} />
+                ? <IconButton icon={ArrowUp} className="cmain" size={20} label={t('chat.send')} type="submit" disabled={sending} onMouseDown={(e) => e.preventDefault()} />
                 : live
                   ? <IconButton icon={Square} className="cmain" size={16} label={t('common.stop')} onClick={stop} />
                   : hasTTS()
@@ -2096,8 +2330,19 @@ export default function Chat({ openMore, me }) {
         <ModelPickerSheet
           chat={info}
           providers={providers.data}
+          usage={usage.data}
           onChange={change}
           onClose={() => setShowModelPicker(false)}
+        />
+      )}
+      {limitModal && (
+        <ProviderLimitModal
+          limit={limitModal}
+          lang={lang}
+          refreshing={refreshingLimit}
+          onRefresh={refreshLimitStatus}
+          onSwitchProvider={() => { setLimitModal(null); setShowModelPicker(true); }}
+          onClose={() => setLimitModal(null)}
         />
       )}
       {renaming && (
@@ -2115,7 +2360,10 @@ export default function Chat({ openMore, me }) {
       )}
       {liveCallOpen && current && (
         <LiveVoiceCallModal chatId={current} botName={botsById[info?.bot || 'default']?.name || 'Agent'} lang={lang}
-          messages={messages} live={live} onClose={() => setLiveCallOpen(false)} />
+          messages={messages} live={live}
+          checkLimit={() => getProviderLimitStatus(usage.data, info, providers.data, Date.now())}
+          onLimitBlocked={(lim) => { setLiveCallOpen(false); setLimitModal(lim); }}
+          onClose={() => setLiveCallOpen(false)} />
       )}
       {newTaskOpen && current && (
         <ParallelTaskModal chatId={current} bots={botsL.data} onClose={() => setNewTaskOpen(false)} onStarted={() => chatTasks.reload(true)} />

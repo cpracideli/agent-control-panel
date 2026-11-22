@@ -53,10 +53,12 @@ const PAGES = [
   { id: 'overview', group: 'system', icon: Gauge, el: Overview },
 ];
 
-const pageFromHash = () => {
-  const h = window.location.hash.replace('#/', '').split('/')[0];
+const pageFromHash = (raw = window.location.hash) => {
+  const h = String(raw || '').replace(/^#\/?/, '').split(/[/?#]/)[0];
   return h === 'more' || PAGES.some((p) => p.id === h) ? h : 'chat';
 };
+
+const isInboxHash = (raw = window.location.hash) => /^#\/inbox(?:$|[/?#])/.test(raw || '');
 
 const THEMES = [{ id: 'system', icon: Monitor }, { id: 'light', icon: Sun }, { id: 'dark', icon: Moon }, { id: 'terminal', icon: SquareTerminal }];
 
@@ -421,7 +423,7 @@ export default function App() {
   const [more, setMore] = useState(false);
   const openMoreSheet = useCallback(() => setMore(true), []);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(() => isInboxHash());
   const [navStatus, setNavStatus] = useState({ running: 0, webRunning: 0, unread: 0, pendingPrompts: 0, inboxCount: 0, computerNeedsHuman: false, computerRunning: false, openTickets: 0, offline: false });
 
   useEffect(() => {
@@ -510,9 +512,49 @@ export default function App() {
         setAuthed(r.ok);
       } catch { setMe({ google: false, password: true }); setAuthed(false); }
     })();
-    const onHash = () => stackNavRef.current.go(pageFromHash());
+    const onHash = () => {
+      if (isInboxHash()) {
+        setMore(false);
+        setDockModal(false);
+        setSearchOpen(false);
+        setInboxOpen(true);
+        return;
+      }
+      setInboxOpen(false);
+      stackNavRef.current.go(pageFromHash());
+    };
+    const onNavigate = (e) => {
+      const detail = e?.detail || {};
+      const hash = String(detail.hash || '');
+      const chatId = String(detail.chatId || '');
+      setMore(false);
+      setDockModal(false);
+      setSearchOpen(false);
+      if (isInboxHash(hash)) {
+        if (window.location.hash !== '#/inbox') window.history.replaceState(null, '', '#/inbox');
+        setInboxOpen(true);
+        return;
+      }
+      setInboxOpen(false);
+      if (chatId && chatId.startsWith('web:')) {
+        try { localStorage.setItem('acp_chat_open', chatId); } catch {}
+        const targetHash = hash && hash.startsWith('#/chat/') ? hash : '#/chat/' + encodeURIComponent(chatId.slice(4));
+        if (window.location.hash !== targetHash) window.history.replaceState(null, '', targetHash);
+        stackNavRef.current.go('chat');
+        window.dispatchEvent(new CustomEvent('acp:open-chat', { detail: { chatId } }));
+        return;
+      }
+      const targetPage = pageFromHash(hash);
+      const nextHash = hash || hashOf(targetPage);
+      if (window.location.hash !== nextHash) window.history.replaceState(null, '', nextHash);
+      stackNavRef.current.go(targetPage);
+    };
     window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    window.addEventListener('acp:navigate', onNavigate);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('acp:navigate', onNavigate);
+    };
   }, []);
 
   const banners = (
@@ -663,7 +705,7 @@ export default function App() {
       {more && <MoreSheet {...moreProps} onClose={() => setMore(false)} />}
       {dockModal && <DockSettingsModal pages={DOCK_OPTIONS} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
       {searchOpen && <GlobalSearchModal onClose={() => setSearchOpen(false)} go={go} />}
-      {inboxOpen && <ActionInboxModal onClose={() => setInboxOpen(false)} go={go} />}
+      {inboxOpen && <ActionInboxModal onClose={() => { setInboxOpen(false); if (isInboxHash()) window.history.replaceState(null, '', hashOf(page)); }} go={go} />}
     </div>
     </NotificationsProvider>
   );

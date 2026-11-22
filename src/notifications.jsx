@@ -14,7 +14,7 @@ function urlBase64ToUint8Array(base64String) {
 
 function normalizeTargetHash(url, chatId) {
   if (url) {
-    const str = String(url);
+    const str = String(url).trim();
     const hashIdx = str.indexOf('#');
     if (hashIdx >= 0) return str.slice(hashIdx).replace(/\/+$/, '');
     if (str.startsWith('/')) return '#' + str.replace(/\/+$/, '');
@@ -23,6 +23,29 @@ function normalizeTargetHash(url, chatId) {
     return '#/chat/' + String(chatId).slice(4);
   }
   return '#/chat';
+}
+
+export function resolveNotificationTarget(url, chatId) {
+  const hash = normalizeTargetHash(url, chatId);
+  let targetChatId = '';
+  if (hash.startsWith('#/chat/')) {
+    const raw = decodeURIComponent(hash.slice('#/chat/'.length).split(/[/?#]/)[0] || '');
+    if (raw) targetChatId = raw.startsWith('web:') ? raw : 'web:' + raw;
+  } else if (hash === '#/chat' && chatId && String(chatId).startsWith('web:')) {
+    targetChatId = String(chatId);
+  }
+  return { hash, chatId: targetChatId };
+}
+
+export function dispatchNotificationNavigation(url, chatId) {
+  const target = resolveNotificationTarget(url, chatId);
+  if (target.chatId) {
+    try { localStorage.setItem('acp_chat_open', target.chatId); } catch {}
+  } else {
+    try { localStorage.removeItem('acp_chat_open'); } catch {}
+  }
+  window.dispatchEvent(new CustomEvent('acp:navigate', { detail: target }));
+  return target;
 }
 
 function isViewingTarget(targetHash) {
@@ -191,19 +214,25 @@ export function NotificationsProvider({ authed, children }) {
       return false;
     }
     setBusy(true);
+    const curUrl = '/' + (window.location.hash || '#/chat');
     try {
       if (pushSubscribed) {
-        await webPush.test();
+        await webPush.test(curUrl);
         toast(tRef.current('notif.testSent'));
         return true;
       }
       if (Notification.permission === 'granted') {
-        new Notification('Agent Control', {
+        const n = new Notification('Agent Control', {
           body: tRef.current('notif.testBody'),
           icon: '/pwa-192.png',
           badge: '/pwa-64.png',
           tag: 'push-test',
         });
+        n.onclick = () => {
+          try { window.focus(); } catch {}
+          dispatchNotificationNavigation(curUrl, '');
+          try { n.close(); } catch {}
+        };
         toast(tRef.current('notif.testSent'));
         return true;
       }
@@ -216,6 +245,18 @@ export function NotificationsProvider({ authed, children }) {
       setBusy(false);
     }
   }, [supported, pushSubscribed, toast]);
+
+  // Listen for Service Worker navigation messages when user clicks a Web Push notification.
+  useEffect(() => {
+    if (!authed || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+    const onMsg = (event) => {
+      if (event?.data?.type === 'acp:navigate') {
+        dispatchNotificationNavigation(event.data.hash || event.data.url, event.data.chatId);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, [authed]);
 
   // Global app-wide SSE listener for real-time notifications and nav status refresh.
   useEffect(() => {
@@ -230,8 +271,8 @@ export function NotificationsProvider({ authed, children }) {
 
     const showLocalNotification = (title, body, tag, url, chatId) => {
       if (!enabledRef.current || !isNotifSupported() || Notification.permission !== 'granted') return;
-      const targetHash = normalizeTargetHash(url, chatId);
-      if (isViewingTarget(targetHash)) return;
+      const target = resolveNotificationTarget(url, chatId);
+      if (isViewingTarget(target.hash)) return;
       try {
         const n = new Notification(title || 'Agent Control', {
           body: String(body || '').slice(0, 220),
@@ -241,10 +282,7 @@ export function NotificationsProvider({ authed, children }) {
         });
         n.onclick = () => {
           try { window.focus(); } catch {}
-          if (targetHash) window.location.hash = targetHash;
-          if (chatId && String(chatId).startsWith('web:')) {
-            window.dispatchEvent(new CustomEvent('acp:open-chat', { detail: { chatId } }));
-          }
+          dispatchNotificationNavigation(url, chatId);
           try { n.close(); } catch {}
         };
       } catch {
@@ -258,7 +296,7 @@ export function NotificationsProvider({ authed, children }) {
       try { ev = JSON.parse(e.data); } catch { return; }
       if (!ev || ev.type === 'hello') return;
 
-      if (ev.type === 'message' || ev.type === 'prompt' || ev.type === 'task' || ev.type === 'computer_need_human') {
+      if (ev.type === 'message' || ev.type === 'prompt' || ev.type === 'task' || ev.type === 'computer_need_human' || ev.type === 'draft') {
         window.dispatchEvent(new Event('acp:nav-refresh'));
       } else {
         return;
@@ -293,7 +331,12 @@ export function NotificationsProvider({ authed, children }) {
         const title = tRef.current('comp.needsYou');
         const body = ev.reason || '';
         const tag = ev.tag || 'computer-need-human';
-        showLocalNotification(title, body, tag, ev.url || '/#/computer', ev.chatId);
+        showLocalNotification(title, body, tag, ev.url || '/#/computer', '');
+      } else if (ev.type === 'draft') {
+        const title = `Novo rascunho (${ev.channel || ''})`;
+        const body = ev.to ? `Para ${ev.to}: ${ev.body || ''}` : (ev.body || '');
+        const tag = ev.tag || (ev.id ? 'draft-' + ev.id : 'draft');
+        showLocalNotification(title, body, tag, ev.url || '/#/inbox', '');
       }
     };
 

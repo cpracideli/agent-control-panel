@@ -199,7 +199,7 @@ export const webPush = {
   key: () => get('/push/key'),
   subscribe: (subscription) => post('/push/subscribe', { subscription }),
   unsubscribe: (endpoint) => post('/push/unsubscribe', { endpoint }),
-  test: () => post('/push/test'),
+  test: (url) => post('/push/test', url ? { url } : {}),
 };
 
 export const prefs = {
