@@ -1059,6 +1059,102 @@ function ChatSettings({ chat, providers, bots, onChange }) {
   );
 }
 
+function ModelPickerSheet({ chat, providers, onChange, onClose }) {
+  const t = useT();
+  if (!chat || !providers) return null;
+  const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
+  const agy = chat.provider === 'antigravity';
+  const currentModel = agy ? chat.agyModel : chat.model;
+  const agyModel = agy && prov.models.find((m) => m.id === chat.agyModel);
+  const efforts = agy ? (agyModel ? agyModel.efforts : []) : prov.efforts;
+  const currentEffort = agy ? chat.agyEffort : chat.effort;
+  const defaultLabel = agy
+    ? t('common.defaultModel')
+    : t('chat.accountDefault', { m: (!chat.model && chat.effModel) || prov.defaultModel || '—' });
+
+  return (
+    <Sheet title={t('chat.model')} onClose={onClose}>
+      <div className="group-label">{t('chat.provider')}</div>
+      <div className="group pad row wrap" style={{ gap: 8 }}>
+        {providers.providers.map((p) => {
+          const active = p.id === prov.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={!p.installed}
+              className={'chip press' + (active ? ' on' : '')}
+              onClick={() => { haptic('light'); onChange({ provider: p.id }); }}
+            >
+              <ProvIcon id={p.id} size={15} />
+              <span>{p.name}{p.installed ? '' : ` (${t('common.notInstalled')})`}</span>
+              {active && <Check size={14} />}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="group-label">{t('chat.model')}</div>
+      <div className="group stack" style={{ padding: 4, gap: 2 }}>
+        <button
+          type="button"
+          className={'row spread press' + (!currentModel ? ' on' : '')}
+          style={{ padding: '10px 12px', borderRadius: 10, width: '100%', textAlign: 'left', background: !currentModel ? 'var(--accent-soft, rgba(120,120,128,0.14))' : 'transparent' }}
+          onClick={() => { haptic('light'); onChange(agy ? { agyModel: '', agyEffort: '' } : { model: '' }); }}
+        >
+          <span className="ellipsis">{defaultLabel}</span>
+          {!currentModel && <Check size={16} />}
+        </button>
+        {prov.models.map((m) => {
+          const active = currentModel === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              className={'row spread press' + (active ? ' on' : '')}
+              style={{ padding: '10px 12px', borderRadius: 10, width: '100%', textAlign: 'left', background: active ? 'var(--accent-soft, rgba(120,120,128,0.14))' : 'transparent' }}
+              onClick={() => { haptic('light'); onChange(agy ? { agyModel: m.id, agyEffort: '' } : { model: m.id }); }}
+            >
+              <span className="ellipsis">{m.label}</span>
+              {active && <Check size={16} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {efforts?.length > 0 && (
+        <>
+          <div className="group-label">{t('chat.effort')}</div>
+          <div className="group pad row wrap" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className={'chip press' + (!currentEffort ? ' on' : '')}
+              onClick={() => { haptic('light'); onChange(agy ? { agyEffort: '' } : { effort: '' }); }}
+            >
+              <span>{t('common.defaultEffort')}</span>
+              {!currentEffort && <Check size={14} />}
+            </button>
+            {efforts.map((e) => {
+              const active = currentEffort === e;
+              return (
+                <button
+                  key={e}
+                  type="button"
+                  className={'chip press' + (active ? ' on' : '')}
+                  onClick={() => { haptic('light'); onChange(agy ? { agyEffort: e } : { effort: e }); }}
+                >
+                  <span>{e}</span>
+                  {active && <Check size={14} />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 // "Opus 4.7 · medium" for the composer pill, like the model picker in the Claude app.
 function modelLabel(chat, providers) {
   if (!chat || !providers) return null;
@@ -1158,6 +1254,7 @@ export default function Chat({ openMore, me }) {
   const openRef = useRef(false);
   openRef.current = showList;
   const [showOpts, setShowOpts] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const [liveCallOpen, setLiveCallOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const chatTasks = useLoad(() => (current ? bridge.tasks(current) : Promise.resolve([])), [current], { interval: 8000 });
@@ -1866,7 +1963,7 @@ export default function Chat({ openMore, me }) {
                 <IconButton icon={Plus} className="ghost cbtn" size={21} label={t('chat.attach')} onClick={() => fileRef.current?.click()} />
                 <CameraCapture onPhoto={(f) => addFiles([f])} />
                 {ml && (
-                  <button type="button" className="model-pill press" onClick={() => setShowOpts(true)} aria-label={t('chat.model')}>
+                  <button type="button" className="model-pill press" onClick={() => setShowModelPicker(true)} aria-label={t('chat.model')}>
                     <ProvIcon id={info?.provider} size={14} /><span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
                   </button>
                 )}
@@ -1974,6 +2071,14 @@ export default function Chat({ openMore, me }) {
             </button>
           </div>
         </Sheet>
+      )}
+      {showModelPicker && info && providers.data && (
+        <ModelPickerSheet
+          chat={info}
+          providers={providers.data}
+          onChange={change}
+          onClose={() => setShowModelPicker(false)}
+        />
       )}
       {renaming && (
         <Modal title={t('chat.renameTitle')} onClose={() => setRenaming(null)}>
