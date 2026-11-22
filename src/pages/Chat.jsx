@@ -1059,6 +1059,8 @@ function ChatSettings({ chat, providers, bots, onChange }) {
   );
 }
 
+const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+
 function ModelPickerSheet({ chat, providers, onChange, onClose }) {
   const t = useT();
   if (!chat || !providers) return null;
@@ -1068,14 +1070,18 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
   const agyModel = agy && prov.models.find((m) => m.id === chat.agyModel);
   const efforts = agy ? (agyModel ? agyModel.efforts : []) : prov.efforts;
   const currentEffort = agy ? chat.agyEffort : chat.effort;
-  const defaultLabel = agy
-    ? t('common.defaultModel')
-    : t('chat.accountDefault', { m: (!chat.model && chat.effModel) || prov.defaultModel || '—' });
+  const rawDef = (!chat.model && chat.effModel) || prov.defaultModel || '';
+  const defModelObj = prov.models.find((m) => m.id === rawDef);
+  const defaultLabel = capFirst(
+    agy
+      ? t('common.defaultModel')
+      : t('chat.accountDefault', { m: defModelObj ? defModelObj.label : (rawDef || '—') })
+  );
 
   return (
     <Sheet title={t('chat.model')} onClose={onClose}>
       <div className="group-label">{t('chat.provider')}</div>
-      <div className="group pad row wrap" style={{ gap: 8 }}>
+      <div className="group">
         {providers.providers.map((p) => {
           const active = p.id === prov.id;
           return (
@@ -1083,27 +1089,31 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
               key={p.id}
               type="button"
               disabled={!p.installed}
-              className={'chip press' + (active ? ' on' : '')}
-              onClick={() => { haptic('light'); onChange({ provider: p.id }); }}
+              className={'group-row press' + (active ? ' on' : '')}
+              onClick={() => { if (!active) { haptic('light'); onChange({ provider: p.id }); } }}
             >
-              <ProvIcon id={p.id} size={15} />
-              <span>{p.name}{p.installed ? '' : ` (${t('common.notInstalled')})`}</span>
-              {active && <Check size={14} />}
+              <span className="row-ic ic-prov">
+                <ProvIcon id={p.id} size={17} title={false} />
+              </span>
+              <span className="grow">
+                <b>{p.name}</b>
+                {!p.installed && <small className="muted">{t('common.notInstalled')}</small>}
+              </span>
+              {active && <Check size={17} />}
             </button>
           );
         })}
       </div>
 
       <div className="group-label">{t('chat.model')}</div>
-      <div className="group stack" style={{ padding: 4, gap: 2 }}>
+      <div className="group no-ic">
         <button
           type="button"
-          className={'row spread press' + (!currentModel ? ' on' : '')}
-          style={{ padding: '10px 12px', borderRadius: 10, width: '100%', textAlign: 'left', background: !currentModel ? 'var(--accent-soft, rgba(120,120,128,0.14))' : 'transparent' }}
-          onClick={() => { haptic('light'); onChange(agy ? { agyModel: '', agyEffort: '' } : { model: '' }); }}
+          className={'group-row press' + (!currentModel ? ' on' : '')}
+          onClick={() => { if (currentModel) { haptic('light'); onChange(agy ? { agyModel: '', agyEffort: '' } : { model: '' }); } }}
         >
-          <span className="ellipsis">{defaultLabel}</span>
-          {!currentModel && <Check size={16} />}
+          <span className="grow"><b className="ellipsis">{defaultLabel}</b></span>
+          {!currentModel && <Check size={17} />}
         </button>
         {prov.models.map((m) => {
           const active = currentModel === m.id;
@@ -1111,12 +1121,11 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
             <button
               key={m.id}
               type="button"
-              className={'row spread press' + (active ? ' on' : '')}
-              style={{ padding: '10px 12px', borderRadius: 10, width: '100%', textAlign: 'left', background: active ? 'var(--accent-soft, rgba(120,120,128,0.14))' : 'transparent' }}
-              onClick={() => { haptic('light'); onChange(agy ? { agyModel: m.id, agyEffort: '' } : { model: m.id }); }}
+              className={'group-row press' + (active ? ' on' : '')}
+              onClick={() => { if (!active) { haptic('light'); onChange(agy ? { agyModel: m.id, agyEffort: '' } : { model: m.id }); } }}
             >
-              <span className="ellipsis">{m.label}</span>
-              {active && <Check size={16} />}
+              <span className="grow"><b className="ellipsis">{m.label}</b></span>
+              {active && <Check size={17} />}
             </button>
           );
         })}
@@ -1125,29 +1134,33 @@ function ModelPickerSheet({ chat, providers, onChange, onClose }) {
       {efforts?.length > 0 && (
         <>
           <div className="group-label">{t('chat.effort')}</div>
-          <div className="group pad row wrap" style={{ gap: 8 }}>
-            <button
-              type="button"
-              className={'chip press' + (!currentEffort ? ' on' : '')}
-              onClick={() => { haptic('light'); onChange(agy ? { agyEffort: '' } : { effort: '' }); }}
-            >
-              <span>{t('common.defaultEffort')}</span>
-              {!currentEffort && <Check size={14} />}
-            </button>
-            {efforts.map((e) => {
-              const active = currentEffort === e;
-              return (
-                <button
-                  key={e}
-                  type="button"
-                  className={'chip press' + (active ? ' on' : '')}
-                  onClick={() => { haptic('light'); onChange(agy ? { agyEffort: e } : { effort: e }); }}
-                >
-                  <span>{e}</span>
-                  {active && <Check size={14} />}
-                </button>
-              );
-            })}
+          <div className="group pad">
+            <div className="seg big seg-full-w" role="radiogroup" aria-label={t('chat.effort')}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!currentEffort}
+                className={!currentEffort ? 'on' : ''}
+                onClick={() => { if (currentEffort) { haptic('light'); onChange(agy ? { agyEffort: '' } : { effort: '' }); } }}
+              >
+                {capFirst(t('common.default'))}
+              </button>
+              {efforts.map((e) => {
+                const active = currentEffort === e;
+                return (
+                  <button
+                    key={e}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={active ? 'on' : ''}
+                    onClick={() => { if (!active) { haptic('light'); onChange(agy ? { agyEffort: e } : { effort: e }); } }}
+                  >
+                    {e}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </>
       )}
@@ -1619,7 +1632,9 @@ export default function Chat({ openMore, me }) {
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => {
     const prev = chatInfo;
-    if (b.bot && info) setChatInfo({ ...info, ...b });
+    if (info && (b.bot || 'provider' in b || 'model' in b || 'effort' in b || 'agyModel' in b || 'agyEffort' in b)) {
+      setChatInfo({ ...info, ...b });
+    }
     try { setChatInfo(await bridge.patchChat(current, b)); chats.reload(true); }
     catch (e) { setChatInfo(prev); toast(e.message, 'err'); }
   };

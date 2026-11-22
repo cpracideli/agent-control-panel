@@ -247,6 +247,10 @@ pre.logs { max-height: 65vh; min-height: 300px; }
 .group-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 9px 16px; background: transparent; color: var(--text); font-weight: 400; text-align: left; border-radius: 0; position: relative; white-space: normal; }
 .group-row:active:not(:disabled) { transform: none; background: var(--hover); }
 .group-row + .group-row::before { content: ''; position: absolute; top: 0; left: 57px; right: 0; height: .5px; background: var(--sep); }
+.group.no-ic .group-row + .group-row::before { left: 16px; }
+.group-row:disabled { opacity: .45; cursor: not-allowed; }
+.row-ic.ic-prov { background: var(--sunken); color: var(--text); }
+.seg.big.seg-full-w button { flex: 1 1 auto; padding-inline: 8px; min-width: 0; white-space: nowrap; }
 .group-row .grow { display: flex; flex-direction: column; }
 .group-row b { font-weight: 500; }
 .group-row small { font-size: 13px; line-height: 1.3; }
