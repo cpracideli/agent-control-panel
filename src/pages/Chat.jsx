@@ -9,6 +9,7 @@ import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfi
 import { BotAvatar } from './Bots.jsx';
 import CameraCapture from './CameraCapture.jsx';
 import { provName } from '../prov.js';
+import { ProvIcon, ProvMark } from '../ProvIcon.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress, useScreen } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
 
@@ -947,7 +948,7 @@ function Message({ m, chatId, onResend, onRetry, onQuote, onFork, onCorrect, bot
         <Md text={m.text} />
         <div className="msg-meta">
           {bot && bot.id !== 'default' && <span>{(bot.emoji ? bot.emoji + ' ' : '') + bot.name}</span>}
-          {m.provider && <span>{provName(m.provider)}</span>}
+          {m.provider && <ProvMark id={m.provider} size={13} />}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{t('chat.steps', { n: m.usage.turns })}</span> : null}
           {m.usage?.cost ? <span>{(m.usage.estimated || m.provider === 'antigravity' ? '~' : '') + f.usd(m.usage.cost)}</span> : null}
@@ -1612,7 +1613,7 @@ export default function Chat({ openMore, me }) {
                     {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
                     {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
                   </span>
-                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}{provName(c.provider)} · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
                 </LongPressButton>
                 <div className="chat-item-actions">
                   <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
@@ -1824,7 +1825,7 @@ export default function Chat({ openMore, me }) {
                 <CameraCapture onPhoto={(f) => addFiles([f])} />
                 {ml && (
                   <button type="button" className="model-pill press" onClick={() => setShowOpts(true)} aria-label={t('chat.model')}>
-                    <span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
+                    <ProvIcon id={info?.provider} size={14} /><span className="ellipsis">{ml.name}</span>{ml.effort && <span className="model-effort">{ml.effort}</span>}
                   </button>
                 )}
               </div>

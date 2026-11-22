@@ -2216,3 +2216,7 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity
 @media (prefers-reduced-motion: reduce) {
   .gsearch-bg, .gsearch-panel { animation: none !important; }
 }
+
+/* provider brand icons (Claude, Antigravity, Copilot, OpenCode) shown instead of the name */
+.prov-ic { flex: none; display: inline-block; vertical-align: -0.15em; }
+.msg-meta .prov-ic, .chat-item small .prov-ic { vertical-align: -0.2em; }

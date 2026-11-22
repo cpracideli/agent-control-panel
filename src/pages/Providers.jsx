@@ -4,6 +4,7 @@ import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { useNotifications } from '../notifications.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
+import { provIconFor } from '../ProvIcon.jsx';
 
 function ProactivityAndChannelsCard({ providers }) {
   const t = useT();
@@ -490,7 +491,7 @@ export default function Providers() {
 
           <div className="grid2">
             {data.providers.map((x) => (
-              <Card key={x.id} title={x.name} icon={Sparkles} actions={<Badge kind={x.installed ? 'ok' : 'err'}>{x.installed ? t('common.installed') : t('common.notInstalled')}</Badge>}>
+              <Card key={x.id} title={x.name} icon={(x.id === 'antigravity' || ['claude', 'copilot', 'opencode'].includes(x.id)) ? provIconFor(x.id) : Sparkles} actions={<Badge kind={x.installed ? 'ok' : 'err'}>{x.installed ? t('common.installed') : t('common.notInstalled')}</Badge>}>
                 <dl className="kv">
                   <dt>{t('pr.version')}</dt><dd className="mono">{x.version || '—'}</dd>
                   {x.auth && <><dt>{t('pr.auth')}</dt><dd>{x.authKind ? t('pr.auth.' + x.authKind) : x.auth}</dd></>}
