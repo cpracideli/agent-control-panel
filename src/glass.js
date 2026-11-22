@@ -32,12 +32,23 @@ function onDown(e) {
 }
 function onMove(e) {
   if (e.pointerType === 'mouse') {
-    // hover: re-measure only when the pointer enters another glass element
-    const el = target(e);
-    if (!el) { cur = null; return; }
-    if (!cur || cur.el !== el) cur = { el, rect: el.getBoundingClientRect() };
+    if (!cur) return;
+    // The target is tracked on pointerover/out; avoid selector and layout work on every move.
+    if (!cur.rect) cur.rect = cur.el.getBoundingClientRect();
   } else if (!cur || !held) return; // touch/pen: only while pressing the dock
   schedule(e);
+}
+function onEnter(e) {
+  if (e.pointerType !== 'mouse') return;
+  const el = target(e);
+  if (!el || cur?.el === el) return;
+  cur = { el, rect: el.getBoundingClientRect() };
+}
+function onLeave(e) {
+  if (e.pointerType !== 'mouse' || !cur) return;
+  if (e.relatedTarget instanceof Node && cur.el.contains(e.relatedTarget)) return;
+  cur = null;
+  pending = null;
 }
 function release() {
   if (held) { held.classList.remove('touching'); held = null; }
@@ -46,11 +57,13 @@ function release() {
 
 export function initGlass() {
   if (typeof window === 'undefined') return;
+  document.addEventListener('pointerover', onEnter, { passive: true });
+  document.addEventListener('pointerout', onLeave, { passive: true });
   document.addEventListener('pointermove', onMove, { passive: true });
   document.addEventListener('pointerdown', onDown, { passive: true });
   ['pointerup', 'pointercancel', 'blur'].forEach((t) => window.addEventListener(t, release, { passive: true }));
   // rects go stale when anything scrolls or resizes
-  const drop = () => { if (!held) cur = null; };
+  const drop = () => { if (cur) cur.rect = null; };
   window.addEventListener('scroll', drop, { passive: true, capture: true });
   window.addEventListener('resize', drop, { passive: true });
 }
@@ -198,10 +211,19 @@ export function initRefraction() {
   }).observe(document.body, { childList: true, subtree: true });
   scan();
 
-  let idle = 0;
-  const busy = () => { setPaused(true); clearTimeout(idle); idle = setTimeout(() => setPaused(false), 220); };
-  window.addEventListener('scroll', busy, { passive: true, capture: true });
-  window.addEventListener('touchmove', busy, { passive: true });
-  document.addEventListener('animationstart', busy, true);
-  document.addEventListener('transitionrun', (e) => { if (e.propertyName === 'transform') busy(); }, true);
+  let idle = 0, idleAt = 0;
+  const busy = (delay = 220) => {
+    setPaused(true);
+    idleAt = Math.max(idleAt, Date.now() + delay);
+    clearTimeout(idle);
+    idle = setTimeout(() => setPaused(false), idleAt - Date.now());
+  };
+  const onBusy = () => busy();
+  window.addEventListener('scroll', onBusy, { passive: true, capture: true });
+  window.addEventListener('touchmove', onBusy, { passive: true });
+  document.addEventListener('animationstart', (e) => {
+    if (e.target.matches?.('.screen.enter-push, .screen.leave-push, .screen.leave-pop, .screen.enter-pop')) busy(500);
+    else busy();
+  }, true);
+  document.addEventListener('transitionrun', (e) => { if (e.propertyName === 'transform') busy(500); }, true);
 }

@@ -596,6 +596,9 @@ button.mem-row { white-space: normal; width: 100%; background: transparent; colo
   -webkit-backdrop-filter: var(--lg-filter); backdrop-filter: var(--lg-filter);
 }
 .glass-bar { background: var(--lg-tint-strong) !important; -webkit-backdrop-filter: var(--lg-filter-strong); backdrop-filter: var(--lg-filter-strong); }
+@media (pointer: coarse) {
+  :root { --lg-filter: blur(10px) saturate(160%); --lg-filter-strong: blur(12px) saturate(160%); }
+}
 /* specular rim: a 1px gradient ring that catches light top-left and bottom-right */
 .glass-btn::after, .glass-bar::after, .dock-capsule::after, .toast::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
@@ -1916,12 +1919,20 @@ kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; bord
 .mg-node:focus-visible circle.mg-dot { stroke: var(--accent, #0a84ff); stroke-width: 3; }
 .mg-detail { margin: 12px 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow: auto; overflow-wrap: anywhere; }
 
-/* Usage: today / 7-day summary table and collapsible budget settings */
+/* Usage: provider totals and collapsible budget settings */
 .use-sum { width: 100%; border-collapse: collapse; }
 .use-sum th, .use-sum td { text-align: left; padding: 7px 8px; border-bottom: .5px solid var(--sep); white-space: nowrap; }
 .use-sum thead th { color: var(--muted); font-weight: 500; }
 .use-sum tbody tr:last-child th, .use-sum tbody tr:last-child td { border-bottom: 0; }
 .use-sum th[scope=row] { font-weight: 600; width: 1%; padding-right: 16px; }
+.usage-provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.usage-provider { min-width: 0; padding: 12px; border-radius: 14px; background: var(--card-2); }
+.usage-provider h4 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.usage-provider-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.usage-provider-metrics > div { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.usage-provider-metrics .small { font-size: 11px; }
+.usage-provider-metrics b { overflow: hidden; text-overflow: ellipsis; font-size: 14px; font-variant-numeric: tabular-nums; }
+.usage-provider-empty { margin: 8px 0 0; }
 .use-sub { padding-top: 10px; border-top: .5px solid var(--sep); }
 .use-settings { border-top: .5px solid var(--sep); padding-top: 10px; }
 .use-settings summary { cursor: pointer; color: var(--accent, #0a84ff); font-size: 14px; font-weight: 500; list-style: none; }

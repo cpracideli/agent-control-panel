@@ -390,7 +390,7 @@ async function ensureVapid(panelOrigin = '') {
       const cfg = await r.json();
       if (cfg?.vapid?.publicKey && cfg?.vapid?.privateKey) {
         vapidCache = cfg.vapid;
-        webpush.setVapidDetails('mailto:admin@agent-control.local', vapidCache.publicKey, vapidCache.privateKey);
+        webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:cpracideli@gmail.com', vapidCache.publicKey, vapidCache.privateKey);
         return vapidCache;
       }
     }
@@ -402,7 +402,7 @@ async function ensureVapid(panelOrigin = '') {
     });
     if (saveRes.ok) {
       vapidCache = keys;
-      webpush.setVapidDetails('mailto:admin@agent-control.local', vapidCache.publicKey, vapidCache.privateKey);
+      webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:cpracideli@gmail.com', vapidCache.publicKey, vapidCache.privateKey);
       return vapidCache;
     }
   } catch (e) {
