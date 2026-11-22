@@ -1882,3 +1882,16 @@ kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; bord
 .mg-node.dim { opacity: .3; }
 .mg-node:focus-visible circle { stroke: var(--accent, #0a84ff); stroke-width: 3; }
 .mg-detail { margin: 12px 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow: auto; }
+
+/* Usage: today / 7-day summary table and collapsible budget settings */
+.use-sum { width: 100%; border-collapse: collapse; }
+.use-sum th, .use-sum td { text-align: left; padding: 7px 8px; border-bottom: .5px solid var(--sep); white-space: nowrap; }
+.use-sum thead th { color: var(--muted); font-weight: 500; }
+.use-sum tbody tr:last-child th, .use-sum tbody tr:last-child td { border-bottom: 0; }
+.use-sum th[scope=row] { font-weight: 600; width: 1%; padding-right: 16px; }
+.use-sub { padding-top: 10px; border-top: .5px solid var(--sep); }
+.use-settings { border-top: .5px solid var(--sep); padding-top: 10px; }
+.use-settings summary { cursor: pointer; color: var(--accent, #0a84ff); font-size: 14px; font-weight: 500; list-style: none; }
+.use-settings summary::-webkit-details-marker { display: none; }
+.use-settings[open] summary { margin-bottom: 12px; }
+@media (max-width: 520px) { .use-sum td .muted { display: none; } }

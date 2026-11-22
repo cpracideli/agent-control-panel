@@ -1,12 +1,13 @@
-// Usage: plan limits right now (Claude session/week, Antigravity quota pools) and token history per day/week.
+// Usage: plan limits right now, month spend (forecast, per bot, per routine, budget settings) and history.
+// Each number appears once: limits as meters, spend in one card, today/7d in the history summary.
 import { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Download, Gauge, Save, Sparkles, Wallet } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Skeleton, useAction, useFmt, useLoad } from '../ui.jsx';
-import { ListGroup, Row, useIsMobile } from '../native.jsx';
-import UsageDash from './UsageDash.jsx';
+import { ListGroup, useIsMobile } from '../native.jsx';
 
+const band = (p) => (p < 60 ? 'ok' : p < 85 ? 'warn' : 'err');
 const compact = (lang, n) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: n >= 1e6 ? 1 : 0 }).format(n || 0);
 const level = (p) => (p >= 95 ? 'err' : p >= 80 ? 'warn' : 'ok');
 
@@ -99,58 +100,102 @@ function BarChart({ title, rows, color, render, empty, fmtMax }) {
   );
 }
 
+// Month spend in one place: progress vs. ceiling, where the money goes (bots, routines) and the budget form (collapsed).
 function SpendingCard({ spending, routineForecasts, onSaved }) {
   const f = useFmt();
   const [monthlyLimitUsd, setMonthly] = useState(spending?.monthlyLimitUsd ?? 0);
   const [taskAlertUsd, setAlert] = useState(spending?.taskAlertUsd ?? 5);
   const [pauseRoutinesOnLimit, setPause] = useState(Boolean(spending?.pauseRoutinesOnLimit));
   const [busy, run] = useAction();
-  const pct = spending?.monthlyLimitUsd > 0 ? Math.min(100, Math.round((spending.monthSpendUsd / spending.monthlyLimitUsd) * 100)) : 0;
+  const tasks = useLoad(() => bridge.tasks(), [], { interval: 60000 });
+  const byBot = useMemo(() => {
+    const m = new Map();
+    for (const t of Array.isArray(tasks.data) ? tasks.data : []) {
+      const k = t.botName || t.bot || '—';
+      const x = m.get(k) || { name: k, cost: 0, n: 0 };
+      x.cost += t.cost || 0; x.n += 1; m.set(k, x);
+    }
+    return [...m.values()].filter((b) => b.cost > 0).sort((a, b) => b.cost - a.cost).slice(0, 8);
+  }, [tasks.data]);
+  const lim = spending.monthlyLimitUsd || 0;
+  const pct = (v) => (lim > 0 ? Math.min(100, (v / lim) * 100) : 0);
+  const maxBot = Math.max(0.0001, ...byBot.map((b) => b.cost));
+  const routines = (routineForecasts || []).filter((r) => r.projectedMonthlyUsd > 0);
   const save = async (e) => {
     e.preventDefault();
     const r = await run('sp', () => bridge.settings({ spending: { monthlyLimitUsd: Number(monthlyLimitUsd) || 0, taskAlertUsd: Number(taskAlertUsd) || 0, pauseRoutinesOnLimit } }), 'Orçamento atualizado');
     if (r) onSaved?.();
   };
   return (
-    <Card title="Orçamento mensal & Auditoria" icon={Wallet} actions={
-      <a className="btn ghost small" href={bridge.auditCsvUrl(1000)} download="agent-control-audit.csv">
-        <Download size={14} /> Exportar Auditoria CSV
-      </a>
+    <Card title={`Gasto do mês (${spending.month})`} icon={Wallet} actions={
+      <a className="btn ghost small" href={bridge.auditCsvUrl(1000)} download="agent-control-audit.csv"><Download size={14} /> CSV</a>
     }>
       <div className="stack">
-        <div className="stats">
-          <div className="stat"><small>Gasto no mês ({spending?.month})</small><b>{f.usd(spending?.monthSpendUsd || 0)}</b><small>{spending?.monthRuns || 0} execuções</small></div>
-          <div className="stat"><small>Projeção do mês</small><b>{f.usd(spending?.monthForecastUsd || 0)}</b><small>{spending?.monthlyLimitUsd > 0 ? `Teto: ${f.usd(spending.monthlyLimitUsd)} (${pct}%)` : 'Sem teto definido'}</small></div>
+        <div className="forecast">
+          <div className="fc-nums">
+            <span>Gasto <b>{f.usd(spending.monthSpendUsd || 0)}</b> <span className="muted small">· {spending.monthRuns || 0} execuções</span></span>
+            <span>Previsão <b>{f.usd(spending.monthForecastUsd || 0)}</b></span>
+            <span>{lim > 0 ? <>Teto <b>{f.usd(lim)}</b> <span className="muted small">({Math.round(pct(spending.monthSpendUsd))}%)</span></> : <span className="muted">Sem teto</span>}</span>
+          </div>
+          {lim > 0 && (
+            <div className="fc-bar" aria-hidden style={{ marginTop: 8 }}>
+              <span className="fc-fore" style={{ width: pct(spending.monthForecastUsd) + '%' }} />
+              <span className={'fc-spent ' + band(pct(spending.monthSpendUsd))} style={{ width: pct(spending.monthSpendUsd) + '%' }} />
+            </div>
+          )}
         </div>
-        {spending?.limitReached && (
-          <div className="banner warn" style={{ borderRadius: 10 }}>
-            <AlertTriangle size={15} /><span>Teto mensal atingido ({f.usd(spending.monthSpendUsd)} / {f.usd(spending.monthlyLimitUsd)}).</span>
+        {byBot.length > 0 && (
+          <div className="stack use-sub">
+            <b className="small muted">Por bot (tarefas recentes)</b>
+            {byBot.map((b) => (
+              <div key={b.name} className="botbar">
+                <span className="ellipsis">{b.name}</span>
+                <span className="botbar-track"><span style={{ width: (b.cost / maxBot) * 100 + '%' }} /></span>
+                <b className="small">{f.usd(b.cost)}</b>
+              </div>
+            ))}
           </div>
         )}
-        <form className="stack" onSubmit={save}>
-          <div className="form-grid">
-            <Field label="Teto mensal (USD)" hint="0 = sem limite"><input type="number" step="0.5" min="0" value={monthlyLimitUsd} onChange={(e) => setMonthly(e.target.value)} /></Field>
-            <Field label="Alerta por tarefa (USD)" hint="Avisa se uma tarefa passar deste valor"><input type="number" step="0.5" min="0" value={taskAlertUsd} onChange={(e) => setAlert(e.target.value)} /></Field>
-          </div>
-          <label className="check">
-            <input type="checkbox" checked={pauseRoutinesOnLimit} onChange={(e) => setPause(e.target.checked)} />
-            <span>Pausar rotinas automáticas não urgentes ao atingir o teto mensal</span>
-          </label>
-          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'sp'}>Salvar orçamento</Btn></div>
-        </form>
-        {routineForecasts?.some((r) => r.projectedMonthlyUsd > 0) && (
-          <div className="stack">
-            <b className="small muted">Projeção mensal por rotina</b>
-            {routineForecasts.filter((r) => r.projectedMonthlyUsd > 0).map((r) => (
+        {routines.length > 0 && (
+          <div className="stack use-sub">
+            <b className="small muted">Projeção por rotina</b>
+            {routines.map((r) => (
               <div key={r.id} className="list-row">
-                <div className="grow"><b>#{r.id} · {r.description}</b><div className="muted small">~{r.estMonthlyRuns} exec/mês · média {f.usd(r.avgCostUsd)}</div></div>
+                <div className="grow"><b>{r.description}</b><div className="muted small">~{r.estMonthlyRuns} exec/mês · média {f.usd(r.avgCostUsd)}</div></div>
                 <Badge>{f.usd(r.projectedMonthlyUsd)}/mês</Badge>
               </div>
             ))}
           </div>
         )}
+        <details className="use-settings">
+          <summary>Configurar teto e alertas</summary>
+          <form className="stack" onSubmit={save}>
+            <div className="form-grid">
+              <Field label="Teto mensal (USD)" hint="0 = sem limite"><input type="number" step="0.5" min="0" value={monthlyLimitUsd} onChange={(e) => setMonthly(e.target.value)} /></Field>
+              <Field label="Alerta por tarefa (USD)" hint="Avisa se uma tarefa passar deste valor"><input type="number" step="0.5" min="0" value={taskAlertUsd} onChange={(e) => setAlert(e.target.value)} /></Field>
+            </div>
+            <label className="check">
+              <input type="checkbox" checked={pauseRoutinesOnLimit} onChange={(e) => setPause(e.target.checked)} />
+              <span>Pausar rotinas automáticas não urgentes ao atingir o teto</span>
+            </label>
+            <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'sp'}>Salvar</Btn></div>
+          </form>
+        </details>
       </div>
     </Card>
+  );
+}
+
+function BudgetAlert({ sp }) {
+  const f = useFmt();
+  const lim = sp?.monthlyLimitUsd || 0;
+  if (!sp || lim <= 0 || (sp.monthSpendUsd <= lim && sp.monthForecastUsd <= lim)) return null;
+  const over = sp.monthSpendUsd > lim;
+  return (
+    <div className={'banner usage-alert ' + (over ? 'over' : 'warn')} role="alert">
+      <AlertTriangle size={16} />
+      <span>{over ? `Teto mensal estourado: ${f.usd(sp.monthSpendUsd)} de ${f.usd(lim)}.` : `A previsão do mês (${f.usd(sp.monthForecastUsd)}) passa do teto de ${f.usd(lim)}.`}</span>
+    </div>
   );
 }
 
@@ -187,9 +232,10 @@ export default function Usage() {
   const today = d?.days.at(-1);
   const tok = (n) => compact(lang, n) + ' tokens';
   const claudeLabel = { session: t('use.session'), weekly: t('use.weekly'), weekly_opus: t('use.weeklyOpus'), weekly_sonnet: t('use.weeklySonnet') };
+  const fmtEstUsd = (v) => '~' + f.usd(v || 0);
 
   const segs = (
-    <div className="dash-seg">
+    <div className="row wrap">
       <div className="seg">
         <button type="button" className={metric === 'tokens' ? 'on' : ''} onClick={() => setMetric('tokens')}>{t('use.metricTokens')}</button>
         <button type="button" className={metric === 'cost' ? 'on' : ''} onClick={() => setMetric('cost')}>{t('use.metricCost')}</button>
@@ -200,7 +246,27 @@ export default function Usage() {
       </div>
     </div>
   );
-  const fmtEstUsd = (v) => '~' + f.usd(v || 0);
+
+  // Today / last 7 days per provider in one compact table instead of six tiles.
+  const summary = d && today && (
+    <table className="use-sum small">
+      <thead><tr><th /><th>{t('use.today')}</th><th>{t('use.last7')}</th></tr></thead>
+      <tbody>
+        {[
+          ['Claude', (x) => x.claude.tokens, (x) => x.claude.msgs, 'use.msgs'],
+          ['Antigravity', (x) => x.antigravity.tokens, (x) => x.antigravity.runs, 'use.runs'],
+          ['Copilot', (x) => x.copilot?.tokens || 0, (x) => x.copilot?.runs || 0, 'use.runs'],
+        ].map(([name, tk, n, key]) => (
+          <tr key={name}>
+            <th scope="row">{name}</th>
+            <td><b>{compact(lang, tk(today))}</b> <span className="muted">· {t(key, { n: n(today) })}</span></td>
+            <td><b>{compact(lang, sum(7, tk))}</b> <span className="muted">· {t(key, { n: sum(7, n) })}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   const charts = series && (
     <div className="stack">
       <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
@@ -210,44 +276,40 @@ export default function Usage() {
         fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
         render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
         empty={t('use.agyEmpty')} />
-      <BarChart title="GitHub Copilot" color="var(--chart-3, #6366f1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.cp.tokens, raw: r.cp }))}
-        render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
-        empty="Sem chamadas do Copilot registradas no período." />
+      {metric === 'tokens' && series.some((r) => r.cp.tokens) && (
+        <BarChart title="GitHub Copilot" color="var(--chart-3, #6366f1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.cp.tokens, raw: r.cp }))}
+          render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
+          empty="Sem chamadas do Copilot no período." />
+      )}
     </div>
   );
   const note = d && <>{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</>;
+
+  const claudeMeters = d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />);
+  const agyMeters = d?.antigravity.groups?.map((g) => (
+    <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
+  ));
+  const spending = d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />;
 
   if (mobile) {
     return (
       <div className="page page-list">
         <ErrorBox error={u.error} onRetry={() => u.reload()} />
-        <UsageDash d={d} />
+        <BudgetAlert sp={d?.spending} />
         <ListGroup title={<span className="with-ic">Claude {d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}</span>}
           footer={d && <LimitStatus v={d.claude} as="span" />}>
-          {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
+          {claudeMeters}
           {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
         </ListGroup>
         <ListGroup title={<span className="with-ic">Antigravity {d?.antigravity.tier && <Badge>{d.antigravity.tier}</Badge>}</span>}
           footer={d && <LimitStatus v={d.antigravity} as="span" />}>
-          {d?.antigravity.groups?.map((g) => (
-            <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
-          ))}
+          {agyMeters}
           {!d && !u.error && <Skeleton rows={2} avatar={false} className="pad-row" />}
         </ListGroup>
-        {d && (
-          <ListGroup title={t('use.tokens')}>
-            <Row icon={Gauge} tint="ic-overview" label={'Claude · ' + t('use.today')} sub={t('use.msgs', { n: today.claude.msgs })} value={<b>{tok(today.claude.tokens)}</b>} />
-            <Row icon={Gauge} tint="ic-overview" label={'Claude · ' + t('use.last7')} sub={t('use.msgs', { n: sum(7, (x) => x.claude.msgs) })} value={<b>{tok(sum(7, (x) => x.claude.tokens))}</b>} />
-            <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.today')} sub={t('use.runs', { n: today.antigravity.runs })} value={<b>{tok(today.antigravity.tokens)}</b>} />
-            <Row icon={Sparkles} tint="ic-memory" label={'Antigravity · ' + t('use.last7')} sub={t('use.runs', { n: sum(7, (x) => x.antigravity.runs) })} value={<b>{tok(sum(7, (x) => x.antigravity.tokens))}</b>} />
-            <Row icon={Gauge} tint="ic-providers" label={'GitHub Copilot · ' + t('use.today')} sub={t('use.runs', { n: today.copilot?.runs || 0 })} value={<b>{tok(today.copilot?.tokens || 0)}</b>} />
-            <Row icon={Gauge} tint="ic-providers" label={'GitHub Copilot · ' + t('use.last7')} sub={t('use.runs', { n: sum(7, (x) => x.copilot?.runs || 0) })} value={<b>{tok(sum(7, (x) => x.copilot?.tokens || 0))}</b>} />
-          </ListGroup>
-        )}
+        {spending}
         <ListGroup title={t('use.history')} footer={note}>
-          <div className="group-form stack">{segs}{charts}</div>
+          <div className="group-form stack">{summary}{segs}{charts}</div>
         </ListGroup>
-        {d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />}
       </div>
     );
   }
@@ -255,61 +317,27 @@ export default function Usage() {
   return (
     <div className="page">
       <ErrorBox error={u.error} onRetry={() => u.reload()} />
-      <UsageDash d={d} />
-
+      <BudgetAlert sp={d?.spending} />
       <div className="grid2">
         <Card title="Claude" icon={Gauge} actions={d?.claude.plan && <Badge>{d.claude.plan.toUpperCase()}</Badge>}>
           {d && <LimitStatus v={d.claude} />}
-          {d?.claude.limits?.map((l) => <Meter key={l.kind} label={claudeLabel[l.kind] || l.kind} percent={l.percent} resetsAt={l.resetsAt} />)}
-          {!d && !u.error && <p className="muted">…</p>}
+          {claudeMeters}
+          {!d && !u.error && <Skeleton rows={2} avatar={false} />}
         </Card>
         <Card title="Antigravity" icon={Sparkles} actions={d?.antigravity.tier && <Badge>{d.antigravity.tier}</Badge>}>
           {d && <LimitStatus v={d.antigravity} />}
-          {d?.antigravity.groups?.map((g) => (
-            <Meter key={g.label + g.resetsAt} label={g.label} percent={g.percent} resetsAt={g.resetsAt} sub={t('use.models', { n: g.models.length })} />
-          ))}
-          {!d && !u.error && <p className="muted">…</p>}
+          {agyMeters}
+          {!d && !u.error && <Skeleton rows={2} avatar={false} />}
         </Card>
       </div>
-
-      {d && (
-        <div className="stats">
-          <div className="stat"><small>Claude · {t('use.today')}</small><b>{tok(today.claude.tokens)}</b><small>{t('use.msgs', { n: today.claude.msgs })}</small></div>
-          <div className="stat"><small>Claude · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.claude.tokens))}</b><small>{t('use.msgs', { n: sum(7, (x) => x.claude.msgs) })}</small></div>
-          <div className="stat"><small>Antigravity · {t('use.today')}</small><b>{tok(today.antigravity.tokens)}</b><small>{t('use.runs', { n: today.antigravity.runs })}</small></div>
-          <div className="stat"><small>Antigravity · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.antigravity.tokens))}</b><small>{t('use.runs', { n: sum(7, (x) => x.antigravity.runs) })}</small></div>
-          <div className="stat"><small>GitHub Copilot · {t('use.today')}</small><b>{tok(today.copilot?.tokens || 0)}</b><small>{t('use.runs', { n: today.copilot?.runs || 0 })}</small></div>
-          <div className="stat"><small>GitHub Copilot · {t('use.last7')}</small><b>{tok(sum(7, (x) => x.copilot?.tokens || 0))}</b><small>{t('use.runs', { n: sum(7, (x) => x.copilot?.runs || 0) })}</small></div>
+      {spending}
+      <Card title={t('use.history')} icon={BarChart3} actions={segs}>
+        <div className="stack">
+          {summary}
+          {charts}
+          {d && <p className="muted small">{note}</p>}
         </div>
-      )}
-
-      <Card title={t('use.history')} icon={BarChart3} actions={<div className="row wrap">
-        <div className="seg">
-          <button type="button" className={metric === 'tokens' ? 'on' : ''} onClick={() => setMetric('tokens')}>{t('use.metricTokens')}</button>
-          <button type="button" className={metric === 'cost' ? 'on' : ''} onClick={() => setMetric('cost')}>{t('use.metricCost')}</button>
-        </div>
-        <div className="seg">
-          <button type="button" className={range === 'day' ? 'on' : ''} onClick={() => setRange('day')}>{t('use.days')}</button>
-          <button type="button" className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>{t('use.weeks')}</button>
-        </div>
-      </div>}>
-        {series && (
-          <div className="stack">
-            <BarChart title="Claude" color="var(--chart-1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.c.cost || 0) : r.c.tokens, raw: r.c }))}
-              fmtMax={metric === 'cost' ? (v) => f.usd(v) : undefined}
-              render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? f.usd(r.value) : tok(r.value)} · {t('use.msgs', { n: r.raw.msgs })}</>} />
-            <BarChart title={metric === 'cost' ? 'Antigravity (' + t('use.estimated') + ')' : 'Antigravity'} color="var(--chart-2)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: metric === 'cost' ? (r.a.cost || 0) : r.a.tokens, raw: r.a }))}
-              fmtMax={metric === 'cost' ? fmtEstUsd : undefined}
-              render={(r) => <><b>{r.label}</b> · {metric === 'cost' ? fmtEstUsd(r.value) : tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
-              empty={t('use.agyEmpty')} />
-            <BarChart title="GitHub Copilot" color="var(--chart-3, #6366f1)" rows={series.map((r) => ({ key: r.key, label: r.label, short: r.short, value: r.cp.tokens, raw: r.cp }))}
-              render={(r) => <><b>{r.label}</b> · {tok(r.value)} · {t('use.runs', { n: r.raw.runs })}</>}
-              empty="Sem chamadas do Copilot registradas no período." />
-            <p className="muted small">{t('use.note')}{d.historySince?.antigravity ? ' ' + t('use.agySince', { d: new Date(d.historySince.antigravity).toLocaleDateString(lang) }) : ' ' + t('use.agyFromNow')}</p>
-          </div>
-        )}
       </Card>
-      {d?.spending && <SpendingCard spending={d.spending} routineForecasts={d.routineForecasts} onSaved={() => u.reload(true)} />}
     </div>
   );
 }
