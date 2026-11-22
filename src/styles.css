@@ -1895,3 +1895,112 @@ kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; bord
 .use-settings summary::-webkit-details-marker { display: none; }
 .use-settings[open] summary { margin-bottom: 12px; }
 @media (max-width: 520px) { .use-sum td .muted { display: none; } }
+
+/* =====================================================================
+   Sheets, modals & menus: Apple HIG materials (rev. 2026-11-21)
+   Popovers/sheets carry lots of text, so HIG asks for the *regular/thick*
+   material (not clear glass). In dark mode the foreground layer uses the
+   *elevated* backgrounds (#1C1C1E base, #2C2C2E groups) so it separates
+   from the pure-black page. The scrim is lighter in light mode so the
+   page dims instead of turning muddy gray.
+   ===================================================================== */
+:root {
+  --scrim: rgba(0, 0, 0, .22);
+  --sheet-bg: rgba(242, 242, 247, .94);       /* systemGroupedBackground, thick */
+  --sheet-group: #ffffff;                      /* secondarySystemGroupedBackground */
+  --sheet-group-2: #f2f2f7;
+  --sheet-edge: rgba(0, 0, 0, .06);
+  --sheet-filter: blur(40px) saturate(180%);
+  --sheet-shadow: 0 0 0 .5px var(--sheet-edge), 0 24px 64px -12px rgba(0, 0, 0, .22), 0 4px 14px -4px rgba(0, 0, 0, .08);
+  --menu-bg: rgba(249, 249, 251, .86);
+  --menu-sep: rgba(60, 60, 67, .18);
+}
+:root[data-theme="dark"] {
+  --scrim: rgba(0, 0, 0, .5);
+  --sheet-bg: rgba(28, 28, 30, .96);           /* systemBackground elevated */
+  --sheet-group: #2c2c2e;                      /* secondarySystemBackground elevated */
+  --sheet-group-2: #3a3a3c;
+  --sheet-edge: rgba(255, 255, 255, .1);
+  --sheet-shadow: 0 0 0 .5px var(--sheet-edge), inset 0 .5px 0 rgba(255, 255, 255, .08), 0 24px 64px -12px rgba(0, 0, 0, .7);
+  --menu-bg: rgba(37, 37, 40, .9);
+  --menu-sep: rgba(84, 84, 88, .55);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) {
+    --scrim: rgba(0, 0, 0, .5);
+    --sheet-bg: rgba(28, 28, 30, .96);
+    --sheet-group: #2c2c2e;
+    --sheet-group-2: #3a3a3c;
+    --sheet-edge: rgba(255, 255, 255, .1);
+    --sheet-shadow: 0 0 0 .5px var(--sheet-edge), inset 0 .5px 0 rgba(255, 255, 255, .08), 0 24px 64px -12px rgba(0, 0, 0, .7);
+    --menu-bg: rgba(37, 37, 40, .9);
+    --menu-sep: rgba(84, 84, 88, .55);
+  }
+}
+
+:root:not([data-theme="terminal"]) .sheet-bg,
+:root:not([data-theme="terminal"]) .modal-bg,
+:root:not([data-theme="terminal"]) .asheet-bg,
+:root:not([data-theme="terminal"]) .doc-bg { background: var(--scrim); }
+
+/* the sheet itself: one consistent, legible material everywhere */
+:root:not([data-theme="terminal"]) .sheet,
+:root:not([data-theme="terminal"]) .modal {
+  background: var(--sheet-bg) !important;
+  -webkit-backdrop-filter: var(--sheet-filter) !important; backdrop-filter: var(--sheet-filter) !important;
+  box-shadow: var(--sheet-shadow) !important;
+  color: var(--text);
+  /* everything that reads --card inside a sheet sits one level up */
+  --card: var(--sheet-group); --card-2: var(--sheet-group-2);
+}
+:root:not([data-theme="terminal"]) .sheet .group,
+:root:not([data-theme="terminal"]) .modal .group,
+:root:not([data-theme="terminal"]) .modal .card,
+:root:not([data-theme="terminal"]) .modal .dock-preview-bar { background: var(--sheet-group); }
+:root:not([data-theme="terminal"]) .modal input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+:root:not([data-theme="terminal"]) .modal select,
+:root:not([data-theme="terminal"]) .modal textarea,
+:root:not([data-theme="terminal"]) .sheet-body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+:root:not([data-theme="terminal"]) .sheet-body textarea { background-color: var(--sheet-group); }
+/* iOS switch track (systemFill) stays visible on elevated groups */
+:root:not([data-theme="terminal"]) :is(.sheet, .modal) input[type="checkbox"]:not(:checked) { background: rgba(120, 120, 128, .2); }
+:root[data-theme="dark"] :is(.sheet, .modal) input[type="checkbox"]:not(:checked) { background: rgba(120, 120, 128, .36); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="terminal"]) :is(.sheet, .modal) input[type="checkbox"]:not(:checked) { background: rgba(120, 120, 128, .36); } }
+:root:not([data-theme="terminal"]) .sheet .group select,
+:root:not([data-theme="terminal"]) .modal .group select { background-color: var(--sheet-group-2); }
+.sheet .group-label { color: var(--muted); }
+.sheet-h h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.sheet-close { background: var(--sunken) !important; color: var(--muted) !important; box-shadow: none !important; }
+.sheet-grab { background: color-mix(in srgb, var(--muted) 45%, transparent) !important; }
+
+/* sheets cover the tab bar (HIG): never let the dock float over an open sheet */
+body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg) .dock { opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
+
+/* action sheet & context menu: same material family */
+:root:not([data-theme="terminal"]) .asheet-group {
+  background: var(--menu-bg) !important;
+  -webkit-backdrop-filter: var(--sheet-filter); backdrop-filter: var(--sheet-filter);
+  box-shadow: 0 0 0 .5px var(--sheet-edge), 0 18px 48px -12px rgba(0, 0, 0, .35);
+}
+:root:not([data-theme="terminal"]) .asheet-btn.cancel { background: var(--sheet-group); }
+:root:not([data-theme="terminal"]) .asheet-msg { border-bottom-color: var(--menu-sep); }
+:root:not([data-theme="terminal"]) .ctx-bg { background: color-mix(in srgb, var(--scrim) 60%, transparent); }
+:root:not([data-theme="terminal"]) .ctx-menu {
+  background: var(--menu-bg) !important;
+  -webkit-backdrop-filter: var(--sheet-filter); backdrop-filter: var(--sheet-filter);
+  box-shadow: 0 0 0 .5px var(--sheet-edge), 0 20px 50px -12px rgba(0, 0, 0, .35);
+}
+:root:not([data-theme="terminal"]) .ctx-item + .ctx-item { box-shadow: inset 0 .5px 0 var(--menu-sep); }
+:root:not([data-theme="terminal"]) .ctx-title { border-bottom-color: var(--menu-sep); }
+
+/* Increase Contrast / Reduce Transparency: fully opaque, hairline edges */
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-theme="terminal"]) .sheet, :root:not([data-theme="terminal"]) .modal,
+  :root:not([data-theme="terminal"]) .ctx-menu, :root:not([data-theme="terminal"]) .asheet-group {
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  }
+  :root:not([data-theme="terminal"]) .sheet, :root:not([data-theme="terminal"]) .modal { background: var(--bg) !important; }
+}
+@media (prefers-contrast: more) {
+  :root:not([data-theme="terminal"]) .sheet, :root:not([data-theme="terminal"]) .modal { box-shadow: 0 0 0 1px var(--sep) !important; }
+}
