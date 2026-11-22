@@ -420,6 +420,14 @@ function OpencodeBody({ oc, lang, f, t }) {
           <p className="small muted" style={{ margin: 0 }}>{t('use.ocFreeMode')}</p>
         </>
       )}
+      {oc.estimate && oc.estimate.percent != null && (
+        <Meter
+          label={t('use.ocEstimate', { h: oc.estimate.windowHours })}
+          percent={oc.estimate.percent}
+          resetsAt={oc.estimate.freesAt || undefined}
+          sub={oc.estimate.limit ? t('use.ocEstimateSub', { used: oc.estimate.used, limit: oc.estimate.limit, n: oc.estimate.samples }) : undefined}
+        />
+      )}
       {hasActivity ? (
         <div className="usage-card-meta">
           <div className="usage-inline-metrics">
