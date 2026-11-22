@@ -6,7 +6,7 @@ import { useNotifications } from '../notifications.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
 import { provIconFor } from '../ProvIcon.jsx';
 
-function ProactivityAndChannelsCard({ providers }) {
+function ProactivityAndChannelsCard({ providers, part }) {
   const t = useT();
   const notif = useNotifications();
   const cfg = useLoad(() => bridge.getSettings(), []);
@@ -54,7 +54,7 @@ function ProactivityAndChannelsCard({ providers }) {
   const s = cfg.data || {};
   return (
     <div className="grid2">
-      <Card title="Proatividade & Horário de Silêncio" icon={Moon}>
+      {part === 'auto' && <Card title="Proatividade & Horário de Silêncio" icon={Moon}>
         <div className="stack">
           <label className="check">
             <input type="checkbox" checked={Boolean(qh.enabled)} onChange={(e) => setQh({ ...qh, enabled: e.target.checked })} />
@@ -108,9 +108,9 @@ function ProactivityAndChannelsCard({ providers }) {
           </div>
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'byom'} onClick={saveByom}>Salvar BYOM</Btn></div>
         </div>
-      </Card>
+      </Card>}
 
-      <Card title="Segurança (PIN), Web Push & Telegram" icon={Shield}>
+      {part === 'canais' && <Card title="Segurança (PIN), Web Push & Telegram" icon={Shield}>
         <div className="stack">
           <div className="row wrap">
             <Lock size={14} className="muted" />
@@ -149,11 +149,9 @@ function ProactivityAndChannelsCard({ providers }) {
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
 
-          <div className="row wrap">
-            <Send size={14} className="muted" />
-            <b>Canal Telegram (polling)</b>
+          <details className="acc"><summary><Send size={14} className="muted" /><b>Canal Telegram (polling)</b>
             <Badge kind={s.telegram?.running ? 'ok' : 'muted'}>{s.telegram?.running ? '@' + (s.telegram.botUsername || 'ativo') : 'Desligado'}</Badge>
-          </div>
+          </summary><div className="stack acc-body">
           <label className="check">
             <input type="checkbox" checked={Boolean(tg.enabled)} onChange={(e) => setTg({ ...tg, enabled: e.target.checked })} />
             <span>Habilitar bot do Telegram (mesmos bots, memória e botões inline para aprovações)</span>
@@ -164,14 +162,10 @@ function ProactivityAndChannelsCard({ providers }) {
           </div>
           {s.telegram?.error && <p className="err small" style={{ margin: 0 }}>{s.telegram.error}</p>}
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'tg'} onClick={saveTg}>Salvar Telegram</Btn></div>
-
-          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-
-          <div className="row wrap">
-            <Send size={14} className="muted" />
-            <b>Canal Discord (Gateway WS)</b>
+          </div></details>
+          <details className="acc"><summary><Send size={14} className="muted" /><b>Canal Discord (Gateway WS)</b>
             <Badge kind={s.discord?.running ? 'ok' : 'muted'}>{s.discord?.running ? '@' + (s.discord.botUsername || 'online') : 'Desligado'}</Badge>
-          </div>
+          </summary><div className="stack acc-body">
           <label className="check">
             <input type="checkbox" checked={Boolean(dc.enabled)} onChange={(e) => setDc({ ...dc, enabled: e.target.checked })} />
             <span>Habilitar bot do Discord (com botões interativos para aprovações)</span>
@@ -182,14 +176,10 @@ function ProactivityAndChannelsCard({ providers }) {
             <Field label="Channel IDs (opcional)"><input value={dc.allowedChannels} onChange={(e) => setDc({ ...dc, allowedChannels: e.target.value })} placeholder="DMs sempre aceitas se user permitido" /></Field>
           </div>
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'dc'} onClick={saveDc}>Salvar Discord</Btn></div>
-
-          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-
-          <div className="row wrap">
-            <Send size={14} className="muted" />
-            <b>Canal Slack (Events API + Block Kit)</b>
+          </div></details>
+          <details className="acc"><summary><Send size={14} className="muted" /><b>Canal Slack (Events API + Block Kit)</b>
             <Badge kind={s.slack?.enabled ? 'ok' : 'muted'}>{s.slack?.enabled ? 'Ativo' : 'Desligado'}</Badge>
-          </div>
+          </summary><div className="stack acc-body">
           <label className="check">
             <input type="checkbox" checked={Boolean(sl.enabled)} onChange={(e) => setSl({ ...sl, enabled: e.target.checked })} />
             <span>Habilitar Slack (Events: <code className="mono">{window.location.origin}/slack/events</code>)</span>
@@ -201,8 +191,9 @@ function ProactivityAndChannelsCard({ providers }) {
             <Field label="Channel IDs (opcional)"><input value={sl.allowedChannels} onChange={(e) => setSl({ ...sl, allowedChannels: e.target.value })} placeholder="C0123..." /></Field>
           </div>
           <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'sl'} onClick={saveSl}>Salvar Slack</Btn></div>
+          </div></details>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
@@ -294,7 +285,7 @@ function ChatOverrides({ providers }) {
   );
 }
 
-function RouterShortcutsAndGuestsCard({ providers }) {
+function RouterShortcutsAndGuestsCard({ providers, part }) {
   const toast = useToast();
   const cfg = useLoad(() => bridge.getSettings(), []);
   const scCfg = useLoad(() => bridge.shortcutConfig(), []);
@@ -350,7 +341,7 @@ function RouterShortcutsAndGuestsCard({ providers }) {
   const endpointUrl = scCfg.data?.endpointUrl || (window.location.origin + '/api/shortcut');
   return (
     <div className="grid2">
-      <Card title="Roteador Inteligente & Failover" icon={Sparkles}>
+      {part === 'auto' && <Card title="Roteador Inteligente & Failover" icon={Sparkles}>
         <div className="stack">
           <label className="check">
             <input type="checkbox" checked={routing.enabled} onChange={(e) => setRouting({ ...routing, enabled: e.target.checked })} />
@@ -409,9 +400,9 @@ function RouterShortcutsAndGuestsCard({ providers }) {
           </div>
           <div className="row end"><Btn icon={Plus} className="ghost small" disabled={busy === 'gst'} onClick={addGuest}>Adicionar convidado</Btn></div>
         </div>
-      </Card>
+      </Card>}
 
-      <Card title="iOS Shortcuts · Share Sheet · Siri" icon={Smartphone}>
+      {part === 'canais' && <Card title="iOS Shortcuts · Share Sheet · Siri" icon={Smartphone}>
         <div className="stack">
           <div className="row wrap">
             <b>Endpoint pessoal autenticado</b>
@@ -449,7 +440,7 @@ function RouterShortcutsAndGuestsCard({ providers }) {
 // Arquivar Nota Fiscal (Arquivista -> Google Drive):
 {"action":"receipt","text":"NF Mercado","file":{"name":"nf.jpg","type":"image/jpeg","data":"<base64>"}}`}</pre>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
@@ -461,12 +452,19 @@ export default function Providers() {
   const save = (b) => run('settings', () => bridge.settings(b), t('pr.defaultUpdated')).then(() => p.reload(true));
   const data = p.data;
   const claude = data?.providers.find((x) => x.id === 'claude');
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem('prov.tab') || 'prov'; } catch { return 'prov'; } });
+  const setTab = (id) => { setTabState(id); try { localStorage.setItem('prov.tab', id); } catch { /* ignore */ } };
+  const tabs = [['prov', 'Provedores'], ['auto', 'Automação'], ['canais', 'Canais'], ['chats', 'Conversas']];
   return (
     <div className="page">
+      <div className="tabbar" role="tablist" aria-label="Seções">
+        {tabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
+      </div>
       <ErrorBox error={p.error} onRetry={() => p.reload()} />
       {p.loading && !data && <Skeleton rows={3} />}
       {data && (
         <>
+          {tab === 'prov' && <>
           <Card title={t('pr.globals')} icon={SlidersHorizontal}>
             <div className="form-grid">
               <Field label={t('pr.defaultProvider')} hint={t('pr.defaultProviderHint')}>
@@ -504,14 +502,22 @@ export default function Providers() {
             ))}
           </div>
 
-          <ProactivityAndChannelsCard providers={data} />
+          <Credentials />
+          </>}
 
-          <RouterShortcutsAndGuestsCard providers={data} />
+          {tab === 'auto' && <>
+            <ProactivityAndChannelsCard providers={data} part="auto" />
+            <RouterShortcutsAndGuestsCard providers={data} part="auto" />
+          </>}
 
-          <ChatOverrides providers={data} />
+          {tab === 'canais' && <>
+            <ProactivityAndChannelsCard providers={data} part="canais" />
+            <RouterShortcutsAndGuestsCard providers={data} part="canais" />
+          </>}
+
+          {tab === 'chats' && <ChatOverrides providers={data} />}
         </>
       )}
-      <Credentials />
     </div>
   );
 }
