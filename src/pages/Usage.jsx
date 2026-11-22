@@ -156,7 +156,7 @@ function metricValue(metrics, field) {
   return metrics[field] ?? null;
 }
 
-const hasPositiveMetric = (m) => ['tokens', 'runs', 'cost', 'msgs', 'credits', 'cacheRead'].some((k) => Number(m?.[k]) > 0);
+const hasUsageHistory = (m) => ['tokens', 'runs', 'cost', 'msgs', 'credits', 'cacheRead'].some((k) => Number(m?.[k]) > 0) || Number(metricValue(m, 'runs')) > 0;
 
 function providerUsageRows(data, metadata) {
   const metaMap = new Map();
@@ -195,9 +195,12 @@ function providerUsageRows(data, metadata) {
       const generic = providerRecord(day?.providers, cand.id);
       return usageMetrics(Object.keys(usageMetrics(generic)).length ? generic : day?.[key]);
     });
-    const hasDayAvailable = (Array.isArray(data?.days) ? data.days : []).some((day) => Boolean(providerRecord(day?.providers, cand.id)?.telemetry?.available));
-    const hasActivity = Boolean(rawTotal?.telemetry?.available || hasDayAvailable || hasPositiveMetric(total) || days.some(hasPositiveMetric));
-    if (meta && !meta.installed && !hasActivity) continue;
+    const dayRecords = (Array.isArray(data?.days) ? data.days : []).map((day) => providerRecord(day?.providers, cand.id));
+    const telemetryAvailable = rawTotal?.telemetry?.available === true || dayRecords.some((record) => record?.telemetry?.available === true);
+    const hasHistory = hasUsageHistory(total) || days.some(hasUsageHistory);
+    const hasActivity = telemetryAvailable || hasHistory;
+    const telemetryUnavailable = rawTotal?.telemetry?.available === false || dayRecords.some((record) => record?.telemetry?.available === false);
+    if (!hasActivity && (meta?.installed === false || telemetryUnavailable)) continue;
     const name = meta?.name || rawTotal?.name || rawTotal?.displayName || cand.record?.name || cand.record?.displayName || PROVIDER_NAMES[key] || cand.id;
     const costSupported = rawTotal?.telemetry?.cost !== false && key !== 'copilot';
     rows.push({ id: cand.id, key, name, costSupported, total, days });
