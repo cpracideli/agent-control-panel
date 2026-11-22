@@ -30,6 +30,11 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
 
   const pageMap = new Map(pages.map((p) => [p.id, p]));
   const available = pages.filter((p) => !draft.includes(p.id));
+  const subtitleOf = (id) => {
+    const key = 'dock.sub.' + id;
+    const val = t(key);
+    return val !== key ? val : '';
+  };
   const isDefault = isSameList(draft, DEFAULT_DOCK);
   const dirty = !isSameList(draft, dock);
   const canSave = draft.length >= MIN_DOCK && draft.length <= MAX_DOCK && dirty && !saving;
@@ -171,6 +176,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
             const pg = pageMap.get(id);
             if (!pg) return null;
             const Icon = pg.icon;
+            const sub = subtitleOf(id);
             const isDragging = drag?.id === id;
             return (
               <div
@@ -195,7 +201,7 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
                 <span className={'row-ic ic-' + id}><Icon size={17} /></span>
                 <span className="grow">
                   <b>{t('nav.' + id)}</b>
-                  <small className="muted">#{idx + 1}</small>
+                  <small className="muted">{sub ? `#${idx + 1} · ${sub}` : `#${idx + 1}`}</small>
                 </span>
                 <button
                   type="button"
@@ -225,19 +231,25 @@ export function DockSettingsModal({ pages, dock, onSave, onClose }) {
         <div className="group-label">{t('dock.available')}</div>
         {draft.length >= MAX_DOCK && <p className="dock-hint muted">{t('dock.fullHint')}</p>}
         <div className="group">
-          {available.map(({ id, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className="group-row press"
-              disabled={draft.length >= MAX_DOCK}
-              onClick={() => add(id)}
-            >
-              <span className={'row-ic ic-' + id}><Icon size={17} /></span>
-              <span className="grow">{t('nav.' + id)}</span>
-              <span className="dock-act-btn add" aria-hidden><Plus size={15} strokeWidth={2.6} /></span>
-            </button>
-          ))}
+          {available.map(({ id, icon: Icon }) => {
+            const sub = subtitleOf(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                className="group-row press"
+                disabled={draft.length >= MAX_DOCK}
+                onClick={() => add(id)}
+              >
+                <span className={'row-ic ic-' + id}><Icon size={17} /></span>
+                <span className="grow">
+                  <span>{t('nav.' + id)}</span>
+                  {sub && <small className="muted">{sub}</small>}
+                </span>
+                <span className="dock-act-btn add" aria-hidden><Plus size={15} strokeWidth={2.6} /></span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="row end">

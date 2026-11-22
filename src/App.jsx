@@ -152,7 +152,13 @@ function takeAuthParams() {
   return { code, error };
 }
 
-const DOCK_OPTIONS = [...PAGES, { id: 'more', icon: LayoutGrid }];
+const DOCK_ACTIONS = new Set(['search', 'inbox']);
+const DOCK_OPTIONS = [
+  ...PAGES,
+  { id: 'search', icon: Search, action: true },
+  { id: 'inbox', icon: Inbox, action: true },
+  { id: 'more', icon: LayoutGrid },
+];
 const DOCK_IDS = DOCK_OPTIONS.map((p) => p.id);
 const readCachedDock = (key) => {
   try {
@@ -183,13 +189,13 @@ function MoreList({ me, page, go, install, logout, onClose, dock, morePages, ope
       <div className="group-label">Atalhos rápidos</div>
       <div className="group">
         <button type="button" className="group-row press" onClick={() => { onClose?.(); openSearch(); }}>
-          <span className="row-ic ic-memory"><Search size={17} /></span>
-          <span className="grow">Busca Global (Cmd+K)</span>
+          <span className="row-ic ic-search"><Search size={17} /></span>
+          <span className="grow">{t('dock.sub.search')}</span>
           <ChevronRight size={17} className="chev" />
         </button>
         <button type="button" className="group-row press" onClick={() => { onClose?.(); openInbox(); }}>
-          <span className="row-ic ic-board"><Inbox size={17} /></span>
-          <span className="grow">Central de Decisões</span>
+          <span className="row-ic ic-inbox"><Inbox size={17} /></span>
+          <span className="grow">{t('dock.sub.inbox')}</span>
           {inboxCount > 0 && <span className="nav-dot err" style={{ marginRight: 6 }} />}
           <ChevronRight size={17} className="chev" />
         </button>
@@ -302,10 +308,11 @@ export default function App() {
   const [dock, setDock] = useState(() => readCachedDock('acp_dock:last') || [...DEFAULT_DOCK]);
   const [dockModal, setDockModal] = useState(false);
   // Keep 'more' as an internal overflow tab even when the user removes it from the bottom bar,
-  // so pages opened via the top-right user icon still push cleanly onto a stack.
-  const tabs = useMemo(() => (dock.includes('more') ? dock : [...dock, 'more']), [dock]);
-  const tabOf = useCallback((id) => (dock.includes(id) ? id : 'more'), [dock]);
-  const morePages = useMemo(() => PAGES.filter((p) => !dock.includes(p.id)), [dock]);
+  // and exclude dock-only actions (search, inbox) so Screen never tries to render them as pages.
+  const pageDock = useMemo(() => dock.filter((id) => !DOCK_ACTIONS.has(id)), [dock]);
+  const tabs = useMemo(() => (pageDock.includes('more') ? pageDock : [...pageDock, 'more']), [pageDock]);
+  const tabOf = useCallback((id) => (pageDock.includes(id) ? id : 'more'), [pageDock]);
+  const morePages = useMemo(() => PAGES.filter((p) => !pageDock.includes(p.id)), [pageDock]);
   const stackNav = useNavStack({ tabs, tabOf, initial: pageFromHash(), hashOf, parseHash: pageFromHash });
   const stackNavRef = useRef(stackNav);
   stackNavRef.current = stackNav;
@@ -320,7 +327,10 @@ export default function App() {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setSearchOpen((v) => !v);
+        setSearchOpen((v) => {
+          if (!v) setInboxOpen(false);
+          return !v;
+        });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -421,12 +431,24 @@ export default function App() {
 
   // Sidebar, avatar sheet, links: tab roots switch tabs, other pages are pushed on the "Mais" stack.
   const go = (id) => stackNav.go(id);
-  // Dock: switch tab; tapping the active tab pops to its root, or scrolls it back to the top.
-  const tapTab = (tab) => {
-    if (tab !== nav.tab) { stackNav.switchTab(tab); return; }
-    if (stackNav.popToRoot(tab)) { haptic(8); return; }
+  // Dock: run modal actions (search, inbox) or switch tab; tapping the active tab pops to its root, or scrolls it back to the top.
+  const tapTab = (id) => {
+    if (id === 'search') {
+      haptic(8);
+      setInboxOpen(false);
+      setSearchOpen(true);
+      return;
+    }
+    if (id === 'inbox') {
+      haptic(8);
+      setSearchOpen(false);
+      setInboxOpen(true);
+      return;
+    }
+    if (id !== nav.tab) { stackNav.switchTab(id); return; }
+    if (stackNav.popToRoot(id)) { haptic(8); return; }
     // the chat keeps its position (scrolling a long conversation to its first message would be a surprise)
-    if (tab !== 'chat') document.querySelector('.tab-layer.active > .screen.top')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    if (id !== 'chat') document.querySelector('.tab-layer.active > .screen.top')?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   };
   const logout = async () => { await api('POST', '/logout').catch(() => {}); store.set('acp_profile', ''); setMore(false); setDockModal(false); setAuthed(false); };
   const saveDock = async (nextList) => {
@@ -438,8 +460,13 @@ export default function App() {
     store.set('acp_dock:last', serialized);
     return prefs.save({ dock: isDef ? null : clean });
   };
-  const dockIndex = dock.indexOf(nav.tab);
-  const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true), openSearch: () => setSearchOpen(true), openInbox: () => setInboxOpen(true), inboxCount: navStatus.inboxCount };
+  const activeDockId = searchOpen && dock.includes('search')
+    ? 'search'
+    : inboxOpen && dock.includes('inbox')
+      ? 'inbox'
+      : nav.tab;
+  const dockIndex = dock.indexOf(activeDockId);
+  const moreProps = { me, page, go, install, logout, dock, morePages, openDockSettings: () => setDockModal(true), openSearch: () => { setInboxOpen(false); setSearchOpen(true); }, openInbox: () => { setSearchOpen(false); setInboxOpen(true); }, inboxCount: navStatus.inboxCount };
   const renderScreen = (id, depth, isTop, cls, prev) => (
     <Screen key={id} id={id} depth={depth} isTop={isTop} active={tabOf(id) === nav.tab} cls={cls}
       backLabel={prev ? t('nav.' + prev) : ''} onBack={() => stackNav.pop()}
@@ -447,6 +474,7 @@ export default function App() {
   );
   const dockDot = (id) =>
     (id === 'chat' && (navStatus.pendingPrompts > 0 ? 'err' : (navStatus.webRunning > 0 || navStatus.unread > 0) && 'warn'))
+    || (id === 'inbox' && navStatus.inboxCount > 0 && 'err')
     || (id === 'computer' && (navStatus.computerNeedsHuman ? 'err' : navStatus.computerRunning && 'ok'))
     || (id === 'overview' && navStatus.offline && 'err');
 
@@ -502,11 +530,18 @@ export default function App() {
         <div className="dock-capsule">
           {dockIndex >= 0 && <span className="dock-pill" style={{ transform: `translateX(${dockIndex * 100}%)` }} aria-hidden><span key={dockIndex} /></span>}
           {dock.map((id) => {
-            const { icon: Icon } = DOCK_OPTIONS.find((p) => p.id === id);
+            const { icon: Icon, action } = DOCK_OPTIONS.find((p) => p.id === id);
+            const active = id === activeDockId;
             const dot = dockDot(id);
             return (
-              <button key={id} className={id === nav.tab ? 'active' : ''} onClick={() => tapTab(id)} aria-current={id === nav.tab ? 'page' : undefined}>
-                <span className="dock-ic"><Icon size={21} strokeWidth={id === nav.tab ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
+              <button
+                key={id}
+                className={active ? 'active' : ''}
+                onClick={() => tapTab(id)}
+                aria-current={!action && active ? 'page' : undefined}
+                aria-expanded={action ? active : undefined}
+              >
+                <span className="dock-ic"><Icon size={21} strokeWidth={active ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('nav.' + id)}</span>
               </button>
             );
           })}

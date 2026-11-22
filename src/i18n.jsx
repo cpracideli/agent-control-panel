@@ -32,7 +32,7 @@ const pt = {
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',
   'login.google': 'Continuar com Google', 'login.or': 'ou', 'login.usePassword': 'Entrar com senha',
   'login.failed': 'Não foi possível entrar', 'login.private': 'Painel privado', 'login.privateText': 'Só as contas Google autorizadas no servidor conseguem entrar.',
-  'nav.more': 'Mais', 'nav.pages': 'Páginas', 'nav.appearance': 'Aparência', 'nav.account': 'Conta', 'nav.signedPwd': 'Entrou com senha', 'nav.settings': 'Ajustes',
+  'nav.more': 'Mais', 'nav.search': 'Buscar', 'nav.inbox': 'Decisões', 'nav.pages': 'Páginas', 'nav.appearance': 'Aparência', 'nav.account': 'Conta', 'nav.signedPwd': 'Entrou com senha', 'nav.settings': 'Ajustes',
   'chat.options': 'Opções da conversa', 'chat.attach': 'Anexar arquivo', 'chat.record': 'Gravar áudio', 'chat.cancelRec': 'Descartar áudio', 'chat.slideCancel': 'Deslize para cancelar', 'chat.holdHint': 'Segure para gravar, solte para enviar',
   'chat.recording': 'Gravando… fale à vontade', 'chat.micDenied': 'Não consegui usar o microfone', 'chat.tooBig': '{n} passa de 25 MB',
   'chat.listen': 'Ouvir resposta', 'chat.transcribing': 'Transcrevendo…', 'chat.stopListen': 'Parar áudio', 'chat.voiceMode': 'Responder em voz',
@@ -200,6 +200,7 @@ const pt = {
   'dock.restore': 'Restaurar padrão',
   'dock.saved': 'Barra inferior atualizada', 'dock.savedLocal': 'Barra atualizada neste dispositivo',
   'dock.remove': 'Remover da barra', 'dock.save': 'Salvar',
+  'dock.sub.search': 'Busca Global (Cmd+K)', 'dock.sub.inbox': 'Central de Decisões',
 };
 
 const en = {
@@ -234,7 +235,7 @@ const en = {
   'login.submit': 'Sign in', 'login.busy': 'Signing in…',
   'login.google': 'Continue with Google', 'login.or': 'or', 'login.usePassword': 'Sign in with password',
   'login.failed': 'Could not sign in', 'login.private': 'Private panel', 'login.privateText': 'Only the Google accounts allowed on the server can sign in.',
-  'nav.more': 'More', 'nav.pages': 'Pages', 'nav.appearance': 'Appearance', 'nav.account': 'Account', 'nav.signedPwd': 'Signed in with password', 'nav.settings': 'Settings',
+  'nav.more': 'More', 'nav.search': 'Search', 'nav.inbox': 'Inbox', 'nav.pages': 'Pages', 'nav.appearance': 'Appearance', 'nav.account': 'Account', 'nav.signedPwd': 'Signed in with password', 'nav.settings': 'Settings',
   'chat.options': 'Conversation options', 'chat.attach': 'Attach file', 'chat.record': 'Record audio', 'chat.cancelRec': 'Discard audio', 'chat.slideCancel': 'Slide to cancel', 'chat.holdHint': 'Hold to record, release to send',
   'chat.recording': 'Recording… go ahead', 'chat.micDenied': 'Could not use the microphone', 'chat.tooBig': '{n} is over 25 MB',
   'chat.listen': 'Listen', 'chat.transcribing': 'Transcribing…', 'chat.stopListen': 'Stop audio', 'chat.voiceMode': 'Answer by voice',
@@ -402,6 +403,7 @@ const en = {
   'dock.restore': 'Restore default',
   'dock.saved': 'Bottom bar updated', 'dock.savedLocal': 'Bottom bar updated on this device',
   'dock.remove': 'Remove from bar', 'dock.save': 'Save',
+  'dock.sub.search': 'Global Search (Cmd+K)', 'dock.sub.inbox': 'Decision Center',
 };
 
 const es = {
@@ -436,7 +438,7 @@ const es = {
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',
   'login.google': 'Continuar con Google', 'login.or': 'o', 'login.usePassword': 'Entrar con contraseña',
   'login.failed': 'No se pudo entrar', 'login.private': 'Panel privado', 'login.privateText': 'Solo las cuentas de Google autorizadas en el servidor pueden entrar.',
-  'nav.more': 'Más', 'nav.pages': 'Páginas', 'nav.appearance': 'Apariencia', 'nav.account': 'Cuenta', 'nav.signedPwd': 'Entró con contraseña', 'nav.settings': 'Ajustes',
+  'nav.more': 'Más', 'nav.search': 'Buscar', 'nav.inbox': 'Decisiones', 'nav.pages': 'Páginas', 'nav.appearance': 'Apariencia', 'nav.account': 'Cuenta', 'nav.signedPwd': 'Entró con contraseña', 'nav.settings': 'Ajustes',
   'chat.options': 'Opciones de la conversación', 'chat.attach': 'Adjuntar archivo', 'chat.record': 'Grabar audio', 'chat.cancelRec': 'Descartar audio', 'chat.slideCancel': 'Desliza para cancelar', 'chat.holdHint': 'Mantén para grabar, suelta para enviar',
   'chat.recording': 'Grabando… habla tranquilo', 'chat.micDenied': 'No pude usar el micrófono', 'chat.tooBig': '{n} supera 25 MB',
   'chat.listen': 'Escuchar', 'chat.transcribing': 'Transcribiendo…', 'chat.stopListen': 'Detener audio', 'chat.voiceMode': 'Responder con voz',
@@ -566,6 +568,7 @@ const es = {
   'dock.restore': 'Restaurar predeterminado',
   'dock.saved': 'Barra inferior actualizada', 'dock.savedLocal': 'Barra actualizada en este dispositivo',
   'dock.remove': 'Quitar de la barra', 'dock.save': 'Guardar',
+  'dock.sub.search': 'Búsqueda Global (Cmd+K)', 'dock.sub.inbox': 'Central de Decisiones',
 };
 
 export const LANGS = [
