@@ -151,6 +151,22 @@ button.glass-btn.icon { padding: 0; width: 40px; }
 label.glass-btn { padding: 0 6px 0 12px; }
 .glass-bar { background: var(--glass); box-shadow: var(--glass-shadow); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
 
+/* Liquid Glass text input - used for search bars */
+.glass-input { 
+  background: var(--lg-tint) !important; 
+  border: 0; 
+  padding: 8px 12px; 
+  border-radius: 999px; 
+  color: var(--text) !important; 
+  font: inherit; 
+  width: 100%; 
+  min-width: 0; 
+  -webkit-backdrop-filter: var(--lg-filter); 
+  backdrop-filter: var(--lg-filter); 
+}
+.glass-input::placeholder { color: var(--muted) !important; }
+.glass-input:focus-visible { outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+
 /* ---------- shell (desktop: translucent sidebar like macOS) ---------- */
 .shell { display: grid; grid-template-columns: 236px 1fr; height: 100%; }
 .nav { background: var(--panel); -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%); border-right: .5px solid var(--sep); display: flex; flex-direction: column; padding: 16px 10px; gap: 4px; min-height: 0; }
@@ -2304,4 +2320,30 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity
 @media (prefers-reduced-motion: reduce) {
   .sheet, .modal, .asheet, .doc-sheet { animation: fade 160ms ease-out !important; }
   .skel-box::after, .cc-bot.on > :first-child, .usage-alert.over::after, .st-row.err .st-light::after, .wf-node.live::after { animation: none !important; }
+}
+
+/* ---------- dock: real glass body (v3.4) ----------
+   v3.3 left the capsule at a .10-.22 tint with a 5px blur, which reads as fully
+   transparent over content. Give the dock enough body to look like the Liquid Glass
+   material (tint + frost + bevel) while keeping the lens, rim and press behaviour.
+   Skipped when the user asks for reduced transparency or more contrast, and left
+   alone by the terminal theme (both keep their solid surfaces). */
+@media (not (prefers-reduced-transparency: reduce)) and (not (prefers-contrast: more)) {
+  :root:not([data-theme="terminal"]) .dock-capsule {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .68) 0%, rgba(246, 246, 249, .6) 100%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(180%) brightness(1.03) !important;
+    backdrop-filter: blur(22px) saturate(180%) brightness(1.03) !important;
+  }
+  :root[data-theme="dark"]:not([data-theme="terminal"]) .dock-capsule {
+    background: linear-gradient(180deg, rgba(58, 58, 62, .66) 0%, rgba(30, 30, 34, .64) 100%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(.92) !important;
+    backdrop-filter: blur(22px) saturate(170%) brightness(.92) !important;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="terminal"]) .dock-capsule {
+      background: linear-gradient(180deg, rgba(58, 58, 62, .66) 0%, rgba(30, 30, 34, .64) 100%) !important;
+      -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(.92) !important;
+      backdrop-filter: blur(22px) saturate(170%) brightness(.92) !important;
+    }
+  }
 }
