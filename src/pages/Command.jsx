@@ -4,6 +4,7 @@ import { CalendarClock, CheckSquare, FileCode2, Inbox, ListTodo, MessageSquare, 
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Card, ErrorBox, useFmt, useLoad } from '../ui.jsx';
+import { BotAvatar } from './Bots.jsx';
 
 const sameDay = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
 const hhmm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -28,7 +29,7 @@ function BotCard({ bot, entry, tickets, f }) {
   const botColor = typeof bot.color === 'string' && bot.color.trim() ? bot.color.trim() : '#0a84ff';
   return (
     <div className={'cc-bot' + (on ? ' on' : '')} style={{ '--bot': botColor }}>
-      <span className="cc-avatar">{bot.avatar ? <img src={bot.avatar} alt="" /> : <span>{bot.emoji || '🤖'}</span>}{on && <i className="cc-dot" aria-label="em execução" />}</span>
+      <span className="cc-avatar"><BotAvatar bot={bot} size={48} />{on && <i className="cc-dot" aria-label="em execução" />}</span>
       <div className="cc-info">
         <b className="ellipsis">{bot.name}</b>
         <span className="muted small ellipsis">{on ? runLabel(run, task, entry.act, entry.chat) : (tickets ? `${tickets} no board` : 'ocioso')}</span>
@@ -172,7 +173,7 @@ export default function Command() {
                   style={{ '--bot': botColor }}
                   onClick={() => { window.location.hash = '#/bots'; }}
                 >
-                  <span className="cc-avatar sm">{b.avatar ? <img src={b.avatar} alt="" /> : <span>{b.emoji || '🤖'}</span>}</span>
+                  <span className="cc-avatar sm"><BotAvatar bot={b} size={24} /></span>
                   <span className="ellipsis small"><b>{b.name}</b></span>
                   {openTickets[b.id] > 0 && <span className="muted small">· {openTickets[b.id]}</span>}
                 </button>

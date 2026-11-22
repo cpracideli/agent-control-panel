@@ -4,6 +4,7 @@ import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { BotSelect } from './Bots.jsx';
 
 function SkillForm({ initial, bots, onClose, onSaved }) {
   const t = useT();
@@ -26,12 +27,7 @@ function SkillForm({ initial, bots, onClose, onSaved }) {
       <form className="stack" onSubmit={submit}>
         <div className="form-grid">
           <Field label={t('sk.name')}><input required autoFocus={!editing} value={f.name} onChange={set('name')} placeholder={t('sk.namePh')} maxLength={80} /></Field>
-          <Field label={t('bots.label')} hint={t('sk.botHint')}>
-            <select value={f.bot} onChange={set('bot')}>
-              <option value="">{t('sk.allBots')}</option>
-              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-            </select>
-          </Field>
+          <Field label={t('bots.label')} hint={t('sk.botHint')}><BotSelect bots={bots || []} value={f.bot} onChange={(bot) => setF((cur) => ({ ...cur, bot }))} label={t('bots.label')} emptyLabel={t('sk.allBots')} /></Field>
         </div>
         <Field label={t('sk.desc')} hint={t('sk.descHint')}><input value={f.description} onChange={set('description')} placeholder={t('sk.descPh')} maxLength={300} /></Field>
         <Field label={t('sk.instructions')} hint={t('sk.instructionsHint')}>

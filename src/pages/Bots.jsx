@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Bot, Brain, Copy, Download, History, MessageSquare, Pencil, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bot, Brain, Check, Copy, Download, History, MessageSquare, Pencil, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
@@ -15,6 +15,46 @@ export function BotAvatar({ bot, size = 40, className = '' }) {
     <span className={'bot-avatar' + (className ? ' ' + className : '')} style={{ width: size, height: size, fontSize: size * 0.5, background: (bot?.color || '#8e8e93') + '33', borderColor: (bot?.color || '#8e8e93') + '66' }} aria-hidden>
       {bot?.avatar && !imgErr ? <img src={bot.avatar} alt="" onError={() => setImgErr(true)} /> : (bot?.emoji || <Bot size={size * 0.5} />)}
     </span>
+  );
+}
+
+export function BotSelect({ bots = [], value, onChange, label, emptyLabel, emptyValue = '', emptyBot, className = '' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = bots.find((bot) => bot.id === value);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (e.type === 'keydown' ? e.key === 'Escape' : !ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, [open]);
+  const choose = (id) => { setOpen(false); if (id !== value) onChange(id); };
+  return (
+    <div className={'bot-picker bot-select' + (className ? ' ' + className : '')} ref={ref}>
+      <button type="button" className="bot-picker-btn" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {selected ? <BotAvatar bot={selected} size={20} /> : emptyBot ? <BotAvatar bot={emptyBot} size={20} /> : <Bot size={16} />}
+        <span className="ellipsis">{selected?.name || emptyLabel || ''}</span>
+      </button>
+      {open && (
+        <ul className="bot-picker-menu" role="listbox" aria-label={label}>
+          {emptyLabel && (
+            <li role="option" aria-selected={value === emptyValue}>
+            <button type="button" className={'bot-picker-item' + (value === emptyValue ? ' on' : '')} onClick={() => choose(emptyValue)}>
+              {emptyBot ? <BotAvatar bot={emptyBot} size={24} /> : <Bot size={16} />}<span className="grow ellipsis">{emptyLabel}</span>{value === emptyValue && <Check size={15} className="bot-picker-chk" />}
+              </button>
+            </li>
+          )}
+          {bots.map((bot) => (
+            <li key={bot.id} role="option" aria-selected={bot.id === value}>
+              <button type="button" className={'bot-picker-item' + (bot.id === value ? ' on' : '')} onClick={() => choose(bot.id)}>
+                <BotAvatar bot={bot} size={24} /><span className="grow ellipsis">{bot.name}</span>{bot.id === value && <Check size={15} className="bot-picker-chk" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

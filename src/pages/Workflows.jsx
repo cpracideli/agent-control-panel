@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Bot as BotIc, ChevronDown, ChevronUp, FileText, GitBranch, GitFork, Hand, Plus, Save, Trash2, Zap, Database } from 'lucide-react';
 import { bridge } from '../api.js';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, useAction, useConfirm, useLoad } from '../ui.jsx';
+import { BotSelect } from './Bots.jsx';
 
 const KINDS = {
   bot: { label: 'Bot', icon: BotIc, color: '#0a84ff' },
@@ -114,7 +115,7 @@ export default function Workflows() {
                   <Field label="ID"><input className="mono" value={step.id} onChange={(e) => patchStep(cur, { id: e.target.value.replace(/\W/g, '') })} /></Field>
                   <Field label="Tipo"><select value={step.type} onChange={(e) => patchStep(cur, { type: e.target.value })}>{Object.entries(KINDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
                 </div>
-                {step.type === 'bot' && <Field label="Bot"><select value={step.bot || 'default'} onChange={(e) => patchStep(cur, { bot: e.target.value })}>{(bots.data || [{ id: 'default', name: 'default' }]).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>}
+                {step.type === 'bot' && <Field label="Bot"><BotSelect bots={bots.data || [{ id: 'default', name: 'default' }]} value={step.bot || 'default'} onChange={(bot) => patchStep(cur, { bot })} label="Bot" /></Field>}
                 {step.type === 'condition' && <Field label="Expressão" hint="Se falsa, o fluxo termina aqui."><input className="mono" value={step.expr || ''} onChange={(e) => patchStep(cur, { expr: e.target.value })} placeholder="{{steps.s1}} contains urgente" /></Field>}
                 {step.type === 'approval' && <><Field label="Título"><input value={step.title || ''} onChange={(e) => patchStep(cur, { title: e.target.value })} /></Field><Field label="Pergunta"><textarea rows={3} value={step.question || ''} onChange={(e) => patchStep(cur, { question: e.target.value })} /></Field></>}
                 {step.type === 'page_data' && <Field label="ID da página"><input className="mono" value={step.pageId || ''} onChange={(e) => patchStep(cur, { pageId: e.target.value })} /></Field>}

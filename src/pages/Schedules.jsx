@@ -4,6 +4,7 @@ import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { BotSelect } from './Bots.jsx';
 
 const hookUrl = (s) => window.location.origin + '/hooks/' + s.id + '/' + s.hookToken;
 const STATUS_KIND = { ok: 'ok', quiet: 'muted', skipped: 'muted', deferred: 'warn', budget_paused: 'err', error: 'err', running: 'warn', queued: 'warn', stopped: 'warn' };
@@ -106,7 +107,8 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const nextAt = f.kind === 'cron' ? nextCronRun(f.cron) : null;
   const chatBot = (chats.find((c) => c.id === f.chatId) || {}).bot;
-  const botName = (id) => { const b = bots.find((x) => x.id === id); return b ? (b.emoji ? b.emoji + ' ' : '') + b.name : id; };
+  const chatBotObj = bots.find((b) => b.id === (chatBot || 'default'));
+  const botName = (id) => bots.find((b) => b.id === id)?.name || id;
   const submit = async (e) => {
     e.preventDefault();
     if (f.kind === 'none' && !f.webhook && !f.watchOn) return toast(t('sch.needTrigger'), 'err');
@@ -129,10 +131,7 @@ function ScheduleForm({ initial, chats, bots, onClose, onSaved }) {
             </select>
           </Field>
           <Field label={t('sch.bot')} hint={t('sch.botHint')}>
-            <select value={f.bot} onChange={set('bot')}>
-              <option value="">{t('sch.chatBot', { n: botName(chatBot || 'default') })}</option>
-              {bots.map((b) => <option key={b.id} value={b.id}>{botName(b.id)}</option>)}
-            </select>
+            <BotSelect bots={bots} value={f.bot} onChange={(bot) => setF((cur) => ({ ...cur, bot }))} label={t('sch.bot')} emptyBot={chatBotObj} emptyLabel={t('sch.chatBot', { n: botName(chatBot || 'default') })} />
           </Field>
           <Field label={t('sch.when')}>
             <select value={f.kind} onChange={set('kind')}><option value="cron">{t('sch.cron')}</option><option value="at">{t('sch.onceOpt')}</option><option value="none">{t('sch.noTime')}</option></select>

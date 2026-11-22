@@ -3,6 +3,7 @@ import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Sear
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { BotSelect } from './Bots.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
 
@@ -136,10 +137,7 @@ function VaultTab() {
               </select>
             </Field>
             <Field label={t('vlt.scope')}>
-              <select value={form.scope} onChange={set('scope')}>
-                <option value="global">{t('sk.allBots')}</option>
-                {(bots.data || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-              </select>
+              <BotSelect bots={bots.data || []} value={form.scope} onChange={(scope) => setForm((cur) => ({ ...cur, scope }))} label={t('vlt.scope')} emptyLabel={t('sk.allBots')} emptyValue="global" />
             </Field>
           </div>
           {form.kind === 'login' && (

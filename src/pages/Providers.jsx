@@ -5,6 +5,7 @@ import { useT } from '../i18n.jsx';
 import { useNotifications } from '../notifications.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
 import { provIconFor } from '../ProvIcon.jsx';
+import { BotSelect } from './Bots.jsx';
 
 function ProactivityAndChannelsCard({ providers, part }) {
   const t = useT();
@@ -393,9 +394,7 @@ function RouterShortcutsAndGuestsCard({ providers, part }) {
             <Field label="Nome"><input value={newGuest.name} onChange={(e) => setNewGuest({ ...newGuest, name: e.target.value })} placeholder="Ex.: Bia" /></Field>
             <Field label="WhatsApp (DDI+DDD)"><input value={newGuest.number} onChange={(e) => setNewGuest({ ...newGuest, number: e.target.value })} placeholder="5511999998888" /></Field>
             <Field label="Bot exclusivo">
-              <select value={newGuest.bot} onChange={(e) => setNewGuest({ ...newGuest, bot: e.target.value })}>
-                {(bots.data || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-              </select>
+              <BotSelect bots={bots.data || []} value={newGuest.bot} onChange={(bot) => setNewGuest((cur) => ({ ...cur, bot }))} label="Bot exclusivo" />
             </Field>
           </div>
           <div className="row end"><Btn icon={Plus} className="ghost small" disabled={busy === 'gst'} onClick={addGuest}>Adicionar convidado</Btn></div>

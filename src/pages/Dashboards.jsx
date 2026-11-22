@@ -5,6 +5,7 @@ import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { docLink } from '../viewer.jsx';
 import TemplateGallery from './PageTemplates.jsx';
+import { BotSelect } from './Bots.jsx';
 
 const MINI_APP_HTML = `<!doctype html>
 <html lang="pt-BR">
@@ -144,11 +145,7 @@ function PageForm({ initial, bots, onClose, onSaved }) {
         <ErrorBox error={full.error} onRetry={() => full.reload()} />
         <div className="form-grid">
           <Field label={t('pg.name')}><input required autoFocus={!editing} value={f.title} onChange={set('title')} placeholder={t('pg.namePh')} maxLength={120} /></Field>
-          <Field label={t('bots.label')}>
-            <select value={f.bot} onChange={set('bot')}>
-              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-            </select>
-          </Field>
+          <Field label={t('bots.label')}><BotSelect bots={bots || []} value={f.bot} onChange={(bot) => setF((cur) => ({ ...cur, bot }))} label={t('bots.label')} /></Field>
         </div>
         <Field label={t('pg.desc')}><input value={f.description} onChange={set('description')} placeholder={t('pg.descPh')} maxLength={300} /></Field>
         <label className="check">

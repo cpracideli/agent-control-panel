@@ -1780,6 +1780,8 @@ button, .dock, .nav, .topbar, .sheet-h, .sheet-grab, .card-h, .group-label, .gro
 .bot-picker-item.on { background: var(--active); color: var(--accent); }
 .bot-picker-chk { color: var(--accent); flex: none; }
 .bot-picker-item .bot-avatar, .bot-picker-btn .bot-avatar { border-radius: 30%; flex: none; }
+.bot-select { display: flex; width: 100%; }
+.bot-select .bot-picker-btn { width: 100%; min-height: 40px; padding: 8px 34px 8px 12px; border-radius: 10px; font-size: 15px; }
 .chip-check .bot-avatar { vertical-align: middle; margin-right: 4px; }
 @media (max-width: 820px) {
   .chat-settings .bot-picker { width: 100%; }
