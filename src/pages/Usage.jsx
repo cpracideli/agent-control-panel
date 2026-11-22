@@ -34,7 +34,7 @@ function Meter({ label, percent, resetsAt, sub }) {
         <b className="meter-val">{expired || percent == null ? '—' : (Math.round(p * 10) / 10).toLocaleString(lang) + '%'}</b>
       </div>
       <div className="meter-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={p} aria-label={label}>
-        {!expired && <span className={'meter-fill ' + lv} style={{ width: p + '%' }} />}
+        {!expired && <span className={'meter-fill ' + lv} style={{ transform: `scaleX(${Math.min(100, Math.max(1, p)) / 100})` }} />}
       </div>
       <div className="meter-foot muted small">
         <span>{expired ? t('use.expired') : resetsIn(t, lang, resetsAt)}</span>
@@ -90,7 +90,7 @@ function BarChart({ title, rows, color, render, empty, fmtMax }) {
           {rows.map((r, i) => (
             <button type="button" key={r.key} className={'bar-hit' + (hover === i ? ' on' : '')} aria-label={r.label + ': ' + (fmtMax ? fmtMax(r.value) : compact(lang, r.value))}
               onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} onFocus={() => setHover(i)}>
-              <span className="bar" style={{ height: Math.max(r.value ? 3 : 0, (r.value / max) * 100) + '%', background: color }} />
+              <span className="bar" style={{ transform: `scaleY(${Math.max(r.value ? 3 : 0, (r.value / max) * 100) / 100})`, background: color }} />
               <span className="bar-x">{r.short}</span>
             </button>
           ))}
@@ -139,8 +139,8 @@ function SpendingCard({ spending, routineForecasts, onSaved }) {
           </div>
           {lim > 0 && (
             <div className="fc-bar" aria-hidden style={{ marginTop: 8 }}>
-              <span className="fc-fore" style={{ width: pct(spending.monthForecastUsd) + '%' }} />
-              <span className={'fc-spent ' + band(pct(spending.monthSpendUsd))} style={{ width: pct(spending.monthSpendUsd) + '%' }} />
+              <span className="fc-fore" style={{ transform: `scaleX(${pct(spending.monthForecastUsd) / 100})` }} />
+              <span className={'fc-spent ' + band(pct(spending.monthSpendUsd))} style={{ transform: `scaleX(${pct(spending.monthSpendUsd) / 100})` }} />
             </div>
           )}
         </div>
@@ -150,7 +150,7 @@ function SpendingCard({ spending, routineForecasts, onSaved }) {
             {byBot.map((b) => (
               <div key={b.name} className="botbar">
                 <span className="ellipsis">{b.name}</span>
-                <span className="botbar-track"><span style={{ width: (b.cost / maxBot) * 100 + '%' }} /></span>
+                <span className="botbar-track"><span style={{ transform: `scaleX(${maxBot ? b.cost / maxBot : 0})` }} /></span>
                 <b className="small">{f.usd(b.cost)}</b>
               </div>
             ))}

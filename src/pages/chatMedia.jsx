@@ -415,7 +415,7 @@ function VoiceNote({ url, transcript, engine, pending, pendingLabel }) {
         <button type="button" className="vn-play" onClick={toggle} aria-label="play">
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
-        <div className="vn-bar"><span style={{ width: dur ? (pos / dur) * 100 + '%' : 0 }} /></div>
+        <div className="vn-bar"><span style={{ transform: `scaleX(${dur ? Math.min(1, pos / dur) : 0})` }} /></div>
         <span className="vn-time">{fmtClock(playing || pos ? pos : dur)}</span>
         {(playing || pos > 0) && <RateButton />}
       </div>
