@@ -4,6 +4,7 @@ import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
 import { AddButton, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
+import { BotSelect, BotAvatar } from './Bots.jsx';
 
 const STATUSES = ['todo', 'in_progress', 'review', 'blocked', 'done'];
 const PRIO_KIND = { low: 'muted', medium: 'ok', high: 'warn', urgent: 'err' };
@@ -57,12 +58,7 @@ function TicketForm({ initial, bots, onClose, onSaved }) {
               {['low', 'medium', 'high', 'urgent'].map((p) => <option key={p} value={p}>{t('bd.pr.' + p)}</option>)}
             </select>
           </Field>
-          <Field label={t('bots.label')}>
-            <select value={f.bot} onChange={set('bot')}>
-              <option value="">{t('bd.unassigned')}</option>
-              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-            </select>
-          </Field>
+          <Field label={t('bots.label')}><BotSelect bots={bots || []} value={f.bot} onChange={(bot) => setF((cur) => ({ ...cur, bot }))} label={t('bots.label')} emptyLabel={t('bd.unassigned')} /></Field>
         </div>
         <Field label={t('bd.desc')}>
           <textarea rows={6} value={f.description} onChange={set('description')} placeholder={t('bd.descPh')} />
@@ -124,11 +120,7 @@ function BoardRunnerModal({ runner, bots, onClose, onSaved }) {
           <Field label={t('bd.runnerInterval')} hint="1–1440 min">
             <input type="number" min={1} max={1440} value={f.intervalMin} onChange={(e) => setF({ ...f, intervalMin: e.target.value })} />
           </Field>
-          <Field label={t('bd.runnerBot')}>
-            <select value={f.defaultBot} onChange={(e) => setF({ ...f, defaultBot: e.target.value })}>
-              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-            </select>
-          </Field>
+          <Field label={t('bd.runnerBot')}><BotSelect bots={bots || []} value={f.defaultBot} onChange={(defaultBot) => setF((cur) => ({ ...cur, defaultBot }))} label={t('bd.runnerBot')} /></Field>
           <Field label={t('bd.runnerMaxConc')} hint={t('bd.runnerMaxConcHint')}>
             <input type="number" min={1} max={5} value={f.maxConcurrent} onChange={(e) => setF({ ...f, maxConcurrent: e.target.value })} />
           </Field>
@@ -155,7 +147,7 @@ function BoardRunnerBar({ runner, bots, onToggle, onConfigure, onTick, busy }) {
   const f = useFmt();
   if (!runner) return null;
   const botObj = (bots || []).find((b) => b.id === runner.defaultBot);
-  const botName = botObj ? ((botObj.emoji ? botObj.emoji + ' ' : '') + botObj.name) : runner.defaultBot;
+  const botName = botObj ? botObj.name : runner.defaultBot;
   const activeCount = (runner.activeRuns || []).length;
   return (
     <div className={'runner-bar' + (runner.enabled ? ' on' : '')}>
@@ -166,7 +158,7 @@ function BoardRunnerBar({ runner, bots, onToggle, onConfigure, onTick, busy }) {
       </label>
       <div className="runner-bar-meta meta-line muted small">
         <span>{t('bd.runnerEvery', { n: runner.intervalMin })}</span>
-        <span><Bot size={12} style={{ verticalAlign: '-2px' }} /> {botName}</span>
+        <span className="row" style={{ gap: 4, display: 'inline-flex' }}>{botObj ? <BotAvatar bot={botObj} size={16} /> : <Bot size={12} />} {botName}</span>
         <span>{t('bd.runnerQueue', { n: runner.queueCount ?? 0 })}</span>
         {activeCount > 0 && <Badge kind="warn"><span className="spin" /> {t('bd.runnerActive', { n: activeCount })}</Badge>}
         {runner.lastScanAt && <span>{t('bd.runnerLastScan', { t: f.ago(runner.lastScanAt) })}</span>}

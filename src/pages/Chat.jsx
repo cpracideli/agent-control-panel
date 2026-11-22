@@ -6,7 +6,7 @@ import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
-import { BotAvatar } from './Bots.jsx';
+import { BotAvatar, BotSelect } from './Bots.jsx';
 import CameraCapture from './CameraCapture.jsx';
 import { provName } from '../prov.js';
 import { ProvIcon, ProvMark } from '../ProvIcon.jsx';
@@ -15,6 +15,7 @@ import { openDocument, openImage } from '../viewer.jsx';
 import { formatResetInfo, getProviderLimitStatus, getProviderPickerLimit, isBridgeControlCommand } from '../providerLimits.js';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
+const EMPTY_DRAFTS_KEY = 'acp_empty_chat_drafts';
 const chatFromHash = () => {
   const m = window.location.hash.match(/^#\/chat\/([^/?#]+)/);
   if (!m) return null;
@@ -204,8 +205,8 @@ function DelegationList({ delegations, botsById, term }) {
       {delegations.map((d, i) => {
         const caller = (botsById && botsById[d.byBot]) || null;
         const target = (botsById && botsById[d.bot]) || null;
-        const callerLabel = caller ? (caller.emoji ? caller.emoji + ' ' : '') + caller.name : (d.byBot || 'Claude');
-        const targetLabel = target ? (target.emoji ? target.emoji + ' ' : '') + target.name : (d.botName || d.bot);
+        const callerLabel = caller ? <span className="row" style={{ gap: 4 }}><BotAvatar bot={caller} size={16} />{caller.name}</span> : (d.byBot || 'Claude');
+        const targetLabel = target ? <span className="row" style={{ gap: 4 }}><BotAvatar bot={target} size={16} />{target.name}</span> : (d.botName || d.bot);
         const out = d.error || d.answer || '';
         return (
           <div key={d.id || i} className={'tool deleg-card' + (d.status === 'error' ? ' bad' : '')}>
@@ -684,12 +685,7 @@ function ParallelTaskModal({ chatId, bots, onClose, onStarted }) {
         <p className="muted small" style={{ margin: 0 }}>Roda em segundo plano sem travar esta conversa e entrega o resultado aqui automaticamente ao terminar.</p>
         <div className="form-grid">
           <Field label="Título"><input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Pesquisar preços de voo" /></Field>
-          <Field label="Bot">
-            <select value={bot} onChange={(e) => setBot(e.target.value)}>
-              <option value="">Bot desta conversa</option>
-              {(bots || []).map((b) => <option key={b.id} value={b.id}>{(b.emoji ? b.emoji + ' ' : '') + b.name}</option>)}
-            </select>
-          </Field>
+          <Field label="Bot"><BotSelect bots={bots || []} value={bot} onChange={setBot} label="Bot" emptyLabel="Bot desta conversa" /></Field>
         </div>
         <Field label="Instrução completa"><textarea required rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="O que executar em paralelo..." /></Field>
         <label className="check"><input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} /><span>Modo somente leitura (read-only)</span></label>
@@ -997,7 +993,7 @@ const Message = memo(function Message({ m, chatId, onResend, retryText, onRetryT
         <ToolList tools={m.tools} term={term} />
         <Md text={m.text} />
         <div className="msg-meta">
-          {bot && bot.id !== 'default' && <span>{(bot.emoji ? bot.emoji + ' ' : '') + bot.name}</span>}
+          {bot && bot.id !== 'default' && <span>{bot.name}</span>}
           {m.provider && <ProvMark id={m.provider} size={13} />}
           {m.usage?.ms ? <span>{f.dur(m.usage.ms)}</span> : null}
           {m.usage?.turns ? <span>{m.usage.turns === 1 ? t('chat.stepOne') : t('chat.steps', { n: m.usage.turns })}</span> : null}
@@ -1036,7 +1032,7 @@ function LiveRun({ live, bot, botsById, term, onPromptAnswered }) {
         <PromptList prompts={live.prompts} term={term} onAnswered={onPromptAnswered} />
         <ToolList tools={live.tools} term={term} />
         {live.texts.length > 0 && <Md text={live.texts.join('\n\n')} />}
-        <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {bot && bot.id !== 'default' ? (bot.emoji ? bot.emoji + ' ' : '') + bot.name + ' · ' : ''}{t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
+        <div className="msg-meta">{term ? <span className="term-star">✻</span> : <span className="spin" />} {bot && bot.id !== 'default' ? bot.name + ' · ' : ''}{t('chat.working')} {secs}s{live.model ? ' · ' + live.model : ''}
           {live.mcp?.length > 0 && <span> · MCP: {live.mcp.map((s) => s.name + (s.status === 'connected' ? '' : ' (' + s.status + ')')).join(', ')}</span>}
         </div>
       </div>
@@ -1331,6 +1327,8 @@ export default function Chat({ openMore, me }) {
   const [showArchived, setShowArchived] = useState(false);
   const [swipedId, setSwipedId] = useState(null);
   const [current, setCurrent] = useState(() => chatFromHash() || store.get(LAST_CHAT_KEY) || null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
   const [messages, setMessages] = useState([]);
   const [chatInfo, setChatInfo] = useState(null);
   const [live, setLive] = useState(null);
@@ -1364,12 +1362,70 @@ export default function Chat({ openMore, me }) {
 
   const chatsReloadRef = useRef(chats.reload);
   chatsReloadRef.current = chats.reload;
-
+  const emptyDraftChats = useRef(null);
+  if (!emptyDraftChats.current) {
+    try { emptyDraftChats.current = new Set(JSON.parse(sessionStorage.getItem(EMPTY_DRAFTS_KEY) || '[]')); }
+    catch { emptyDraftChats.current = new Set(); }
+  }
+  const saveEmptyDrafts = () => {
+    try { sessionStorage.setItem(EMPTY_DRAFTS_KEY, JSON.stringify([...emptyDraftChats.current])); } catch {}
+  };
+  const titleRequests = useRef(new Set());
+  const sendingChat = useRef(null);
+  const pendingDraftDisposal = useRef(null);
+  const discardEmptyDraft = (id) => {
+    if (!id || !emptyDraftChats.current.delete(id)) return;
+    saveEmptyDrafts();
+    bridge.messages(id)
+      .then(({ messages: history }) => {
+        if (!Array.isArray(history)) throw new Error('Não foi possível verificar se a conversa está vazia');
+        if (history.length) return;
+        localCache.del('/bridge/web/' + id.slice(4) + '/messages');
+        return bridge.deleteChat(id);
+      })
+      .then(() => chatsReloadRef.current?.(true))
+      .catch((e) => { emptyDraftChats.current.add(id); saveEmptyDrafts(); toast(e.message, 'err'); });
+  };
+  const switchChat = (id) => {
+    if (pendingDraftDisposal.current === id) pendingDraftDisposal.current = null;
+    if (current !== id) {
+      if (sendingChat.current === current) pendingDraftDisposal.current = current;
+      else discardEmptyDraft(current);
+    }
+    setCurrent(id);
+  };
+  const autoTitle = async (id) => {
+    if (titleRequests.current.has(id)) return;
+    titleRequests.current.add(id);
+    try {
+      const { chat, messages: history } = await bridge.messages(id);
+      if (!chat || !['Nova conversa', 'Conversa web', 'New conversation'].includes(chat.title)) return;
+      const firstMessage = history.find((message) => message.role === 'user' && (message.text || message.transcript));
+      if (!firstMessage || !chat.provider) return;
+      const prompt = [
+        'Crie um título curto e específico para esta conversa, em português.',
+        'Responda somente com o título, sem aspas nem explicações, com no máximo 7 palavras.',
+        '',
+        String(firstMessage.text || firstMessage.transcript).slice(0, 3000),
+      ].join('\n');
+      const result = await bridge.council(prompt, [chat.provider]);
+      const response = result.synthesis || result.opinions?.find((item) => item.provider === chat.provider)?.text || '';
+      const title = response.replace(/^\s*["'`]+|["'`]+\s*$/g, '').replace(/^(título|title)\s*:\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (!title) return;
+      const latest = await bridge.messages(id);
+      if (!latest.chat || !['Nova conversa', 'Conversa web', 'New conversation'].includes(latest.chat.title)) return;
+      const updated = await bridge.patchChat(id, { title });
+      if (currentRef.current === id) setChatInfo(updated);
+      chatsReloadRef.current?.(true);
+    } catch {
+      // Keep the existing chat title when title generation is unavailable.
+    }
+  };
   useEffect(() => {
     const openChatId = (cid) => {
       if (!cid || !cid.startsWith('web:')) return;
       store.set(LAST_CHAT_KEY, cid);
-      setCurrent(cid);
+      switchChat(cid);
       setShowList(false);
       setShowOpts(false);
       setShowModelPicker(false);
@@ -1404,7 +1460,7 @@ export default function Chat({ openMore, me }) {
       if (r?.chat?.id) {
         toast('Conversa ramificada (Fork)');
         await chats.reload(true);
-        setCurrent(r.chat.id);
+        switchChat(r.chat.id);
       }
     } catch (e) { toast(e.message || 'Falha ao ramificar', 'err'); }
   };
@@ -1433,6 +1489,10 @@ export default function Chat({ openMore, me }) {
   const runningTasks = (chatTasks.data || []).filter((tk) => tk.status === 'running');
   const [files, setFiles] = useState([]);
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (screen.active || !current || sending) return;
+    discardEmptyDraft(current);
+  }, [screen.active, current, sending]); // eslint-disable-line react-hooks/exhaustive-deps
   const [voiceMode, setVoiceModeState] = useState(() => store.get('acp_voice') === '1');
   // Chat style follows the global theme ('terminal' renders Claude Code terminal layout).
   const { theme } = useTheme();
@@ -1486,12 +1546,12 @@ export default function Chat({ openMore, me }) {
     store.set(LAST_CHAT_KEY, id);
     const h = '#/chat/' + id.slice(4);
     window.history.replaceState(null, '', h); // never push: a swipe from the left edge must open the drawer, not go back
-    setCurrent(id); setShowList(false); setSwipedId(null);
+    switchChat(id); setShowList(false); setSwipedId(null);
   };
   useEffect(() => {
     const hashChat = chatFromHash();
     if (hashChat) {
-      if (current !== hashChat) setCurrent(hashChat);
+      if (current !== hashChat) switchChat(hashChat);
       return;
     }
     if (!webChats.length || chats.loading) return;
@@ -1505,7 +1565,7 @@ export default function Chat({ openMore, me }) {
     if (h && !h.startsWith('#/chat')) return;
     const hashId = chatFromHash();
     if (hashId && hashId !== current) {
-      setCurrent(hashId);
+      switchChat(hashId);
       setShowList(false);
       return;
     }
@@ -1520,7 +1580,7 @@ export default function Chat({ openMore, me }) {
     const onHash = () => {
       const id = chatFromHash();
       if (id) {
-        setCurrent(id);
+        switchChat(id);
         setShowList(false);
         setShowOpts(false);
         setShowModelPicker(false);
@@ -1578,6 +1638,7 @@ export default function Chat({ openMore, me }) {
       }
       else if (ev.type === 'idle') {
         setLive(null); setQueuedAhead(0); chats.reload(true);
+        autoTitle(current);
         if (!document.hidden) bridge.patchChat(current, { read: true }).then(notifyNav).catch(notifyNav);
         else notifyNav();
       }
@@ -1719,6 +1780,8 @@ export default function Chat({ openMore, me }) {
   const newChat = async () => {
     try {
       const c = await bridge.newWeb({});
+      emptyDraftChats.current.add(c.id);
+      saveEmptyDrafts();
       await chats.reload(true);
       select(c.id);
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -1741,19 +1804,29 @@ export default function Chat({ openMore, me }) {
     if (!voice) haptic(8); // voice notes already buzz on release
     let id = current;
     setSending(true);
+    sendingChat.current = id;
     try {
       const payload = await Promise.all(pending.map(async (f) => ({ name: f.name, type: f.type, data: await readAsBase64(f.file) })));
       if (voice) payload.push({ name: 'voz.' + (voice.type.split('/')[1] || 'webm'), type: voice.type, data: await readAsBase64(voice.blob), voice: true });
-      if (!id) { const c = await bridge.newWeb({}); id = c.id; select(c.id); }
+      if (!id) { const c = await bridge.newWeb({}); id = c.id; sendingChat.current = id; emptyDraftChats.current.add(c.id); saveEmptyDrafts(); select(c.id); }
       if (overrideText === undefined) { setText(''); setFiles([]); }
       speakRef.current.lastVoice = Boolean(voice);
       const r = await bridge.send(id, msg, payload, voice?.transcript);
+      emptyDraftChats.current.delete(id);
+      saveEmptyDrafts();
       if (r.injected) toast('📨 ' + t('chat.injectedToast'));
       else if (r.ahead) { setQueuedAhead(r.ahead); toast(t('chat.queued', { n: r.ahead })); }
       chats.reload(true);
       pending.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
     } catch (e) { toast(e.message, 'err'); if (overrideText === undefined) { setText(msg); setFiles(pending); } }
-    finally { setSending(false); }
+    finally {
+      setSending(false);
+      sendingChat.current = null;
+      if (pendingDraftDisposal.current === id) {
+        pendingDraftDisposal.current = null;
+        discardEmptyDraft(id);
+      }
+    }
   };
   const addFiles = (list) => {
     const add = [];
@@ -1829,6 +1902,8 @@ export default function Chat({ openMore, me }) {
   const remove = async (targetId = current) => {
     if (!(await confirm(t('chat.deleteConfirm')))) return;
     try {
+      emptyDraftChats.current.delete(targetId);
+      saveEmptyDrafts();
       await bridge.deleteChat(targetId);
       if (targetId === current) { setCurrent(null); window.history.replaceState(null, '', '#/chat'); }
       chats.reload();
@@ -1958,7 +2033,7 @@ export default function Chat({ openMore, me }) {
                     {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
                     {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
                   </span>
-                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? (botsById[c.bot].emoji || '') + ' ' + botsById[c.bot].name + ' · ' : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? <><BotAvatar bot={botsById[c.bot]} size={14} /> {botsById[c.bot].name} · </> : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
                 </LongPressButton>
                 <div className="chat-item-actions">
                   <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
@@ -1973,6 +2048,8 @@ export default function Chat({ openMore, me }) {
     if (!(await confirm(t('chat.clearAll'), t('chat.clearAllQ', { n: webChats.length }), t('common.delete')))) return;
     try {
       await Promise.all(webChats.map((c) => bridge.deleteChat(c.id).catch(() => {})));
+      webChats.forEach((c) => emptyDraftChats.current.delete(c.id));
+      saveEmptyDrafts();
       webChats.forEach((c) => localCache.del('/bridge/web/' + c.id.slice(4) + '/messages'));
       store.set(LAST_CHAT_KEY, '');
       localCache.del('/bridge/chats');
@@ -2174,7 +2251,7 @@ export default function Chat({ openMore, me }) {
               <div className="mention-pop" role="listbox">
                 {mentionItems.map((it) => (
                   <button key={it.id} type="button" className="mention-item press" onClick={() => pickMention(it)}>
-                    <span className="mention-ic">{it.avatar ? <BotAvatar bot={it} size={20} /> : it.emoji}</span>
+                    <span className="mention-ic">{it.id === 'todos' ? it.emoji : <BotAvatar bot={it} size={20} />}</span>
                     <b>{it.id === 'todos' ? '@todos' : it.name}</b>
                     {it.id !== 'todos' && <small className="muted">@{it.id}</small>}
                     {it.description && <span className="muted small ellipsis">{it.description}</span>}
