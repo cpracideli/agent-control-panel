@@ -382,7 +382,11 @@ export default function Bots() {
     const id = setInterval(() => bots.reload(true), 5000);
     return () => clearInterval(id);
   }, [anyGenerating]); // eslint-disable-line react-hooks/exhaustive-deps
-  const mcpNames = mcp.data ? [...new Set(['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})))].sort() : [];
+  const mcpNames = mcp.data ? [...new Set([
+    ...['user', 'local', 'project'].flatMap((s) => Object.keys(mcp.data.claude?.[s] || {})),
+    ...Object.keys(mcp.data.copilot?.servers || {}),
+    ...Object.keys(mcp.data.copilot?.workspace || {}),
+  ])].sort() : [];
   const provLabel = (b) => {
     const effP = b.provider || (!b.isDefault && defaultBot?.provider) || providers.data?.defaultProvider || 'claude';
     const p = (providers.data?.providers || []).find((x) => x.id === b.provider);
