@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, FileText, FolderArchive, Image as ImageIcon, MessageSquare, MoreHorizontal, Music, PenTool, Search, Send, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useI18n, useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 import { docLink, imageLink } from '../viewer.jsx';
 
 function AnnotateArtifactModal({ item, onClose }) {
@@ -107,6 +107,7 @@ export default function Artifacts() {
   const allItems = arts.data || [];
   const list = allItems.filter((a) => {
     if (filter !== 'all' && kindOf(a) !== filter) return false;
+  const [vis_list, moreBtn_list] = useMore(list);
     if (q.trim() && !(a.origName + ' ' + a.name + ' ' + a.chatTitle).toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
@@ -170,7 +171,7 @@ export default function Artifacts() {
         )}
         {arts.data && !list.length && <p className="muted">{t('art.none')}</p>}
         <div className="bot-grid">
-          {list.map((a) => {
+          {vis_list.map((a) => {
             const k = kindOf(a);
             const url = bridge.artifactFileUrl(a.name);
             return (
@@ -205,6 +206,7 @@ export default function Artifacts() {
               </div>
             );
           })}
+{moreBtn_list}
         </div>
       </Card>
       {annotating && <AnnotateArtifactModal item={annotating} onClose={() => setAnnotating(null)} />}

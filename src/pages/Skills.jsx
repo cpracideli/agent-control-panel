@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Copy, Download, MessageSquare, Pencil, Plus, Search, Trash2, Wand2 } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 import { AddButton, DetailSheet, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 import { BotSelect } from './Bots.jsx';
 
@@ -80,6 +80,7 @@ export default function Skills() {
   const [busy, run] = useAction();
 
   const list = (skills.data || []).filter((s) => !q.trim() || (s.name + ' ' + s.slug + ' ' + s.description).toLowerCase().includes(q.toLowerCase()));
+  const [vis_list, moreBtn_list] = useMore(list);
 
   const runInChat = async (sk) => {
     const c = await run('run' + sk.slug, () => bridge.newWeb({ bot: sk.bot || undefined, title: sk.name }));
@@ -114,7 +115,7 @@ export default function Skills() {
         {skills.data && !list.length && <p className="muted empty-note">{t('sk.none')}</p>}
         {list.length > 0 && (
           <ListGroup>
-            {list.map((sk) => (
+            {vis_list.map((sk) => (
               <ListRow key={sk.slug} leading={<span className="row-ic ic-skills"><Wand2 size={18} /></span>}
                 title={sk.name} badges={<Badge>/{sk.slug}</Badge>}
                 subtitle={sk.description || t('bots.noDescription')}
@@ -124,6 +125,7 @@ export default function Skills() {
                   { icon: Trash2, label: t('common.remove'), kind: 'danger', onClick: () => removeSkill(sk) },
                 ]} />
             ))}
+{moreBtn_list}
           </ListGroup>
         )}
         {sel && (
@@ -162,7 +164,7 @@ export default function Skills() {
       }>
         {skills.data && !list.length && <p className="muted">{t('sk.none')}</p>}
         <div className="bot-grid">
-          {list.map((sk) => (
+          {vis_list.map((sk) => (
             <div key={sk.slug} className="bot-card">
               <div className="row">
                 <span className="row-ic ic-skills" style={{ width: 38, height: 38, borderRadius: 11 }}><Wand2 size={18} /></span>
@@ -187,6 +189,7 @@ export default function Skills() {
               </div>
             </div>
           ))}
+{moreBtn_list}
         </div>
       </Card>
       {modals}

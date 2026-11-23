@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity, Box, Brain, Cpu, DollarSign, Globe, MessageCircle, Play, RefreshCw, Rocket, Send, Smartphone, Square } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, useAction, useConfirm, useFmt, useLoad } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, useAction, useConfirm, useFmt, useLoad, useMore } from '../ui.jsx';
 import { ListGroup, ListRow, Row, useIsMobile } from '../native.jsx';
 import { ProvMark } from '../ProvIcon.jsx';
 
@@ -24,6 +24,7 @@ export default function Overview() {
   const mobile = useIsMobile();
 
   const all = chats.data || [];
+  const [vis_all, moreBtn_all] = useMore(all);
   const waChats = all.filter((c) => c.kind === 'whatsapp');
   const tot = all.reduce((a, c) => ({ runs: a.runs + c.totals.runs, cost: a.cost + c.totals.cost, ms: a.ms + c.totals.ms, errors: a.errors + c.totals.errors }), { runs: 0, cost: 0, ms: 0, errors: 0 });
   const o = ov.data;
@@ -75,13 +76,14 @@ export default function Overview() {
         </ListGroup>
         <ListGroup title={t('ov.chats') + ' · ' + all.length}>
           {chats.data && !all.length && <Row label={<span className="muted">{t('ov.noChats')}</span>} />}
-          {all.map((c) => (
+          {vis_all.map((c) => (
             <ListRow key={c.id} leading={<span className={'row-ic ' + (c.kind === 'web' ? 'ic-chat' : 'ic-install')}>{c.kind === 'web' ? <Globe size={17} /> : <Smartphone size={17} />}</span>}
               title={c.title}
               badges={c.running ? <Badge kind="warn">{t('common.running')}</Badge> : c.totals.errors ? <Badge kind="err">{t('common.errors', { n: c.totals.errors })}</Badge> : null}
               subtitle={<span className="with-ic"><ProvMark id={c.provider} size={13} />{' · ' + t('ov.chatLine', { p: '', n: c.totals.runs, cost: f.usd(c.totals.cost), t: f.ago((c.runs.at(-1) || {}).at) || '—' }).replace(/^\s*·\s*/, '')}</span>}
               onOpen={c.kind === 'web' ? () => { window.location.hash = '#/chat/' + c.id.slice(4); } : undefined} />
           ))}
+{moreBtn_all}
         </ListGroup>
         <ListGroup title={t('ov.send')}><div className="group-form">{sendForm}</div></ListGroup>
       </div>
@@ -123,7 +125,7 @@ export default function Overview() {
 
       <div className="grid2">
         <Card title={t('ov.chats')} icon={MessageCircle}>
-          {all.map((c) => (
+          {vis_all.map((c) => (
             <div key={c.id} className={'list-row' + (c.kind === 'web' ? ' clickable' : '')} onClick={c.kind === 'web' ? () => { window.location.hash = '#/chat/' + c.id.slice(4); } : undefined}>
               <div className="grow">
                 <b className="with-ic">{c.kind === 'web' ? <Globe size={14} /> : <Smartphone size={14} />}<span className="ellipsis">{c.title}</span></b>
@@ -132,6 +134,7 @@ export default function Overview() {
               {c.running ? <Badge kind="warn">{t('common.running')}</Badge> : c.totals.errors ? <Badge kind="err">{t('common.errors', { n: c.totals.errors })}</Badge> : <Badge>{t('common.ok')}</Badge>}
             </div>
           ))}
+{moreBtn_all}
           {chats.data && !all.length && <p className="muted">{t('ov.noChats')}</p>}
         </Card>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarClock, Clock, Eye, GitBranch, Globe, History, Link2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Smartphone, Sun, Trash2, Webhook, Zap } from 'lucide-react';
 import { bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, useAction, useConfirm, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 import { AddButton, DetailSheet, Disclosure, HeaderActions, ListGroup, ListRow, useIsMobile } from '../native.jsx';
 import { BotSelect } from './Bots.jsx';
 
@@ -359,6 +359,7 @@ export default function Schedules() {
   const [filter, setFilter] = useState('all');
   const [busy, run] = useAction();
   const list = (sch.data || []).filter((s) => filter === 'all' || (filter === 'paused' ? s.paused : !s.paused));
+  const [vis_list, moreBtn_list] = useMore(list);
   const mobile = useIsMobile();
   const [detail, setDetail] = useState(null);
   useEffect(() => {
@@ -395,7 +396,7 @@ export default function Schedules() {
         {sch.data && !list.length && <p className="muted empty-note">{t('sch.none')}</p>}
         {list.length > 0 && (
           <ListGroup>
-            {list.map((s) => {
+            {vis_list.map((s) => {
               const nextAt = !s.paused && s.cron ? nextCronRun(s.cron) : null;
               const { Icon, cls } = schedIcon(s);
               return (
@@ -412,6 +413,7 @@ export default function Schedules() {
                   ]} />
               );
             })}
+{moreBtn_list}
           </ListGroup>
         )}
         {sel && (
@@ -461,7 +463,7 @@ export default function Schedules() {
         <Btn icon={Plus} className="small" disabled={!chats.data?.length} onClick={() => setForm({})}>{t('sch.new')}</Btn>
       </>}>
         {sch.data && !list.length && <p className="muted">{t('sch.none')}</p>}
-        {list.map((s) => {
+        {vis_list.map((s) => {
           const nextAt = !s.paused && s.cron ? nextCronRun(s.cron) : null;
           return (
             <div key={s.id} className="list-row wrap">
@@ -493,6 +495,7 @@ export default function Schedules() {
             </div>
           );
         })}
+{moreBtn_list}
       </Card>
       <Disclosure summary={t('sch.advanced')}>
         <WorkflowsAndBriefingSection chats={chats.data || []} bots={bots.data || []} />

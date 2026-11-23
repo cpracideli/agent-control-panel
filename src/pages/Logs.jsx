@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bot, CalendarMinus, CalendarPlus, Circle, Copy, Download, FileCode2, FileText, HelpCircle, Plug, Search, Send, ShieldCheck, Terminal, Unplug } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Card, ErrorBox, IconButton, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Card, ErrorBox, IconButton, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 import { ListGroup, Row, useIsMobile } from '../native.jsx';
 
 function ContainerLogs() {
@@ -77,6 +77,7 @@ function Audit() {
   const [kind, setKind] = useState('all');
   const list = (a.data || []).filter((e) => {
     if (kind !== 'all' && e.action !== kind) return false;
+  const [vis_list, moreBtn_list] = useMore(list);
     if (!q.trim()) return true;
     const s = [e.action, e.to, e.name, e.description, e.preview, e.file, e.id].filter(Boolean).join(' ').toLowerCase();
     return s.includes(q.trim().toLowerCase());
@@ -98,7 +99,7 @@ function Audit() {
         {a.data && !list.length && <p className="muted empty-note">{t('logs.nothing')}</p>}
         {list.length > 0 && (
           <ListGroup>
-            {list.map((e, i) => {
+            {vis_list.map((e, i) => {
               const Icon = ICONS[e.action] || Circle;
               return (
                 <Row key={i} icon={Icon} tint={e.ok === false ? 'ic-logout' : 'ic-plain'}
@@ -107,6 +108,7 @@ function Audit() {
                   value={<small>{f.date(e.at)}</small>} />
               );
             })}
+{moreBtn_list}
           </ListGroup>
         )}
       </>
@@ -122,7 +124,7 @@ function Audit() {
     </>}>
       <ErrorBox error={a.error} />
       {a.data && !list.length && <p className="muted">{t('logs.nothing')}</p>}
-      {list.map((e, i) => {
+      {vis_list.map((e, i) => {
         const Icon = ICONS[e.action] || Circle;
         return (
           <div key={i} className="list-row">
@@ -134,6 +136,7 @@ function Audit() {
           </div>
         );
       })}
+{moreBtn_list}
     </Card>
   );
 }

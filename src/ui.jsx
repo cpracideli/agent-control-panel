@@ -102,6 +102,20 @@ export function useAction() {
   return [busy, run];
 }
 
+// ---------- listas longas: mostra N e expande ----------
+export function useMore(list, n = 8) {
+  const t = useT();
+  const [all, setAll] = useState(false);
+  const arr = Array.isArray(list) ? list : [];
+  if (arr.length <= n + 2) return [arr, null];
+  const btn = (
+    <button type="button" className="more-btn" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+      {all ? t('common.showLess') : t('common.showAll', { n: arr.length })}
+    </button>
+  );
+  return [all ? arr : arr.slice(0, n), btn];
+}
+
 // ---------- small components ----------
 export const Card = ({ title, icon: Icon, actions, children, className = '' }) => (
   <section className={'card ' + className}>

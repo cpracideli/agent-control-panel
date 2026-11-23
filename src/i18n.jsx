@@ -29,7 +29,7 @@ const pt = {
   'common.copy': 'copiar', 'common.copied': 'Copiado', 'common.default': 'padrão', 'common.defaultModel': 'modelo padrão',
   'common.defaultEffort': 'esforço padrão', 'common.newSession': 'Nova sessão', 'common.stop': 'Parar', 'common.stopped': 'Interrompido',
   'common.updated': 'Atualizado', 'common.running': 'rodando', 'common.errors': '{n} erros', 'common.ok': 'ok',
-  'common.installed': 'instalado', 'common.notInstalled': 'não instalado', 'common.none': 'nenhuma',
+  'common.installed': 'instalado', 'common.notInstalled': 'não instalado', 'common.none': 'nenhuma', 'common.showAll': 'Ver todos ({n})', 'common.showLess': 'Mostrar menos',
 
   'login.subtitle': 'Chat, MCP, providers e controle do agente.', 'login.password': 'Senha de acesso',
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',
@@ -303,7 +303,7 @@ const en = {
   'common.copy': 'copy', 'common.copied': 'Copied', 'common.default': 'default', 'common.defaultModel': 'default model',
   'common.defaultEffort': 'default effort', 'common.newSession': 'New session', 'common.stop': 'Stop', 'common.stopped': 'Stopped',
   'common.updated': 'Updated', 'common.running': 'running', 'common.errors': '{n} errors', 'common.ok': 'ok',
-  'common.installed': 'installed', 'common.notInstalled': 'not installed', 'common.none': 'none',
+  'common.installed': 'installed', 'common.notInstalled': 'not installed', 'common.none': 'none', 'common.showAll': 'Show all ({n})', 'common.showLess': 'Show less',
 
   'login.subtitle': 'Chat, MCP, providers and agent control.', 'login.password': 'Access password',
   'login.submit': 'Sign in', 'login.busy': 'Signing in…',
@@ -574,7 +574,7 @@ const es = {
   'common.copy': 'copiar', 'common.copied': 'Copiado', 'common.default': 'predeterminado', 'common.defaultModel': 'modelo predeterminado',
   'common.defaultEffort': 'esfuerzo predeterminado', 'common.newSession': 'Nueva sesión', 'common.stop': 'Detener', 'common.stopped': 'Detenido',
   'common.updated': 'Actualizado', 'common.running': 'ejecutando', 'common.errors': '{n} errores', 'common.ok': 'ok',
-  'common.installed': 'instalado', 'common.notInstalled': 'no instalado', 'common.none': 'ninguna',
+  'common.installed': 'instalado', 'common.notInstalled': 'no instalado', 'common.none': 'ninguna', 'common.showAll': 'Ver todos ({n})', 'common.showLess': 'Ver menos',
 
   'login.subtitle': 'Chat, MCP, proveedores y control del agente.', 'login.password': 'Contraseña de acceso',
   'login.submit': 'Entrar', 'login.busy': 'Entrando…',

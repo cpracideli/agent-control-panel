@@ -7,7 +7,7 @@ import MemoryGraph from './MemoryGraph.jsx';
 import { Brain, FileText, Network, MessageSquarePlus, Pencil, Pin, Plus, Search, Trash2 } from 'lucide-react';
 import { api, bridge } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, Sheet, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, Sheet, useConfirm, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 
 const mem = {
   projects: () => api('GET', '/bridge/memory/projects'),
@@ -140,6 +140,7 @@ function AiMemory() {
     .filter((p) => group === 'all' || KIND_GROUP(p.kind) === group)
     .filter((p) => !q || (p.title + ' ' + p.path).toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at)), [pages.data, group, q]);
+  const [vis_list, moreBtn_list] = useMore(list);
   const counts = useMemo(() => (pages.data || []).reduce((a, p) => ({ ...a, [KIND_GROUP(p.kind)]: (a[KIND_GROUP(p.kind)] || 0) + 1 }), {}), [pages.data]);
 
   const openPage = async (path) => {
@@ -177,7 +178,7 @@ function AiMemory() {
       <ErrorBox error={pages.error || projects.error} onRetry={() => { projects.reload(); pages.reload(); }} />
       <Card>
         {pages.data && !list.length && <p className="muted">{t('mem.empty')}</p>}
-        {list.map((p) => (
+        {vis_list.map((p) => (
           <button type="button" key={p.path} className="list-row mem-row" onClick={() => openPage(p.path)}>
             <div className="grow">
               <b className="with-ic">{p.pinned && <Pin size={13} />}<span className="ellipsis">{p.title}</span></b>
@@ -186,6 +187,7 @@ function AiMemory() {
             <Badge>{p.kind}</Badge>
           </button>
         ))}
+{moreBtn_list}
       </Card>
       {open && (
         <Viewer title={pg?.title || open.path} body={pg?.body_markdown}
@@ -218,6 +220,7 @@ function LocalMemory() {
   const [editing, setEditing] = useState(null);
   const [suggesting, setSuggesting] = useState(null);
   const items = (data.data?.items || []).filter((x) => (!area || x.area === area) && (!q || (x.name + ' ' + x.description + ' ' + x.body).toLowerCase().includes(q.toLowerCase())));
+  const [vis_items, moreBtn_items] = useMore(items);
   const save = async (v) => {
     try {
       await mem.saveLocal(v.exists ? { file: v.file, raw: v.raw } : { name: v.name, title: v.title, description: v.description, type: v.type, area: v.area || '', body: v.body });
@@ -243,7 +246,7 @@ function LocalMemory() {
       <ErrorBox error={data.error} onRetry={() => data.reload()} />
       <Card>
         {data.data && !items.length && <p className="muted">{t('mem.empty')}</p>}
-        {items.map((x) => (
+        {vis_items.map((x) => (
           <button type="button" key={x.file} className="list-row mem-row" onClick={() => setOpen(x)}>
             <div className="grow">
               <b className="ellipsis">{x.name}</b>
@@ -256,6 +259,7 @@ function LocalMemory() {
             </div>
           </button>
         ))}
+{moreBtn_items}
       </Card>
       {open && (
         <Viewer title={open.name} body={open.body}

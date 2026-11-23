@@ -3,7 +3,7 @@ import { Bell, BellRing, Copy, KeyRound, Lock, Moon, Pencil, Plus, RefreshCw, Ro
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
 import { useNotifications } from '../notifications.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useLoad, useToast, useMore } from '../ui.jsx';
 import { provIconFor } from '../ProvIcon.jsx';
 import { BotSelect } from './Bots.jsx';
 
@@ -252,12 +252,13 @@ function ChatOverrides({ providers }) {
   const chats = useLoad(() => bridge.chats(), [], { cacheKey: '/bridge/chats' });
   const [, run] = useAction();
   const wa = (chats.data || []).filter((c) => c.kind === 'whatsapp');
+  const [vis_wa, moreBtn_wa] = useMore(wa);
   const change = (id, b) => run(id, () => bridge.patchChat(id, b), t('common.updated')).then(() => chats.reload(true));
   return (
     <Card title={t('pr.perChat')} icon={Smartphone} actions={<span className="muted small">{t('pr.perChatHint')}</span>}>
       <ErrorBox error={chats.error} />
       {!wa.length && chats.data && <p className="muted">{t('pr.noWa')}</p>}
-      {wa.map((c) => {
+      {vis_wa.map((c) => {
         const agy = c.provider === 'antigravity';
         const prov = providers.providers.find((p) => p.id === c.provider) || providers.providers[0];
         const efforts = agy ? (prov?.models.find((m) => m.id === c.agyModel)?.efforts || []) : (prov?.efforts || []);
@@ -282,6 +283,7 @@ function ChatOverrides({ providers }) {
           </div>
         );
       })}
+{moreBtn_wa}
     </Card>
   );
 }

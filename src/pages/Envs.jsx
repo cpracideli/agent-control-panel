@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, Eye, EyeOff, KeyRound, Lock, Plus, RefreshCw, Save, Search, Shield, Trash2, Upload } from 'lucide-react';
 import { bridge, coolify } from '../api.js';
 import { useT } from '../i18n.jsx';
-import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast } from '../ui.jsx';
+import { Badge, Btn, Card, ErrorBox, Field, IconButton, Modal, Skeleton, useAction, useConfirm, useFmt, useLoad, useToast, useMore } from '../ui.jsx';
 import { BotSelect } from './Bots.jsx';
 
 const SECRET = /TOKEN|KEY|SECRET|PASSWORD|PASS/i;
@@ -167,6 +167,7 @@ export default function Envs() {
   const [pendingRestart, setPendingRestart] = useState(false);
   const [busy, run] = useAction();
   const list = (envs.data || []).filter((e) => e.key.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => a.key.localeCompare(b.key));
+  const [vis_list, moreBtn_list] = useMore(list);
   const applyRestart = async () => {
     if (!(await confirm(t('env.applyConfirm')))) return;
     const r = await run('r', coolify.restart, t('ov.restartOk'));
@@ -194,7 +195,8 @@ export default function Envs() {
           </>}>
             <ErrorBox error={envs.error} onRetry={() => envs.reload()} />
             {envs.loading && !envs.data && <Skeleton rows={4} lines={1} avatar={false} />}
-            {list.map((e) => <EnvRow key={e.uuid + (e.value || '')} e={e} onSaved={() => { setPendingRestart(true); envs.reload(true); }} />)}
+            {vis_list.map((e) => <EnvRow key={e.uuid + (e.value || '')} e={e} onSaved={() => { setPendingRestart(true); envs.reload(true); }} />)}
+{moreBtn_list}
           </Card>
           <Card title={t('env.new')} icon={Plus}>
             <form className="env-row" onSubmit={(e) => { e.preventDefault(); run('add', () => coolify.addEnv(k.trim(), v), t('env.added', { k })).then((r) => { if (r !== undefined) { setK(''); setV(''); setPendingRestart(true); envs.reload(true); } }); }}>
