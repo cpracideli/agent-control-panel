@@ -2864,26 +2864,3 @@ html .lgl:not(.lgl-moving) .composer, html .lgl:not(.lgl-moving) .dock-capsule {
   html:root:not([data-theme="terminal"]):not([data-lg6]) :is(.ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu) { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; text-shadow: none; }
   html:root:not([data-theme="terminal"]):not([data-lg6]) :is(.dock-capsule, .composer, .head-capsule, .glass-btn, .chat-head .nav-btn, .toast) { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 }
-
-/* =====================================================================
-   v8 Liquid Glass WebGL everywhere (src/lgengine.js). Elements with .lgx have a shaded <canvas.lgx-canvas>
-   behind their content (shared WebGL context, same shader/presets as src/liquidglass.js), so their CSS
-   material (tint, backdrop-filter, rim, shadow) is switched off. Without .lgx (?lg-css, no WebGL, terminal
-   theme, reduced transparency/motion, more contrast, off screen, over the active limit) the CSS glass above
-   stays as it was.
-   ===================================================================== */
-:root { --lgx-panel-tint: rgba(255, 255, 255, .42); }
-:root[data-theme="dark"] { --lgx-panel-tint: rgba(28, 28, 30, .46); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="terminal"]) { --lgx-panel-tint: rgba(28, 28, 30, .46); } }
-html.lgx-on .lgx {
-  isolation: isolate;
-  background: transparent !important; box-shadow: none !important;
-  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-}
-html.lgx-on .lgx.lgx-panel { background: var(--lgx-panel-tint) !important; }
-html.lgx-on .lgx:is(.glass-btn, .glass-bar, .toast)::after { display: none; }
-.lgx > canvas.lgx-canvas {
-  position: absolute !important; inset: -20px !important; width: calc(100% + 40px) !important; height: calc(100% + 40px) !important;
-  z-index: -1 !important; pointer-events: none !important; margin: 0 !important; padding: 0 !important;
-  border: 0 !important; border-radius: 0 !important; display: block !important; transform-origin: 0 0;
-}

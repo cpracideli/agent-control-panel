@@ -12,9 +12,8 @@
 // devices listed in shouldUseLib() (see the measurements in docs/liquid-glass.md).
 import { LiquidGlass } from '@ybouane/liquidglass';
 import { toCanvas } from 'html-to-image';
-import { drawItems, markItemDirty, onItemLanded, itemsOf, overflowScrolls, mutationGap } from './lgitems.js';
 
-export const PRESETS = {
+const PRESETS = {
   // "Regular Glass" from liquid-glass.ybouane.com (library defaults + these)
   light: { cornerRadius: 40, blurAmount: 0, refraction: 0.69, chromAberration: 0.05, edgeHighlight: 0.05, fresnel: 1, zRadius: 40, shadowOpacity: 0.3 },
   // "Dark Glass"
@@ -29,20 +28,12 @@ const TARGETS = [
 ];
 
 const mq = (q) => window.matchMedia(q).matches;
-export function isDark() {
+function isDark() {
   const t = document.documentElement.dataset.theme;
   return t === 'dark' || (t !== 'light' && mq('(prefers-color-scheme: dark)'));
 }
-let webgl = null;
-function hasWebGL() { // probed once: every probe would otherwise hold a WebGL context (browsers cap them at ~16)
-  if (webgl === null) {
-    try {
-      const gl = document.createElement('canvas').getContext('webgl');
-      webgl = !!gl;
-      gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    } catch { webgl = false; }
-  }
-  return webgl;
+function hasWebGL() {
+  try { return !!document.createElement('canvas').getContext('webgl'); } catch { return false; }
 }
 export function shouldUseLib() {
   if (typeof window === 'undefined') return false;
@@ -62,7 +53,7 @@ export function shouldUseLib() {
 const isTouch = () => mq('(hover: none), (pointer: coarse)');
 const DPR_CAP = 2;
 let dprCapped = false;
-export function capDevicePixelRatio() {
+function capDevicePixelRatio() {
   if (dprCapped || !isTouch()) return;
   const desc = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
     || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'devicePixelRatio');
@@ -108,7 +99,9 @@ function configFor(el, kind) {
 const HYBRID = typeof location !== 'undefined' && new URLSearchParams(location.search).has('lg-hybrid');
 const IDLE_MS = 450;
 const idleMs = () => (isTouch() ? 650 : IDLE_MS); // phones: wait for momentum scrolling to settle
+const mutationGap = () => (isTouch() ? 700 : 350); // live: re-capture a changing child at most this often
 const SAMPLE_PAD = 60; // px around the glass that its shader samples (library SHADOW_PAD + margin)
+const MAX_CHILD_PX = 12e6; // iOS canvas area limit is ~16.7 M px: skip absurdly tall children
 
 const wrapperOf = (entry, node) => {
   let w = node instanceof Element ? node : node?.parentElement;
@@ -145,6 +138,7 @@ function makeHybridRefresher(entry) {
 // itself, or a descendant such as .screen). The wrapper is captured once WITHOUT S's items (html-to-image
 // keeps S's box, background and borders since it inlines computed sizes); S's items are each captured into
 // their own canvas and drawn at their live position every frame, clipped to S.
+const overflowScrolls = (el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY) && isScroller(el);
 function findScroller(entry, w) {
   if (overflowScrolls(w)) return w;
   const g = entry.glass.getBoundingClientRect();
@@ -156,6 +150,110 @@ function findScroller(entry, w) {
     }
   }
   return null;
+}
+// Items of S: its children; a tall transparent container (list wrapper) is replaced by its own children,
+// so a long list is not one giant capture and a change re-captures only the item that changed.
+function itemsOf(S) {
+  const out = [];
+  const walk = (parent, depth) => {
+    for (const c of parent.children) {
+      if (depth < 4 && c.children.length > 1 && c.offsetHeight > innerHeight * 1.2) {
+        const cs = getComputedStyle(c);
+        const clear = /rgba\(.*,\s*0\)|transparent/.test(cs.backgroundColor) && cs.backgroundImage === 'none' && !parseFloat(cs.borderTopWidth);
+        if (clear) { walk(c, depth + 1); continue; }
+      }
+      out.push(c);
+    }
+  };
+  walk(S, 0);
+  return out;
+}
+
+function makeItemCache(entry) {
+  const cache = new WeakMap(); // item -> { canvas, dpr, dirty, last }
+  const queue = new Set();
+  let working = null, again = false;
+  const k = () => window.devicePixelRatio || 1;
+  const fresh = (c) => { const x = cache.get(c); return !!x && !x.dirty && x.dpr === k(); };
+  const pump = () => {
+    if (working || !entry.instance) return;
+    const g = entry.glass.getBoundingClientRect();
+    const mid = (g.top + g.bottom) / 2;
+    let best = null, bestD = Infinity, wait = Infinity;
+    for (const c of queue) {
+      if (!c.isConnected || fresh(c)) { queue.delete(c); continue; }
+      const x = cache.get(c);
+      const due = x?.canvas ? x.last + mutationGap() - performance.now() : 0; // throttle re-captures only
+      if (due > 0) { wait = Math.min(wait, due); continue; }
+      const r = c.getBoundingClientRect();
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (!best) { if (wait < Infinity) setTimeout(pump, wait + 5); return; }
+    queue.delete(best);
+    working = best; again = false;
+    capture(best).finally(() => { working = null; setTimeout(pump, 0); });
+  };
+  const capture = async (c) => {
+    const t0 = performance.now();
+    const dpr = k();
+    const prev = cache.get(c);
+    const w = c.offsetWidth, h = c.offsetHeight;
+    try {
+      if (w < 1 || h < 1 || w * h * dpr * dpr > MAX_CHILD_PX) { cache.set(c, { canvas: null, dpr, dirty: false, last: performance.now() }); return; }
+      const canvas = await toCanvas(c, {
+        width: w, height: h, pixelRatio: dpr,
+        fontEmbedCSS: entry.instance.capture.fontEmbedCSSForElement(c),
+        style: { margin: '0', transform: 'none', animation: 'none', transition: 'none' },
+      });
+      cache.set(c, { canvas, dpr, dirty: again, last: performance.now() });
+      if (again) queue.add(c);
+      entry.mark?.(c);
+    } catch (err) {
+      console.warn('liquidglass: item capture failed', err);
+      cache.set(c, { canvas: prev?.canvas || null, dpr, dirty: false, last: performance.now() });
+    } finally {
+      captureLog.push({ kind: entry.kind, el: 'item', ms: Math.round(performance.now() - t0) });
+      if (captureLog.length > 500) captureLog.shift();
+    }
+  };
+  return {
+    // draw S's items that touch the glass sample region; queue the missing ones (+ prefetch a screen around)
+    draw(S, ctx, ox, oy, box) {
+      const kk = k();
+      const s = S.getBoundingClientRect();
+      const g = entry.glass.getBoundingClientRect();
+      const top = Math.max(s.top, g.top - SAMPLE_PAD), bottom = Math.min(s.bottom, g.bottom + SAMPLE_PAD);
+      const items = itemsOf(S);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox + (s.left - box.left) * kk, oy + (s.top - box.top) * kk, s.width * kk, s.height * kk);
+      ctx.clip();
+      let fetch = false;
+      for (const c of items) {
+        const r = c.getBoundingClientRect();
+        const near = r.bottom > top - innerHeight && r.top < bottom + innerHeight;
+        if (!near) continue;
+        if (!fresh(c)) { queue.add(c); fetch = true; }
+        if (r.bottom < top || r.top > bottom) continue;
+        const e = cache.get(c);
+        if (e?.canvas) ctx.drawImage(e.canvas, ox + (r.left - box.left) * kk, oy + (r.top - box.top) * kk, r.width * kk, r.height * kk);
+      }
+      ctx.restore();
+      if (fetch) pump();
+    },
+    dirty(node, S) {
+      let c = node instanceof Element ? node : node?.parentElement;
+      const items = new Set(itemsOf(S));
+      while (c && c !== S && !items.has(c)) c = c.parentElement;
+      if (!c || c === S) return false;
+      if (c === working) again = true;
+      const x = cache.get(c);
+      if (x) x.dirty = true;
+      queue.add(c); pump();
+      return true;
+    },
+  };
 }
 
 function makeLiveRefresher(entry) {
@@ -183,8 +281,8 @@ function makeLiveRefresher(entry) {
       if (!w) return;
       const S = entry.scrollers.get(w);
       const el = node instanceof Element ? node : node?.parentElement;
-      if (S && S.contains(el)) { // inside the scroller: re-capture only the item that changed
-        if (el !== S) markItemDirty(el, S);
+      if (S && entry.items && S.contains(el)) { // inside the scroller: re-capture only the item that changed
+        if (el !== S) entry.items.dirty(el, S);
         mark(w);
         return;
       }
@@ -264,18 +362,14 @@ function patchCapture(entry) {
     }
   };
   if (HYBRID) return;
-  const off = onItemLanded((item) => { for (const [w, S] of entry.scrollers) if (S.contains(item)) entry.mark?.(w); });
-  const prevCleanup = entry.cleanup;
-  entry.cleanup = () => { off(); prevCleanup?.(); };
+  entry.items = makeItemCache(entry);
   const draw = cap.drawCachedElement.bind(cap);
   cap.drawCachedElement = (element, ctx, x, y, w, h) => {
     const c = cap.cache.get(element);
     if (!c?.live) return draw(element, ctx, x, y, w, h);
     if (!c.live.isConnected || !element.contains(c.live)) { cap.captureElement(element, true); return draw(element, ctx, x, y, w, h); }
     if (!c.empty) draw(element, ctx, x, y, w, h);
-    const box = element.getBoundingClientRect();
-    const g = entry.glass.getBoundingClientRect();
-    drawItems(c.live, ctx, x, y, box.left, box.top, g.top - SAMPLE_PAD, g.bottom + SAMPLE_PAD);
+    entry.items.draw(c.live, ctx, x, y, element.getBoundingClientRect());
     return true;
   };
 }
@@ -318,8 +412,6 @@ function detach(glass) {
   live.delete(glass);
   e.cleanup?.();
   try { e.instance?.destroy(); } catch { /* ignore */ }
-  // the library does not release its WebGL context; browsers cap live contexts (~16 on iOS)
-  try { e.instance?.renderer?.gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* ignore */ }
   glass.classList.remove('lgl', 'lgl-moving');
   delete glass.dataset.config;
   window.dispatchEvent(new Event('scroll')); // glass.js re-applies its CSS lens after the "busy" pause

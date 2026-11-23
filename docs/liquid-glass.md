@@ -45,12 +45,3 @@ numbers are pessimistic for real GPUs. The html-to-image cost is CPU-bound, thou
 touch scrolling.
 
 Switches: `?lg-css` forces the CSS glass and `?lg-lib` forces the library (for tests).
-
-## v8 — WebGL em todas as superfícies de vidro (23/11/2026)
-
-- `src/lgengine.js`: usa o `GlassRenderer` da própria lib (mesmo shader e presets Regular/Dark) num ÚNICO contexto WebGL compartilhado para header (`.head-capsule`, `.chat-head .nav-btn`), `.glass-btn`, `.glass-bar`, `.iv-btn`, `.wf-bar`, `.toast`, menus (`.ctx-menu`, `.bot-picker-menu`, `.pg-more-menu`), sheets/modais (`.sheet`, `.modal`, `.asheet-group`, `.asheet-btn.cancel`) e Cmd+K (`.gsearch-panel`).
-- Cena atrás de cada elemento: cor de fundo + itens do scroller por baixo (cache por item compartilhado, `src/lgitems.js`) + canvases de vidro abaixo (header/composer/dock sob sheet/toast) + scrim do overlay.
-- Render sob demanda (scroll do scroller por baixo, item capturado, tamanho/posição, tema), no máximo 18 elementos ativos; fora da tela/fechado = CSS. Elementos em movimento re-sombreiam a cada 90 ms.
-- Composer e tab bar continuam na lib (`src/liquidglass.js`, modo ao vivo).
-- Fica em CSS: `.nav` (sidebar desktop, painel de altura total), `.topbar::before`/`.chat-head::before` (pseudo-elementos), `.glass-input` (campos dentro de painéis já com vidro), e tudo com `?lg-css`, sem WebGL, tema terminal, reduzir transparência/movimento ou mais contraste.
-- `hasWebGL()` agora testa uma vez só e libera o contexto; instâncias da lib destruídas chamam `loseContext()` (antes vazavam contextos — "Too many active WebGL contexts").
