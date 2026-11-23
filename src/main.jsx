@@ -6,10 +6,12 @@ import { ConfirmProvider, ThemeProvider, ToastProvider } from './ui.jsx';
 import './styles.css';
 import { initGlass, initRefraction } from './glass.js';
 import { initLiquidGlass } from './liquidglass.js';
+import { initLiquidGlassEngine } from './lgengine.js';
 
 initGlass();
 initRefraction();
 initLiquidGlass();
+initLiquidGlassEngine();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

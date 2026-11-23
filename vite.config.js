@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
+  // internal modules of @ybouane/liquidglass (GlassRenderer, HtmlCapture) used by src/lgengine.js
+  resolve: { alias: { '@lg-internal': fileURLToPath(new URL('./node_modules/@ybouane/liquidglass/dist', import.meta.url)) } },
   plugins: [
     react(),
     VitePWA({
