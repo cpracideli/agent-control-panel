@@ -5,11 +5,9 @@ import { I18nProvider } from './i18n.jsx';
 import { ConfirmProvider, ThemeProvider, ToastProvider } from './ui.jsx';
 import './styles.css';
 import { initGlass, initRefraction } from './glass.js';
-import { initLiquidGlass } from './liquidglass.js';
 
 initGlass();
 initRefraction();
-initLiquidGlass();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

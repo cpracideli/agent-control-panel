@@ -200,7 +200,7 @@ function lensFilter(el) {
   return `url(#${id}) blur(${blur}px) saturate(150%) brightness(${isDark() ? 0.7 : 1.05})`;
 }
 function applyFilter(el) {
-  if (paused || isGlassDisabled() || !el.dataset.lgFilter || el.closest('.lgl')) {
+  if (paused || isGlassDisabled() || !el.dataset.lgFilter) {
     el.style.removeProperty('backdrop-filter');
     el.style.removeProperty('-webkit-backdrop-filter');
     return;
