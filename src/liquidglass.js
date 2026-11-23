@@ -86,15 +86,31 @@ function configFor(el, kind) {
   return { ...PRESETS[theme], ...(kind === 'composer' ? COMPOSER_EXTRA[theme] : {}), cornerRadius: r, zRadius: Math.min(40, r) };
 }
 
-// Re-capture the content wrapper (a direct child of root) that contains `node`, at most every `gap` ms,
-// plus a trailing capture so the glass always ends up showing the latest content.
-// Every html-to-image capture is a main-thread long task (measured 465-1090 ms on the server's ARM
-// CPU, 100-560 ms long tasks, several seconds with 4x CPU throttling). So the WebGL lens never re-captures
-// while things move: on scroll/mutation the glass switches to the CSS material (.lgl-moving), and only
-// once the content has been still for IDLE_MS it captures once and fades the WebGL glass back in.
+// Two modes:
+// - live (default): the WebGL glass stays on while scrolling and streaming. A scrolling wrapper
+//   (.chat-scroll, .main) is not captured as one image: each of its children (message, card...) is
+//   captured once into its own canvas and, every frame, drawn at its live position. Scrolling therefore
+//   costs one drawImage per visible child + one shader pass; html-to-image (a main-thread long task) runs
+//   only for children that appear for the first time (prefetched about a screen ahead, one per task) or
+//   whose content changed (e.g. the message being streamed, throttled). The previous canvas of a child
+//   stays on screen until its new capture lands.
+// - hybrid (?lg-hybrid): the v6 behaviour, CSS glass (.lgl-moving) while things move, one capture once
+//   the content has been still for idleMs().
+const HYBRID = typeof location !== 'undefined' && new URLSearchParams(location.search).has('lg-hybrid');
 const IDLE_MS = 450;
 const idleMs = () => (isTouch() ? 650 : IDLE_MS); // phones: wait for momentum scrolling to settle
-function makeRefresher(entry) {
+const mutationGap = () => (isTouch() ? 700 : 350); // live: re-capture a changing child at most this often
+const SAMPLE_PAD = 60; // px around the glass that its shader samples (library SHADOW_PAD + margin)
+const MAX_CHILD_PX = 12e6; // iOS canvas area limit is ~16.7 M px: skip absurdly tall children
+
+const wrapperOf = (entry, node) => {
+  let w = node instanceof Element ? node : node?.parentElement;
+  while (w && w.parentElement !== entry.root) w = w.parentElement;
+  return !w || w === entry.glass ? null : w;
+};
+const isScroller = (w) => w.scrollHeight > w.clientHeight + 1;
+
+function makeHybridRefresher(entry) {
   const pending = new Set();
   let timer = 0;
   const run = () => {
@@ -108,9 +124,8 @@ function makeRefresher(entry) {
     if (!ws.length) entry.glass.classList.remove('lgl-moving');
   };
   return (node) => {
-    let w = node instanceof Element ? node : node?.parentElement;
-    while (w && w.parentElement !== entry.root) w = w.parentElement;
-    if (!w || w === entry.glass) return;
+    const w = wrapperOf(entry, node);
+    if (!w) return;
     pending.add(w);
     entry.glass.classList.add('lgl-moving');
     clearTimeout(timer);
@@ -118,9 +133,167 @@ function makeRefresher(entry) {
   };
 }
 
+// ---- live mode ----
+// For each wrapper (direct child of root) we find the scroller S that sits behind the glass (the wrapper
+// itself, or a descendant such as .screen). The wrapper is captured once WITHOUT S's items (html-to-image
+// keeps S's box, background and borders since it inlines computed sizes); S's items are each captured into
+// their own canvas and drawn at their live position every frame, clipped to S.
+const overflowScrolls = (el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY) && isScroller(el);
+function findScroller(entry, w) {
+  if (overflowScrolls(w)) return w;
+  const g = entry.glass.getBoundingClientRect();
+  const pts = [[(g.left + g.right) / 2, (g.top + g.bottom) / 2], [(g.left + g.right) / 2, g.top - 8]];
+  for (const [px, py] of pts) {
+    for (const el of document.elementsFromPoint(px, py)) {
+      if (!w.contains(el) || entry.glass.contains(el)) continue;
+      for (let n = el; n && n !== w; n = n.parentElement) if (overflowScrolls(n)) return n;
+    }
+  }
+  return null;
+}
+// Items of S: its children; a tall transparent container (list wrapper) is replaced by its own children,
+// so a long list is not one giant capture and a change re-captures only the item that changed.
+function itemsOf(S) {
+  const out = [];
+  const walk = (parent, depth) => {
+    for (const c of parent.children) {
+      if (depth < 4 && c.children.length > 1 && c.offsetHeight > innerHeight * 1.2) {
+        const cs = getComputedStyle(c);
+        const clear = /rgba\(.*,\s*0\)|transparent/.test(cs.backgroundColor) && cs.backgroundImage === 'none' && !parseFloat(cs.borderTopWidth);
+        if (clear) { walk(c, depth + 1); continue; }
+      }
+      out.push(c);
+    }
+  };
+  walk(S, 0);
+  return out;
+}
+
+function makeItemCache(entry) {
+  const cache = new WeakMap(); // item -> { canvas, dpr, dirty, last }
+  const queue = new Set();
+  let working = null, again = false;
+  const k = () => window.devicePixelRatio || 1;
+  const fresh = (c) => { const x = cache.get(c); return !!x && !x.dirty && x.dpr === k(); };
+  const pump = () => {
+    if (working || !entry.instance) return;
+    const g = entry.glass.getBoundingClientRect();
+    const mid = (g.top + g.bottom) / 2;
+    let best = null, bestD = Infinity, wait = Infinity;
+    for (const c of queue) {
+      if (!c.isConnected || fresh(c)) { queue.delete(c); continue; }
+      const x = cache.get(c);
+      const due = x?.canvas ? x.last + mutationGap() - performance.now() : 0; // throttle re-captures only
+      if (due > 0) { wait = Math.min(wait, due); continue; }
+      const r = c.getBoundingClientRect();
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (!best) { if (wait < Infinity) setTimeout(pump, wait + 5); return; }
+    queue.delete(best);
+    working = best; again = false;
+    capture(best).finally(() => { working = null; setTimeout(pump, 0); });
+  };
+  const capture = async (c) => {
+    const t0 = performance.now();
+    const dpr = k();
+    const prev = cache.get(c);
+    const w = c.offsetWidth, h = c.offsetHeight;
+    try {
+      if (w < 1 || h < 1 || w * h * dpr * dpr > MAX_CHILD_PX) { cache.set(c, { canvas: null, dpr, dirty: false, last: performance.now() }); return; }
+      const canvas = await toCanvas(c, {
+        width: w, height: h, pixelRatio: dpr,
+        fontEmbedCSS: entry.instance.capture.fontEmbedCSSForElement(c),
+        style: { margin: '0', transform: 'none', animation: 'none', transition: 'none' },
+      });
+      cache.set(c, { canvas, dpr, dirty: again, last: performance.now() });
+      if (again) queue.add(c);
+      entry.mark?.(c);
+    } catch (err) {
+      console.warn('liquidglass: item capture failed', err);
+      cache.set(c, { canvas: prev?.canvas || null, dpr, dirty: false, last: performance.now() });
+    } finally {
+      captureLog.push({ kind: entry.kind, el: 'item', ms: Math.round(performance.now() - t0) });
+      if (captureLog.length > 500) captureLog.shift();
+    }
+  };
+  return {
+    // draw S's items that touch the glass sample region; queue the missing ones (+ prefetch a screen around)
+    draw(S, ctx, ox, oy, box) {
+      const kk = k();
+      const s = S.getBoundingClientRect();
+      const g = entry.glass.getBoundingClientRect();
+      const top = Math.max(s.top, g.top - SAMPLE_PAD), bottom = Math.min(s.bottom, g.bottom + SAMPLE_PAD);
+      const items = itemsOf(S);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox + (s.left - box.left) * kk, oy + (s.top - box.top) * kk, s.width * kk, s.height * kk);
+      ctx.clip();
+      let fetch = false;
+      for (const c of items) {
+        const r = c.getBoundingClientRect();
+        const near = r.bottom > top - innerHeight && r.top < bottom + innerHeight;
+        if (!near) continue;
+        if (!fresh(c)) { queue.add(c); fetch = true; }
+        if (r.bottom < top || r.top > bottom) continue;
+        const e = cache.get(c);
+        if (e?.canvas) ctx.drawImage(e.canvas, ox + (r.left - box.left) * kk, oy + (r.top - box.top) * kk, r.width * kk, r.height * kk);
+      }
+      ctx.restore();
+      if (fetch) pump();
+    },
+    dirty(node, S) {
+      let c = node instanceof Element ? node : node?.parentElement;
+      const items = new Set(itemsOf(S));
+      while (c && c !== S && !items.has(c)) c = c.parentElement;
+      if (!c || c === S) return false;
+      if (c === working) again = true;
+      const x = cache.get(c);
+      if (x) x.dirty = true;
+      queue.add(c); pump();
+      return true;
+    },
+  };
+}
+
+function makeLiveRefresher(entry) {
+  let rafQueued = false;
+  const marked = new Set();
+  const flush = () => { rafQueued = false; for (const w of marked) if (w.isConnected) entry.instance?.markChanged(w); marked.clear(); };
+  const mark = (node) => { const w = wrapperOf(entry, node); if (!w) return; marked.add(w); if (!rafQueued) { rafQueued = true; requestAnimationFrame(flush); } };
+  entry.mark = mark;
+  const timers = new Map();
+  const recapture = (w, gap) => {
+    if (timers.has(w)) return;
+    timers.set(w, setTimeout(() => { timers.delete(w); if (w.isConnected) entry.instance?.capture.captureElement(w, true); }, gap));
+  };
+  return {
+    scroll(node) {
+      const w = wrapperOf(entry, node);
+      if (!w) return;
+      const S = entry.scrollers.get(w);
+      if (S && (node === S || node === w && S === w)) { mark(w); return; } // items move, caches stay
+      if (node instanceof Element && overflowScrolls(node)) recapture(w, 0); // another scroller: re-detect
+      else recapture(w, mutationGap());
+    },
+    mutate(node) {
+      const w = wrapperOf(entry, node);
+      if (!w) return;
+      const S = entry.scrollers.get(w);
+      const el = node instanceof Element ? node : node?.parentElement;
+      if (S && entry.items && S.contains(el)) { // inside the scroller: re-capture only the item that changed
+        if (el !== S) entry.items.dirty(el, S);
+        mark(w);
+        return;
+      }
+      recapture(w, mutationGap());
+    },
+  };
+}
+
 // html-to-image clones a scroll container from its top, so the glass would refract the wrong part of
-// the chat. For a scrolling wrapper we clone only the children that sit behind the glass (cheaper, too)
-// and shift them to where they are on screen.
+// the chat. Live mode: scrolling wrappers are drawn from the per-child cache (see above). Hybrid mode:
+// clone only the children that sit behind the glass and shift them to where they are on screen.
 export const captureLog = [];
 function patchCapture(entry) {
   const cap = entry.instance.capture;
@@ -132,15 +305,37 @@ function patchCapture(entry) {
     // let the library re-shade on its next frame, then show the WebGL glass again
     if (!entry.waiting?.size) requestAnimationFrame(() => requestAnimationFrame(() => entry.glass.classList.remove('lgl-moving')));
   };
+  const placeholder = document.createElement('canvas');
+  placeholder.width = placeholder.height = 1;
   cap._captureWithHtmlToImage = async (element, w, h, cssW, cssH) => {
     const t0 = performance.now();
     entry.busy.add(element);
     try {
-      const scrolls = element.scrollHeight > element.clientHeight + 1;
+      if (!HYBRID && cssW > 0 && cssH > 0) {
+        const S = findScroller(entry, element);
+        if (S) entry.scrollers.set(element, S); else entry.scrollers.delete(element);
+        if (S === element) { // the wrapper itself scrolls: nothing static to capture
+          cap.cache.set(element, { canvas: placeholder, w, h, live: S, empty: true });
+          cap.onCacheUpdate?.(element);
+          return;
+        }
+        if (S) { // capture the wrapper without the scroller's items (they are drawn live)
+          const skip = new Set(itemsOf(S));
+          const rendered = await toCanvas(element, {
+            width: cssW, height: cssH, pixelRatio: cap.dpr,
+            fontEmbedCSS: cap.fontEmbedCSSForElement(element),
+            filter: (n) => !skip.has(n),
+          });
+          cap.cache.set(element, { canvas: rendered, w, h, live: S });
+          cap.onCacheUpdate?.(element);
+          return;
+        }
+      }
+      const scrolls = isScroller(element);
       if (!scrolls || cssW <= 0 || cssH <= 0) return await original(element, w, h, cssW, cssH);
       const box = element.getBoundingClientRect();
       const g = entry.glass.getBoundingClientRect();
-      const top = g.top - 60, bottom = g.bottom + 60;
+      const top = g.top - SAMPLE_PAD, bottom = g.bottom + SAMPLE_PAD;
       const keep = new Set([...element.children].filter((c) => {
         const r = c.getBoundingClientRect();
         return r.bottom > top && r.top < bottom;
@@ -166,6 +361,17 @@ function patchCapture(entry) {
       if (captureLog.length > 500) captureLog.shift();
     }
   };
+  if (HYBRID) return;
+  entry.items = makeItemCache(entry);
+  const draw = cap.drawCachedElement.bind(cap);
+  cap.drawCachedElement = (element, ctx, x, y, w, h) => {
+    const c = cap.cache.get(element);
+    if (!c?.live) return draw(element, ctx, x, y, w, h);
+    if (!c.live.isConnected || !element.contains(c.live)) { cap.captureElement(element, true); return draw(element, ctx, x, y, w, h); }
+    if (!c.empty) draw(element, ctx, x, y, w, h);
+    entry.items.draw(c.live, ctx, x, y, element.getBoundingClientRect());
+    return true;
+  };
 }
 
 async function attach(root, glass, kind) {
@@ -173,22 +379,25 @@ async function attach(root, glass, kind) {
   // drop the SVG-refraction backdrop that glass.js set inline (it skips .lgl from now on)
   glass.querySelectorAll('[data-lg-filter]').forEach((n) => { n.style.removeProperty('backdrop-filter'); n.style.removeProperty('-webkit-backdrop-filter'); });
   glass.dataset.config = JSON.stringify(configFor(glass, kind));
-  const entry = { root, glass, kind, instance: null, busy: new Set() };
+  const entry = { root, glass, kind, instance: null, busy: new Set(), scrollers: new Map() };
   live.set(glass, entry);
-  const refresh = makeRefresher(entry);
-  const onScroll = (e) => refresh(e.target === document ? document.scrollingElement : e.target);
-  root.addEventListener('scroll', onScroll, { capture: true, passive: true });
-  const mo = new MutationObserver((list) => { for (const m of list) if (!glass.contains(m.target)) refresh(m.target); });
+  let onScroll, onMutate;
+  if (HYBRID) { onMutate = makeHybridRefresher(entry); onScroll = onMutate; }
+  else { const r = makeLiveRefresher(entry); onScroll = r.scroll; onMutate = r.mutate; }
+  const scrollHandler = (e) => onScroll(e.target === document ? document.scrollingElement : e.target);
+  root.addEventListener('scroll', scrollHandler, { capture: true, passive: true });
+  const mo = new MutationObserver((list) => { for (const m of list) if (!glass.contains(m.target)) onMutate(m.target); });
   mo.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'src'] });
   const ro = new ResizeObserver(() => { glass.dataset.config = JSON.stringify(configFor(glass, kind)); });
   ro.observe(glass);
-  entry.cleanup = () => { root.removeEventListener('scroll', onScroll, true); mo.disconnect(); ro.disconnect(); };
+  entry.cleanup = () => { root.removeEventListener('scroll', scrollHandler, true); mo.disconnect(); ro.disconnect(); };
   try {
     entry.instance = await LiquidGlass.init({ root, glassElements: [glass] });
     patchCapture(entry);
     if (document.hidden) setPaused(true);
     // the prewarm ran with the stock capture: redo the scrolling wrappers with the patched one
-    entry.waiting = new Set([...root.children].filter((c) => c !== glass && c.scrollHeight > c.clientHeight + 1));
+    entry.waiting = new Set([...root.children].filter((c) => c !== glass && c.offsetWidth > 0 && c.offsetHeight > 0 && (!HYBRID || isScroller(c))));
+    setTimeout(() => { if (entry.waiting?.size) { entry.waiting.clear(); glass.classList.remove('lgl-moving'); } }, 5000); // safety net
     if (entry.waiting.size) { glass.classList.add('lgl-moving'); entry.waiting.forEach((c) => entry.instance.capture.captureElement(c, true)); }
     if (!live.has(glass)) entry.instance.destroy(); // detached while initialising
   } catch (err) {

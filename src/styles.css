@@ -2773,7 +2773,7 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity
    (injected <canvas>, z-index -1) is what you see.
    ===================================================================== */
 .lgl { isolation: isolate; }
-.lgl > canvas:first-child { border-radius: inherit; }
+.lgl > canvas:first-child { border-radius: inherit; will-change: transform; transform: translateZ(0); }
 .composer-dock.lgl { padding: 0 !important; left: 12px; right: 12px; max-width: 820px; margin: 0 auto; border-radius: 30px; pointer-events: auto; }
 @media (min-width: 821px) { .composer-dock.lgl { bottom: 14px; } }
 @media (max-width: 820px) { .composer-dock.lgl { left: 10px; right: 10px; } }
