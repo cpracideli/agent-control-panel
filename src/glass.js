@@ -172,9 +172,7 @@ function filterFor(el) {
     <feImage href="${url}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/>`;
   svgRoot.appendChild(f);
-  el.dataset.lgFilter = el.classList.contains('dock-capsule')
-    ? `url(#${id}) blur(22px) saturate(185%)`
-    : `url(#${id}) blur(1.2px) saturate(165%) brightness(1.04)`;
+  el.dataset.lgFilter = id;
   applyFilter(el);
 }
 
@@ -187,13 +185,27 @@ function isGlassDisabled() {
   return document.documentElement.dataset.theme === 'terminal'
     || window.matchMedia('(prefers-reduced-transparency: reduce), (prefers-contrast: more)').matches;
 }
+// Presets from liquid-glass.ybouane.com: "Regular Glass" (light) is a clear lens with ~no blur;
+// "Dark Glass" darkens the backdrop (brightness -0.3) under a moderate blur. The composer gets a bit
+// more frost because typed text sits on top of moving messages.
+const darkMq = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function isDark() {
+  const t = document.documentElement.dataset.theme;
+  return t === 'dark' || (t !== 'light' && !!darkMq?.matches);
+}
+function lensFilter(el) {
+  const id = el.dataset.lgFilter;
+  const kind = el.classList.contains('composer') ? 'thick' : el.classList.contains('dock-capsule') ? 'dock' : 'thin';
+  const blur = isDark() ? { thick: 12, dock: 14, thin: 9 }[kind] : { thick: 4, dock: 3, thin: 0.6 }[kind];
+  return `url(#${id}) blur(${blur}px) saturate(150%) brightness(${isDark() ? 0.7 : 1.05})`;
+}
 function applyFilter(el) {
   if (paused || isGlassDisabled() || !el.dataset.lgFilter) {
     el.style.removeProperty('backdrop-filter');
     el.style.removeProperty('-webkit-backdrop-filter');
     return;
   }
-  const value = el.dataset.lgFilter;
+  const value = lensFilter(el);
   el.style.setProperty('backdrop-filter', value, 'important');
   el.style.setProperty('-webkit-backdrop-filter', value, 'important');
 }
@@ -227,6 +239,7 @@ export function initRefraction() {
       if (!isGlassDisabled()) queue(el);
     });
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  darkMq?.addEventListener?.('change', () => document.querySelectorAll('[data-lg-filter]').forEach(applyFilter));
 
   let idle = 0, idleAt = 0;
   const busy = (delay = 220) => {
