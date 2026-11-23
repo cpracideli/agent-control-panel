@@ -41,11 +41,41 @@ export function shouldUseLib() {
   if (new URLSearchParams(location.search).has('lg-lib')) return hasWebGL(); // force on (testing)
   if (document.documentElement.dataset.theme === 'terminal') return false;
   if (mq('(prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce), (prefers-contrast: more)')) return false;
-  // Touch devices (iPhone PWA): measured with the library on a phone viewport at 4x CPU throttling,
-  // max frame 817 ms while scrolling and 1017 ms while streaming (CSS glass: 33 ms / 83 ms), long tasks
-  // up to 667-765 ms. That freezes touch scrolling, so phones/tablets keep the CSS glass.
-  if (mq('(hover: none), (pointer: coarse)')) return false;
+  // Touch devices (iPhone PWA) use the WebGL glass too (since v7). The cost that froze scrolling in the
+  // v6 measurements (html-to-image captures, full-DPR canvases) is contained by the hybrid mode below
+  // (CSS while moving, one capture once still), a capped pixel ratio and a paused loop when hidden.
   return hasWebGL();
+}
+
+// Phones: the library reads window.devicePixelRatio every frame and sizes the WebGL canvas, the scene
+// canvases and the html-to-image captures with it. At the iPhone's 3x that is ~9x the pixels of 1x;
+// 2x is visually the same for a refracted, slightly blurred lens and costs less than half.
+const isTouch = () => mq('(hover: none), (pointer: coarse)');
+const DPR_CAP = 2;
+let dprCapped = false;
+function capDevicePixelRatio() {
+  if (dprCapped || !isTouch()) return;
+  const desc = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+    || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'devicePixelRatio');
+  const native = () => (desc?.get ? desc.get.call(window) : desc?.value) || 1;
+  if (native() <= DPR_CAP) return;
+  try {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: () => Math.min(native(), DPR_CAP) });
+    dprCapped = true;
+  } catch { /* read-only in this browser: keep the native ratio */ }
+}
+
+// Hidden tab / PWA in background: stop the library's requestAnimationFrame loop, resume on return.
+function setPaused(paused) {
+  for (const e of live.values()) {
+    const i = e.instance;
+    if (!i) continue;
+    if (paused && i._running) { i._running = false; cancelAnimationFrame(i._rafId); e.paused = true; }
+    else if (!paused && e.paused) {
+      e.paused = false; i._running = true; i._globalDirty = true;
+      i._rafId = requestAnimationFrame(() => i._renderLoop());
+    }
+  }
 }
 
 const live = new Map(); // glass element -> { instance, root, kind, cleanup }
@@ -63,6 +93,7 @@ function configFor(el, kind) {
 // while things move: on scroll/mutation the glass switches to the CSS material (.lgl-moving), and only
 // once the content has been still for IDLE_MS it captures once and fades the WebGL glass back in.
 const IDLE_MS = 450;
+const idleMs = () => (isTouch() ? 650 : IDLE_MS); // phones: wait for momentum scrolling to settle
 function makeRefresher(entry) {
   const pending = new Set();
   let timer = 0;
@@ -70,7 +101,7 @@ function makeRefresher(entry) {
     timer = 0;
     const { instance } = entry;
     if (!instance) return;
-    if (entry.busy.size) { timer = setTimeout(run, IDLE_MS); return; }
+    if (entry.busy.size) { timer = setTimeout(run, idleMs()); return; }
     const ws = [...pending]; pending.clear();
     entry.waiting = new Set(ws);
     ws.forEach((w) => instance.capture.captureElement(w, true)); // keeps the old frame until the new one lands
@@ -83,7 +114,7 @@ function makeRefresher(entry) {
     pending.add(w);
     entry.glass.classList.add('lgl-moving');
     clearTimeout(timer);
-    timer = setTimeout(run, IDLE_MS);
+    timer = setTimeout(run, idleMs());
   };
 }
 
@@ -155,6 +186,7 @@ async function attach(root, glass, kind) {
   try {
     entry.instance = await LiquidGlass.init({ root, glassElements: [glass] });
     patchCapture(entry);
+    if (document.hidden) setPaused(true);
     // the prewarm ran with the stock capture: redo the scrolling wrappers with the patched one
     entry.waiting = new Set([...root.children].filter((c) => c !== glass && c.scrollHeight > c.clientHeight + 1));
     if (entry.waiting.size) { glass.classList.add('lgl-moving'); entry.waiting.forEach((c) => entry.instance.capture.captureElement(c, true)); }
@@ -183,6 +215,7 @@ function scan() {
     if (!on || !glass.isConnected || glass.parentElement !== e.root || !glass.offsetParent) detach(glass);
   }
   if (!on) return;
+  capDevicePixelRatio();
   for (const t of TARGETS) {
     document.querySelectorAll(t.glass).forEach((glass) => {
       const root = glass.parentElement;
@@ -208,6 +241,9 @@ export function initLiquidGlass() {
   ['(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)', '(prefers-contrast: more)', '(prefers-reduced-transparency: reduce)']
     .forEach((q) => window.matchMedia(q).addEventListener?.('change', retheme));
   window.addEventListener('resize', queue, { passive: true });
-  window.__lg = { stats: getLiquidGlassStats, live, captureLog };
+  document.addEventListener('visibilitychange', () => setPaused(document.hidden));
+  window.addEventListener('pagehide', () => setPaused(true));
+  window.addEventListener('pageshow', () => setPaused(document.hidden));
+  window.__lg = { stats: getLiquidGlassStats, live, captureLog, dpr: () => window.devicePixelRatio };
   queue();
 }
