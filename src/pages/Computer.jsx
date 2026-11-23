@@ -148,7 +148,7 @@ function LocalBridgeCard() {
         Conecte seu Mac, Linux ou Windows pessoal (estilo OpenAI Dots) para os bots acessarem arquivos locais ou abrirem sites no seu navegador pessoal. Conexão revogável a qualquer momento.
       </p>
       <form className="row wrap" onSubmit={pair} style={{ marginBottom: 10 }}>
-        <input className="grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do computador (ex.: MacBook Pro Caio)" />
+        <input className="grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do computador (ex.: Meu MacBook Pro)" />
         <Btn icon={Plus} className="small" disabled={busy === 'pair'}>Parear novo PC/Mac</Btn>
       </form>
       {paired && (

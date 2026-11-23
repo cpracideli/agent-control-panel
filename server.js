@@ -14,9 +14,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = process.env;
 const PORT = Number(env.PORT || 3001);
 const ADMIN_PASSWORD = env.ADMIN_PASSWORD || '';
-const COOLIFY_URL = (env.COOLIFY_URL || 'http://137.131.175.211:8000').replace(/\/+$/, '');
+const COOLIFY_URL = (env.COOLIFY_URL || '').replace(/\/+$/, '');
 const COOLIFY_TOKEN = env.COOLIFY_TOKEN || '';
-const APP_UUID = env.COOLIFY_APP_UUID || 'xwdcjbwbo2sqvjhfpxzdwsuf';
+const APP_UUID = env.COOLIFY_APP_UUID || '';
+const coolifyConfigured = () => Boolean(COOLIFY_URL && COOLIFY_TOKEN && APP_UUID);
 const BRIDGE_URL = (env.BRIDGE_URL || 'http://claude-bridge-claude-zap:3000').replace(/\/+$/, '');
 const BRIDGE_TOKEN = env.BRIDGE_ADMIN_TOKEN || '';
 const SECRET = env.SESSION_SECRET || crypto.createHash('sha256').update('acp:' + ADMIN_PASSWORD + ':' + COOLIFY_TOKEN).digest('hex');
@@ -191,7 +192,7 @@ app.get('/api/me', async (req, res) => {
   const s = session(req);
   const email = s && s.email !== 'password' ? s.email : null;
   const prof = email ? await loadUserProfile(email) : { name: '', picture: '' };
-  res.json({ ok: Boolean(s), email, name: prof.name || '', picture: prof.picture || '', google: googleOn(), password: Boolean(ADMIN_PASSWORD) });
+  res.json({ ok: Boolean(s), email, name: prof.name || '', picture: prof.picture || '', google: googleOn(), password: Boolean(ADMIN_PASSWORD), coolify: coolifyConfigured() });
 });
 
 // ---------- per-user preferences (persisted in the bridge's settings.json) ----------
@@ -317,6 +318,9 @@ app.post('/api/auth/exchange', (req, res) => {
 
 // ---------- Coolify ----------
 async function coolify(endpoint, options = {}) {
+  if (!coolifyConfigured()) {
+    throw Object.assign(new Error('Integração Coolify não configurada (defina COOLIFY_URL, COOLIFY_TOKEN e COOLIFY_APP_UUID)'), { status: 503 });
+  }
   const r = await fetch(`${COOLIFY_URL}/api/v1${endpoint}`, {
     ...options,
     headers: { Authorization: `Bearer ${COOLIFY_TOKEN}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -329,7 +333,7 @@ async function coolify(endpoint, options = {}) {
 }
 const wrap = (fn) => async (req, res) => {
   // A 401/403 from Coolify is not our session expiring: report it as an upstream error so the page does not log out.
-  try { res.json(await fn(req)); } catch (e) { res.status(e.status && e.status < 500 && ![401, 403].includes(e.status) ? e.status : 502).json({ error: e.message }); }
+  try { res.json(await fn(req)); } catch (e) { res.status(e.status && (e.status < 500 || e.status === 503) && ![401, 403].includes(e.status) ? e.status : 502).json({ error: e.message }); }
 };
 
 app.get('/api/coolify/status', auth, wrap(async () => {
@@ -381,16 +385,25 @@ app.get('/api/bridge/web/files/:name', auth, async (req, res) => {
 
 // ---------- Web Push (VAPID keys & subscriptions persisted in the bridge's ~/.bridge/push.json) ----------
 let vapidCache = null;
+function resolveVapidSubject(panelOrigin = '') {
+  const explicit = String(env.VAPID_SUBJECT || '').trim();
+  if (explicit) return explicit;
+  if (ALLOWED_EMAILS.length) return 'mailto:' + ALLOWED_EMAILS[0];
+  const origin = String(panelOrigin || PUBLIC_URL || '').trim();
+  if (/^https:\/\//i.test(origin) && !/^https:\/\/localhost\b/i.test(origin)) return origin;
+  return 'https://agent-control.invalid';
+}
 async function ensureVapid(panelOrigin = '') {
   if (!BRIDGE_TOKEN) return null;
   if (vapidCache) return vapidCache;
+  const subject = resolveVapidSubject(panelOrigin);
   try {
     const r = await fetch(`${BRIDGE_URL}/admin/push/config`, { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
     if (r.ok) {
       const cfg = await r.json();
       if (cfg?.vapid?.publicKey && cfg?.vapid?.privateKey) {
         vapidCache = cfg.vapid;
-        webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:cpracideli@gmail.com', vapidCache.publicKey, vapidCache.privateKey);
+        webpush.setVapidDetails(subject, vapidCache.publicKey, vapidCache.privateKey);
         return vapidCache;
       }
     }
@@ -402,7 +415,7 @@ async function ensureVapid(panelOrigin = '') {
     });
     if (saveRes.ok) {
       vapidCache = keys;
-      webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:cpracideli@gmail.com', vapidCache.publicKey, vapidCache.privateKey);
+      webpush.setVapidDetails(subject, vapidCache.publicKey, vapidCache.privateKey);
       return vapidCache;
     }
   } catch (e) {
@@ -588,4 +601,4 @@ httpServer.on('upgrade', (req, socket, head) => {
   socket.on('error', close);
 });
 
-httpServer.listen(PORT, () => console.log(`Agent Control on :${PORT} | bridge ${BRIDGE_URL} | app ${APP_UUID}`));
+httpServer.listen(PORT, () => console.log(`Agent Control on :${PORT} | bridge ${BRIDGE_URL} | coolify ${coolifyConfigured() ? APP_UUID : 'off'}`));
