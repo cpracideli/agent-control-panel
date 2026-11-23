@@ -29,8 +29,15 @@ export default function Overview() {
   const tot = all.reduce((a, c) => ({ runs: a.runs + c.totals.runs, cost: a.cost + c.totals.cost, ms: a.ms + c.totals.ms, errors: a.errors + c.totals.errors }), { runs: 0, cost: 0, ms: 0, errors: 0 });
   const o = ov.data;
 
+  const waRestrictionNote = o?.whatsapp?.sharedNumber ? (
+    <p className="muted small" style={{ margin: 0 }}>
+      🔒 Número compartilhado: o envio para terceiros ou grupos está bloqueado (somente seu próprio número). Conecte seu WhatsApp em <b>Provedores → Canais</b> para enviar mensagens a outras pessoas.
+    </p>
+  ) : null;
+
   const sendForm = (
     <form className="stack" onSubmit={(e) => { e.preventDefault(); run('send', () => bridge.sendWhatsApp(to, msg), t('ov.sent')).then((r) => r && setMsg('')); }}>
+      {waRestrictionNote}
       <Field label={t('ov.to')} hint={t('ov.toHint')}>
         <input inputMode="tel" list="wa-contacts" value={to} onChange={(e) => setTo(e.target.value)} placeholder="+55 11 99999-8888" />
         <datalist id="wa-contacts">
@@ -140,6 +147,7 @@ export default function Overview() {
 
         <Card title={t('ov.send')} icon={Send}>
           <form className="stack" onSubmit={(e) => { e.preventDefault(); run('send', () => bridge.sendWhatsApp(to, msg), t('ov.sent')).then((r) => r && setMsg('')); }}>
+            {waRestrictionNote}
             <Field label={t('ov.to')} hint={t('ov.toHint')}>
               <input inputMode="tel" list="wa-contacts" value={to} onChange={(e) => setTo(e.target.value)} placeholder="+55 11 99999-8888" />
               <datalist id="wa-contacts">

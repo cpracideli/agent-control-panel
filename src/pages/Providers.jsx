@@ -16,6 +16,7 @@ function ProactivityAndChannelsCard({ providers, part }) {
   const [models, setModels] = useState({ triageProvider: '', triageModel: '', backgroundProvider: '', backgroundModel: '', semanticMemory: false });
   const [pin, setPin] = useState('');
   const [tg, setTg] = useState({ enabled: false, token: '', allowedUsers: '' });
+  const [wa, setWa] = useState({ ownEnabled: false, url: '', session: '', apiKey: '' });
   const [dc, setDc] = useState({ enabled: false, token: '', allowedUsers: '', allowedChannels: '' });
   const [sl, setSl] = useState({ enabled: false, botToken: '', signingSecret: '', allowedUsers: '', allowedChannels: '' });
   const [byom, setByom] = useState({ enabled: false, baseUrl: '', defaultModel: 'gpt-4.1-mini', models: 'gpt-4.1-mini, gpt-4.1', apiKey: '' });
@@ -34,6 +35,7 @@ function ProactivityAndChannelsCard({ providers, part }) {
       });
     }
     if (s.telegram) setTg((cur) => ({ ...cur, enabled: Boolean(s.telegram.enabled), allowedUsers: s.telegram.allowedUsers || '' }));
+    if (s.whatsapp) setWa((cur) => ({ ...cur, ownEnabled: Boolean(s.whatsapp.ownEnabled), url: s.whatsapp.url || '', session: s.whatsapp.ownSession || '' }));
     if (s.discord) setDc((cur) => ({ ...cur, enabled: Boolean(s.discord.enabled), allowedUsers: s.discord.allowedUsers || '', allowedChannels: s.discord.allowedChannels || '' }));
     if (s.slack) setSl((cur) => ({ ...cur, enabled: Boolean(s.slack.enabled), allowedUsers: s.slack.allowedUsers || '', allowedChannels: s.slack.allowedChannels || '' }));
     if (s.openaiCompat) {
@@ -48,6 +50,7 @@ function ProactivityAndChannelsCard({ providers, part }) {
   const savePro = () => run('pro', () => bridge.settings({ proactivity: { quietHours: qh, ...models } }), 'Proatividade salva').then(() => cfg.reload(true));
   const savePin = (val) => run('pin', () => bridge.settings({ securityPin: val }), val ? 'PIN de segurança salvo' : 'PIN removido').then(() => { setPin(''); cfg.reload(true); });
   const saveTg = () => run('tg', () => bridge.settings({ telegram: { enabled: tg.enabled, allowedUsers: tg.allowedUsers, ...(tg.token.trim() ? { token: tg.token.trim() } : {}) } }), 'Telegram atualizado').then(() => { setTg((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
+  const saveWa = () => run('wa', () => bridge.settings({ whatsapp: { ownEnabled: wa.ownEnabled, url: wa.url.trim(), session: wa.session.trim(), ...(wa.apiKey.trim() ? { apiKey: wa.apiKey.trim() } : {}) } }), 'WhatsApp atualizado').then(() => { setWa((cur) => ({ ...cur, apiKey: '' })); cfg.reload(true); });
   const saveDc = () => run('dc', () => bridge.settings({ discord: { enabled: dc.enabled, allowedUsers: dc.allowedUsers, allowedChannels: dc.allowedChannels, ...(dc.token.trim() ? { token: dc.token.trim() } : {}) } }), 'Discord atualizado').then(() => { setDc((cur) => ({ ...cur, token: '' })); cfg.reload(true); });
   const saveSl = () => run('sl', () => bridge.settings({ slack: { enabled: sl.enabled, allowedUsers: sl.allowedUsers, allowedChannels: sl.allowedChannels, ...(sl.botToken.trim() ? { botToken: sl.botToken.trim() } : {}), ...(sl.signingSecret.trim() ? { signingSecret: sl.signingSecret.trim() } : {}) } }), 'Slack atualizado').then(() => { setSl((cur) => ({ ...cur, botToken: '', signingSecret: '' })); cfg.reload(true); });
   const saveByom = () => run('byom', () => bridge.settings({ openaiCompat: { enabled: byom.enabled, baseUrl: byom.baseUrl.trim(), defaultModel: byom.defaultModel.trim(), models: byom.models, ...(byom.apiKey.trim() ? { apiKey: byom.apiKey.trim() } : {}) } }), 'API Direta (BYOM) salva').then(() => { setByom((cur) => ({ ...cur, apiKey: '' })); cfg.reload(true); });
@@ -149,6 +152,28 @@ function ProactivityAndChannelsCard({ providers, part }) {
           <p className="muted small" style={{ margin: 0 }}>{notif.permission === 'denied' ? t('notif.denied') : t('notif.hint')}</p>
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+
+          <details className="acc" open={Boolean(s.whatsapp?.sharedNumber)}><summary><Smartphone size={14} className="muted" /><b>Canal WhatsApp (WAHA)</b>
+            <Badge kind={s.whatsapp?.sharedNumber ? 'warn' : s.whatsapp?.configured ? 'ok' : 'muted'}>
+              {s.whatsapp?.sharedNumber ? 'Número compartilhado' : s.whatsapp?.ownEnabled ? 'Número próprio' : s.whatsapp?.configured ? 'Ativo' : 'Desligado'}
+            </Badge>
+          </summary><div className="stack acc-body">
+          {s.whatsapp?.sharedNumber && (
+            <p className="muted small" style={{ margin: 0 }}>
+              🔒 Você está usando um número compartilhado apenas para conversar com seu assistente. Envios para terceiros ou grupos estão bloqueados. Para mandar mensagens a outras pessoas, conecte seu próprio WhatsApp (WAHA) abaixo e aponte o webhook para esta ponte.
+            </p>
+          )}
+          <label className="check">
+            <input type="checkbox" checked={Boolean(wa.ownEnabled)} onChange={(e) => setWa({ ...wa, ownEnabled: e.target.checked })} />
+            <span>Usar meu próprio WhatsApp (WAHA) para enviar mensagens</span>
+          </label>
+          <div className="form-grid">
+            <Field label="WAHA URL"><input value={wa.url} onChange={(e) => setWa({ ...wa, url: e.target.value })} placeholder="https://seu-waha.exemplo.com" /></Field>
+            <Field label="Sessão WAHA"><input value={wa.session} onChange={(e) => setWa({ ...wa, session: e.target.value })} placeholder="default" /></Field>
+            <Field label="WAHA API Key"><input type="password" value={wa.apiKey} onChange={(e) => setWa({ ...wa, apiKey: e.target.value })} placeholder={s.whatsapp?.hasApiKey ? '•••• salva (vazio mantém)' : 'X-Api-Key'} /></Field>
+          </div>
+          <div className="row end"><Btn icon={Save} className="small" disabled={busy === 'wa'} onClick={saveWa}>Salvar WhatsApp</Btn></div>
+          </div></details>
 
           <details className="acc"><summary><Send size={14} className="muted" /><b>Canal Telegram (polling)</b>
             <Badge kind={s.telegram?.running ? 'ok' : 'muted'}>{s.telegram?.running ? '@' + (s.telegram.botUsername || 'ativo') : 'Desligado'}</Badge>
