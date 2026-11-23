@@ -172,17 +172,28 @@ function filterFor(el) {
     <feImage href="${url}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/>`;
   svgRoot.appendChild(f);
-  el.dataset.lgFilter = `url(#${id}) blur(1.2px) saturate(165%) brightness(1.04)`;
+  el.dataset.lgFilter = el.classList.contains('dock-capsule')
+    ? `url(#${id}) blur(22px) saturate(185%)`
+    : `url(#${id}) blur(1.2px) saturate(165%) brightness(1.04)`;
   applyFilter(el);
 }
 
 // While anything scrolls or a screen/sheet transition runs, the content under the glass changes every
-// frame and the SVG filter would be re-run each time. Fall back to the plain CSS glass meanwhile (same
-// tint and rim, just no bent edge) and bring the lens back once things settle.
+// frame and the SVG filter would be re-run each time. Remove the inline override meanwhile so the
+// native CSS glass (or terminal/accessibility surface) applies cleanly without flashing, then bring
+// the refraction lens back once things settle.
 let paused = false;
-const PLAIN = 'blur(5px) saturate(175%) brightness(1.06)';
+function isGlassDisabled() {
+  return document.documentElement.dataset.theme === 'terminal'
+    || window.matchMedia('(prefers-reduced-transparency: reduce), (prefers-contrast: more)').matches;
+}
 function applyFilter(el) {
-  const value = paused || !el.dataset.lgFilter ? PLAIN : el.dataset.lgFilter;
+  if (paused || isGlassDisabled() || !el.dataset.lgFilter) {
+    el.style.removeProperty('backdrop-filter');
+    el.style.removeProperty('-webkit-backdrop-filter');
+    return;
+  }
+  const value = el.dataset.lgFilter;
   el.style.setProperty('backdrop-filter', value, 'important');
   el.style.setProperty('-webkit-backdrop-filter', value, 'important');
 }
@@ -210,6 +221,12 @@ export function initRefraction() {
     requestAnimationFrame(() => { scanQueued = false; scan(); });
   }).observe(document.body, { childList: true, subtree: true });
   scan();
+  new MutationObserver(() => {
+    document.querySelectorAll('[data-lg-filter]').forEach((el) => {
+      applyFilter(el);
+      if (!isGlassDisabled()) queue(el);
+    });
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   let idle = 0, idleAt = 0;
   const busy = (delay = 220) => {
