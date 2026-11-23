@@ -2674,3 +2674,95 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity
 @media (prefers-reduced-transparency: reduce) {
   html:root:not([data-theme="terminal"]):not([data-lg4]):not([data-x]) .dock .dock-capsule { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 }
+
+/* =====================================================================
+   v5 Liquid Glass on sheets, modals, menus and Cmd+K
+   Light = Regular (clear glass, rim light, shadow .3); Dark = Dark Glass (brightness -0.3).
+   Big surfaces carry a lot of text, so the tint is denser and the blur larger than on the dock
+   (iOS 26 sheets). Only the floating surface itself has backdrop-filter; groups/cards inside it are
+   plain tints (no nested filters, cheap on the iPhone PWA). No SVG refraction here.
+   ===================================================================== */
+:root:not([data-theme="terminal"]) {
+  --scrim: rgba(0, 0, 0, .16);
+  --sheet-bg: linear-gradient(180deg, rgba(250, 250, 253, .74) 0%, rgba(242, 242, 247, .68) 100%);
+  --sheet-group: rgba(255, 255, 255, .66);
+  --sheet-group-2: rgba(118, 118, 128, .1);
+  --sheet-edge: rgba(0, 0, 0, .06);
+  --menu-bg: rgba(250, 250, 252, .7);
+  --menu-sep: rgba(60, 60, 67, .16);
+  --sheet-shadow: inset 1px 1px 0 -.5px rgba(255, 255, 255, .95), inset -1px -1px 0 -.5px rgba(255, 255, 255, .6), inset 0 0 0 .5px rgba(255, 255, 255, .5),
+                  inset 2px 0 2px -1.5px rgba(255, 70, 140, .16), inset -2px 0 2px -1.5px rgba(40, 150, 255, .18),
+                  0 0 0 .5px var(--sheet-edge), 0 24px 60px -12px rgba(0, 0, 0, .3), 0 4px 14px -4px rgba(0, 0, 0, .08);
+}
+:root[data-theme="dark"] {
+  --scrim: rgba(0, 0, 0, .38);
+  --sheet-bg: linear-gradient(180deg, rgba(36, 36, 40, .68) 0%, rgba(24, 24, 26, .7) 100%);
+  --sheet-group: rgba(72, 72, 78, .42);
+  --sheet-group-2: rgba(118, 118, 128, .24);
+  --sheet-edge: rgba(255, 255, 255, .1);
+  --menu-bg: rgba(34, 34, 38, .66);
+  --menu-sep: rgba(84, 84, 88, .5);
+  --sheet-shadow: inset 1px 1px 0 -.5px rgba(255, 255, 255, .38), inset -1px -1px 0 -.5px rgba(255, 255, 255, .14), inset 0 0 0 .5px rgba(255, 255, 255, .1),
+                  inset 2px 0 2px -1.5px rgba(255, 90, 160, .14), inset -2px 0 2px -1.5px rgba(70, 170, 255, .16),
+                  0 0 0 .5px rgba(0, 0, 0, .5), 0 24px 64px -12px rgba(0, 0, 0, .7);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) {
+    --scrim: rgba(0, 0, 0, .38);
+    --sheet-bg: linear-gradient(180deg, rgba(36, 36, 40, .68) 0%, rgba(24, 24, 26, .7) 100%);
+    --sheet-group: rgba(72, 72, 78, .42);
+    --sheet-group-2: rgba(118, 118, 128, .24);
+    --sheet-edge: rgba(255, 255, 255, .1);
+    --menu-bg: rgba(34, 34, 38, .66);
+    --menu-sep: rgba(84, 84, 88, .5);
+    --sheet-shadow: inset 1px 1px 0 -.5px rgba(255, 255, 255, .38), inset -1px -1px 0 -.5px rgba(255, 255, 255, .14), inset 0 0 0 .5px rgba(255, 255, 255, .1),
+                    inset 2px 0 2px -1.5px rgba(255, 90, 160, .14), inset -2px 0 2px -1.5px rgba(70, 170, 255, .16),
+                    0 0 0 .5px rgba(0, 0, 0, .5), 0 24px 64px -12px rgba(0, 0, 0, .7);
+  }
+}
+/* the surfaces (filters written literally: Safari drops -webkit-backdrop-filter from custom props) */
+:root:not([data-theme="terminal"]) :is(.sheet, .modal, .gsearch-panel) {
+  background: var(--sheet-bg) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  box-shadow: var(--sheet-shadow) !important;
+}
+:root:not([data-theme="terminal"]) :is(.ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu) {
+  background: var(--menu-bg) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  box-shadow: var(--sheet-shadow) !important;
+  border-color: transparent;
+}
+:root[data-theme="dark"] :is(.sheet, .modal, .gsearch-panel) {
+  -webkit-backdrop-filter: blur(26px) saturate(160%) brightness(.7) !important;
+  backdrop-filter: blur(26px) saturate(160%) brightness(.7) !important;
+}
+:root[data-theme="dark"] :is(.ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu) {
+  -webkit-backdrop-filter: blur(22px) saturate(160%) brightness(.7) !important;
+  backdrop-filter: blur(22px) saturate(160%) brightness(.7) !important;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) :is(.sheet, .modal, .gsearch-panel) {
+    -webkit-backdrop-filter: blur(26px) saturate(160%) brightness(.7) !important;
+    backdrop-filter: blur(26px) saturate(160%) brightness(.7) !important;
+  }
+  :root:not([data-theme="light"]):not([data-theme="terminal"]) :is(.ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu) {
+    -webkit-backdrop-filter: blur(22px) saturate(160%) brightness(.7) !important;
+    backdrop-filter: blur(22px) saturate(160%) brightness(.7) !important;
+  }
+}
+/* inner groups/cards: tint only (the old phone-dark rule painted them #2c2c2e) */
+:root:not([data-theme="terminal"]) :is(.sheet, .modal, .gsearch-panel) :is(.group, .card) { background: var(--sheet-group) !important; box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .25); }
+:root:not([data-theme="terminal"]) .asheet-btn.cancel { background: var(--menu-bg) !important; }
+:root:not([data-theme="terminal"]) :is(.modal-bg, .sheet-bg, .asheet-bg, .gsearch-bg) { background: var(--scrim) !important; }
+
+/* Reduce Transparency / Increase Contrast: back to opaque surfaces */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  html:root:not([data-theme="terminal"]):not([data-lg5]) :is(.sheet, .modal, .gsearch-panel) { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  html:root:not([data-theme="terminal"]):not([data-lg5]) :is(.ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu, .asheet-btn.cancel) { background: var(--card) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  html:root:not([data-theme="terminal"]):not([data-lg5]) :is(.sheet, .modal, .gsearch-panel) :is(.group, .card) { background: var(--card-2, var(--sunken)) !important; }
+}
+@media (prefers-contrast: more) {
+  html:root:not([data-theme="terminal"]):not([data-lg5]) :is(.sheet, .modal, .gsearch-panel, .ctx-menu, .asheet-group, .bot-picker-menu, .pg-more-menu) { box-shadow: 0 0 0 1px var(--sep) !important; }
+}
