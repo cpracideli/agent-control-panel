@@ -203,16 +203,23 @@ function evalGroupsLimit(providerId, providerUsage, candidates, providerName, no
   if (!allOnly) {
     const matched = matchGroupForModel(groups, candidates);
     if (matched) {
-      if (!isWindowLimited(matched, now)) return null;
+      // Mesma família de modelos aparece em mais de uma janela (5 h e semanal): bloqueia se qualquer uma estiver no limite.
+      const matchedModels = Array.isArray(matched.models) ? matched.models : [];
+      const siblings = groups.filter(
+        (g) => g === matched || (matchedModels.length && Array.isArray(g?.models) && g.models.some((m) => matchedModels.includes(m))),
+      );
+      const limitedSiblings = siblings.filter((g) => isWindowLimited(g, now));
+      if (!limitedSiblings.length) return null;
+      const chosen = pickFurthestReset(limitedSiblings);
       return {
         limited: true,
         provider: providerId,
         providerName,
         kind: 'group',
-        groupLabel: matched.label || null,
-        percent: Number(matched.percent),
-        resetsAt: matched.resetsAt || null,
-        remainingMs: remainingFor(matched.resetsAt, now),
+        groupLabel: chosen.label || null,
+        percent: Number(chosen.percent),
+        resetsAt: chosen.resetsAt || null,
+        remainingMs: remainingFor(chosen.resetsAt, now),
         stale: Boolean(providerUsage.stale),
       };
     }

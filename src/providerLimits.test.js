@@ -402,4 +402,20 @@ describe('formatResetInfo', () => {
     assert.equal(none.remainingMs, null);
     assert.equal(none.countdown, '');
   });
+
+  it('blocks when the weekly window is exhausted even if the 5 h window of the same models is free', () => {
+    const models = ['Gemini 3.8 Flash (Medium)', 'Gemini 2.5 Pro'];
+    const usage = {
+      antigravity: {
+        groups: [
+          { label: 'Gemini · 5 h', window: '5h', percent: 11, resetsAt: IN_10_MIN, models },
+          { label: 'Gemini · semanal', window: 'weekly', percent: 100, resetsAt: IN_2_HOURS, models },
+        ],
+      },
+    };
+    const res = getProviderLimitStatus(usage, { provider: 'antigravity', agyModel: 'gemini-3.8-flash-medium' }, PROVIDERS, NOW);
+    assert.ok(res?.limited);
+    assert.equal(res.groupLabel, 'Gemini · semanal');
+    assert.equal(res.resetsAt, IN_2_HOURS);
+  });
 });
