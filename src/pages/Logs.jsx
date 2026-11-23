@@ -77,11 +77,11 @@ function Audit() {
   const [kind, setKind] = useState('all');
   const list = (a.data || []).filter((e) => {
     if (kind !== 'all' && e.action !== kind) return false;
-  const [vis_list, moreBtn_list] = useMore(list);
     if (!q.trim()) return true;
     const s = [e.action, e.to, e.name, e.description, e.preview, e.file, e.id].filter(Boolean).join(' ').toLowerCase();
     return s.includes(q.trim().toLowerCase());
   });
+  const [vis_list, moreBtn_list] = useMore(list);
   const mobile = useIsMobile();
   if (mobile) {
     return (

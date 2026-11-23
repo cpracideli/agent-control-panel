@@ -107,10 +107,10 @@ export default function Artifacts() {
   const allItems = arts.data || [];
   const list = allItems.filter((a) => {
     if (filter !== 'all' && kindOf(a) !== filter) return false;
-  const [vis_list, moreBtn_list] = useMore(list);
     if (q.trim() && !(a.origName + ' ' + a.name + ' ' + a.chatTitle).toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
+  const [vis_list, moreBtn_list] = useMore(list);
   const totalBytes = allItems.reduce((acc, a) => acc + (Number(a.size) || 0), 0);
   const filteredBytes = list.reduce((acc, a) => acc + (Number(a.size) || 0), 0);
   const isFiltered = filter !== 'all' || Boolean(q.trim());
