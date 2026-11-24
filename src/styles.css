@@ -2927,3 +2927,33 @@ body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg, .wac-modal-bg) 
   0% { transform: scale(.92); opacity: .75; }
   100% { transform: scale(1.48); opacity: 0; }
 }
+
+/* ---------- AI voice calls (WaCalls + Gemini Live) ---------- */
+.aic-sub { margin: -2px 0 12px; line-height: 1.45; }
+.aic-form textarea { width: 100%; resize: vertical; min-height: 76px; font: inherit; }
+.aic-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 560px) { .aic-row { grid-template-columns: 1fr; } }
+.aic-row input, .aic-row select { width: 100%; }
+.aic-warn { color: var(--warn-ink, var(--warn)); font-size: 12px; padding-left: 4px; margin-top: -4px; }
+.aic-adv-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.aic-chev { transition: transform 160ms ease; flex: none; }
+.aic-adv-toggle.on .aic-chev, .aic-chev.open { transform: rotate(180deg); }
+.aic-cta { background: linear-gradient(135deg, #25d366, color-mix(in srgb, #25d366 55%, var(--accent))); }
+.aic-hint { text-align: center; }
+.aic-live { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; padding: 11px 12px; border-radius: 16px; background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent); }
+.aic-live.active { background: color-mix(in srgb, #25d366 14%, transparent); border-color: color-mix(in srgb, #25d366 32%, transparent); }
+.aic-live-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.aic-live-purpose { opacity: .85; }
+.aic-end { flex: none; }
+.aic-hist-row { width: 100%; text-align: left; background: none; border-radius: 0; color: inherit; font: inherit; cursor: pointer; box-shadow: none; min-height: 0; }
+.aic-hist-item:last-child .aic-hist-row { border-bottom: 0; }
+.aic-hist-purpose { opacity: .85; }
+.aic-detail { padding: 4px 2px 12px 45px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--sep); }
+.aic-detail p { margin: 0; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.aic-transcript { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: 12px; background: var(--sunken); }
+@media (max-width: 560px) { .aic-detail { padding-left: 2px; } }
+@media (max-width: 560px) {
+  .aic-live { flex-wrap: wrap; }
+  .aic-live-main { flex-basis: calc(100% - 24px); }
+  .aic-end { width: 100%; justify-content: center; }
+}

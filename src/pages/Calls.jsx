@@ -21,6 +21,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import AiCallCard from '../components/AiCallCard.jsx';
 import { useI18n } from '../i18n.jsx';
 import { formatDuration, formatPeer, normalizeDialPhone, useWaCalls } from '../lib/wacalls.jsx';
 import { Badge, Btn, Card, ErrorBox, Skeleton, haptic, useAction, useConfirm, useFmt, useToast } from '../ui.jsx';
@@ -284,6 +285,8 @@ export default function Calls() {
           </div>
         )}
       </Card>
+
+      <AiCallCard />
 
       {serviceStatus.loading ? (
         <Card><Skeleton rows={3} /></Card>

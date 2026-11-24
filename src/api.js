@@ -198,6 +198,11 @@ export const bridge = {
   wacallsAcceptCall: (sid, callId, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId) + '/accept', {}, { 'X-Client-Id': clientId }),
   wacallsRejectCall: (sid, callId, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId) + '/reject', {}, { 'X-Client-Id': clientId }),
   wacallsEndCall: (sid, callId, clientId) => api('DELETE', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId), undefined, { 'X-Client-Id': clientId }),
+  // AI voice calls (WaCalls + Gemini Live) — bridge /admin/calls/ai. GETs skip the local cache (live polling, transcripts).
+  aiCalls: () => api('GET', '/bridge/calls/ai', undefined, {}),
+  aiCall: (id) => api('GET', '/bridge/calls/ai/' + encodeURIComponent(id), undefined, {}),
+  aiCallStart: (body) => post('/bridge/calls/ai', body),
+  aiCallEnd: (id) => del('/bridge/calls/ai/' + encodeURIComponent(id)),
   wacallsHistory: (sid, clientId) => api('GET', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/history', undefined, { 'X-Client-Id': clientId }),
   sendWhatsApp: (to, text) => post('/bridge/send', { to, text }),
   search: (q, limit = 30) => get('/bridge/search?q=' + encodeURIComponent(q) + '&limit=' + limit),
