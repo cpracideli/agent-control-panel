@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'push-sw.js'],
+      includeAssets: ['icon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'push-sw.js', 'voice-worklet.js'],
       manifest: {
         id: '/',
         name: 'Agent Control',

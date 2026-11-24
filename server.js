@@ -534,7 +534,7 @@ app.all('/api/bridge/*', auth, async (req, res) => {
 
 // ---------- frontend ----------
 const dist = path.join(__dirname, 'dist');
-const noCache = /(^|\/)(sw\.js|workbox-[^/]+\.js|manifest\.webmanifest|index\.html)$/;
+const noCache = /(^|\/)(sw\.js|workbox-[^/]+\.js|manifest\.webmanifest|index\.html|voice-worklet\.js)$/;
 // The web manifest's background/theme colors paint the Android splash and the installed app's title bar,
 // so they follow the theme the user picked (acp_theme cookie, set by the page) or, for "system", the
 // Sec-CH-Prefers-Color-Scheme client hint.
@@ -561,25 +561,30 @@ app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sen
 
 const httpServer = http.createServer(app);
 
-// WebSocket proxy for live agent computer (noVNC) AND Local Computer Bridge (/api/local-bridge/ws)
+// WebSocket proxy for live agent computer (noVNC), Gemini Live voice (/api/bridge/voice/ws), AND Local Computer Bridge (/api/local-bridge/ws)
 httpServer.on('upgrade', (req, socket, head) => {
   const fullUrl = req.url || '/';
   const pathname = fullUrl.split('?')[0];
   const qs = fullUrl.includes('?') ? fullUrl.slice(fullUrl.indexOf('?')) : '';
   const isLocalBridge = pathname === '/api/local-bridge/ws';
   const isComputer = pathname === '/api/bridge/computer/ws';
-  if (!isLocalBridge && !isComputer) {
+  const isVoice = pathname === '/api/bridge/voice/ws';
+  if (!isLocalBridge && !isComputer && !isVoice) {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     return socket.destroy();
   }
-  if (isComputer && (!BRIDGE_TOKEN || !validSession(req))) {
+  if ((isComputer || isVoice) && (!BRIDGE_TOKEN || !validSession(req))) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     return socket.destroy();
   }
   let target;
   try { target = new URL(BRIDGE_URL); } catch { return socket.destroy(); }
   const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
-  const upstreamPath = isLocalBridge ? ('/admin/local-bridge/ws' + qs) : '/admin/computer/ws';
+  const upstreamPath = isLocalBridge
+    ? ('/admin/local-bridge/ws' + qs)
+    : isVoice
+      ? ('/admin/voice/ws' + qs)
+      : '/admin/computer/ws';
   const upstream = net.connect(port, target.hostname, () => {
     const hdrs = [
       `GET ${upstreamPath} HTTP/1.1`,

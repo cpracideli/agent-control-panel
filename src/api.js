@@ -164,6 +164,16 @@ export const bridge = {
   localRevoke: (id) => del('/bridge/local-bridge/revoke/' + encodeURIComponent(id)),
   localCall: (b) => post('/bridge/local-bridge/call', b),
   localAgentUrl: (token) => '/api/bridge/local-bridge/agent.mjs?token=' + encodeURIComponent(token || '') + '&ws=' + encodeURIComponent(window.location.origin.replace(/^http/i, 'ws') + '/api/local-bridge/ws'),
+  voiceStatus: () => get('/bridge/voice/status'),
+  voiceWsUrl: (params = {}) => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+    });
+    const qs = q.toString();
+    return `${proto}//${window.location.host}/api/bridge/voice/ws${qs ? '?' + qs : ''}`;
+  },
   voiceLiveConfig: () => get('/bridge/voice/live-config'),
   sendWhatsApp: (to, text) => post('/bridge/send', { to, text }),
   search: (q, limit = 30) => get('/bridge/search?q=' + encodeURIComponent(q) + '&limit=' + limit),
@@ -194,6 +204,8 @@ export const bridge = {
   morningBriefingPreset: (b) => post('/bridge/workflows/preset/morning-briefing', b || {}),
   correctFeedback: (b) => post('/bridge/feedback/correct', b),
 };
+
+export const voiceWsUrl = bridge.voiceWsUrl;
 
 export const webPush = {
   key: () => get('/push/key'),

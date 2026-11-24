@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Activity, AlertTriangle, Archive, ArrowDown, ArrowLeftRight, ArrowRight, ArrowUp, AudioLines, Bot, Check, Clock, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, RefreshCw, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume2, Wand2, Wrench, X } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, ArrowDown, ArrowLeftRight, ArrowRight, ArrowUp, AudioLines, Bot, Check, Clock, Copy, ChevronLeft, Ellipsis, Flag, GitBranch, HelpCircle, History, Layers, Lock, Menu, MessageCircle, Monitor, PanelLeftClose, PanelLeftOpen, Mic, MicOff, Pencil, Phone, PhoneOff, Pin, Plus, RefreshCw, Reply, RotateCcw, Search, Sparkles, Square, SquarePen, TextSelect, Trash2, Undo2, Users, UserRound, Volume1, Volume2, Wand2, Wrench, X } from 'lucide-react';
 import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
+import { VoiceLiveSession, isRealtimeAvailable, unlockLiveAudio } from './voiceLive.js';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar, BotSelect } from './Bots.jsx';
 import CameraCapture from './CameraCapture.jsx';
@@ -238,7 +239,320 @@ function formatLimitReason(t, limit) {
   return t('limit.reason.generic', { p });
 }
 
-function LiveVoiceCallModal({ chatId, botName, lang, messages, live, checkLimit, onLimitBlocked, onClose }) {
+function CallDurationTimer({ started }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!started) return undefined;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [started]);
+  if (!started) return null;
+  const secs = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+  const ss = String(secs % 60).padStart(2, '0');
+  return <span className="voice-timer mono">{mm}:{ss}</span>;
+}
+
+function RealtimeVoiceCall({ chatId, botId, botName, lang, statusInfo, onSwitchClassic, onClose }) {
+  const toast = useToast();
+  const [callState, setCallState] = useState('connecting'); // connecting | listening | speaking | muted | error
+  const [muted, setMuted] = useState(false);
+  const [lowVol, setLowVol] = useState(false);
+  const [inLevel, setInLevel] = useState(0);
+  const [outLevel, setOutLevel] = useState(0);
+  const [connectedAt, setConnectedAt] = useState(null);
+  const [meta, setMeta] = useState(() => ({
+    model: statusInfo?.model || '',
+    voice: statusInfo?.voice || '',
+  }));
+  const [reconnecting, setReconnecting] = useState({ active: false, reason: '' });
+  const [activeTool, setActiveTool] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [err, setErr] = useState('');
+  const [typed, setTyped] = useState('');
+
+  const sessionRef = useRef(null);
+  const seqRef = useRef(0);
+  const listRef = useRef(null);
+  const toolTimerRef = useRef(null);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [entries]);
+
+  useEffect(() => {
+    let alive = true;
+    let wakeLock = null;
+    const takeWakeLock = async () => {
+      if (!alive || wakeLock || document.visibilityState !== 'visible') return;
+      try {
+        wakeLock = await navigator.wakeLock?.request('screen');
+        wakeLock?.addEventListener?.('release', () => { wakeLock = null; });
+      } catch {}
+    };
+
+    const session = new VoiceLiveSession({
+      chatId,
+      bot: botId || 'default',
+      lang: lang || 'pt-BR',
+      onState: (st) => { if (alive) setCallState(st); },
+      onLevel: ({ input, output }) => {
+        if (!alive) return;
+        if (input !== undefined) setInLevel(input);
+        if (output !== undefined) setOutLevel(output);
+      },
+      onReady: (info) => {
+        if (!alive) return;
+        setErr('');
+        setConnectedAt((prev) => prev || Date.now());
+        setMeta((prev) => ({
+          model: info.model || prev.model,
+          voice: info.voice || prev.voice,
+        }));
+      },
+      onTranscript: ({ role, text, delta, final, interrupted }) => {
+        if (!alive) return;
+        setEntries((prev) => {
+          const list = prev.slice();
+          const last = list[list.length - 1];
+          if (interrupted && !text && !delta) {
+            if (last && last.role === 'assistant' && !last.final) {
+              list[list.length - 1] = { ...last, final: true, interrupted: true };
+            }
+            return list;
+          }
+          if (last && last.role === role && !last.final) {
+            const nextText = (final && text) ? text : (delta ? (last.text || '') + delta : (text || last.text));
+            list[list.length - 1] = { ...last, text: nextText, final: Boolean(final) };
+            return list;
+          }
+          const initial = text || delta || '';
+          if (!initial) return prev;
+          // Avoid duplicating an identical finalized user turn just typed locally or a final echoing an interrupted turn.
+          if (last && last.role === role && last.final && last.text.trim() === initial.trim() && (role === 'user' || (final && last.interrupted))) {
+            return prev;
+          }
+          list.push({ id: ++seqRef.current, role, text: initial, final: Boolean(final) });
+          return list.length > 24 ? list.slice(-24) : list;
+        });
+      },
+      onTool: (tool) => {
+        if (!alive) return;
+        clearTimeout(toolTimerRef.current);
+        if (tool.status === 'running') {
+          setActiveTool(tool);
+        } else {
+          setActiveTool(tool);
+          toolTimerRef.current = setTimeout(() => { if (alive) setActiveTool(null); }, tool.status === 'error' ? 3500 : 1200);
+        }
+      },
+      onReconnecting: (info) => {
+        if (alive) setReconnecting({ active: Boolean(info?.active), reason: info?.reason || '' });
+      },
+      onError: ({ message, fatal }) => {
+        if (!alive) return;
+        setErr(message || 'Erro na chamada em tempo real.');
+        if (fatal) toast(message || 'Erro na chamada em tempo real.', 'err');
+      },
+      onFallbackClassic: (reason) => {
+        if (!alive) return;
+        onSwitchClassic(reason || 'Tempo real indisponível no momento.');
+      },
+    });
+
+    sessionRef.current = session;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      takeWakeLock();
+      session.handleVisibilityResume();
+    };
+    takeWakeLock();
+    document.addEventListener('visibilitychange', onVisible);
+    session.start();
+
+    return () => {
+      alive = false;
+      clearTimeout(toolTimerRef.current);
+      document.removeEventListener('visibilitychange', onVisible);
+      try { wakeLock?.release(); } catch {}
+      session.stop();
+      sessionRef.current = null;
+    };
+  }, [chatId, botId, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    if (!next) prepareCallAudio();
+    sessionRef.current?.setMuted(next);
+  };
+
+  const toggleVolume = () => {
+    const next = !lowVol;
+    setLowVol(next);
+    sessionRef.current?.setVolume(next ? 0.55 : 1);
+  };
+
+  const handleInterrupt = () => {
+    haptic('light');
+    sessionRef.current?.interrupt();
+    setMuted(false);
+  };
+
+  const submitTyped = (e) => {
+    e.preventDefault();
+    const v = typed.trim();
+    if (!v || callState === 'connecting' || callState === 'error') return;
+    if (sessionRef.current?.sendText(v)) {
+      setTyped('');
+      setEntries((prev) => {
+        const list = [...prev, { id: ++seqRef.current, role: 'user', text: v, final: true }];
+        return list.length > 24 ? list.slice(-24) : list;
+      });
+    }
+  };
+
+  const toolRunning = activeTool?.status === 'running';
+  const visualState = toolRunning
+    ? 'tool'
+    : reconnecting.active ? 'reconnecting'
+    : callState;
+  const activeLevel = visualState === 'speaking' ? outLevel : visualState === 'listening' ? inLevel : 0;
+  const orbScale = 1 + activeLevel * 0.24;
+  const glowScale = 1 + activeLevel * 0.45;
+
+  const statusLabel = toolRunning
+    ? `Executando ação no agente: ${activeTool.name}`
+    : reconnecting.active ? (reconnecting.reason || 'Reconectando sessão…')
+    : callState === 'connecting' ? 'Conectando ao Gemini Live…'
+    : callState === 'speaking' ? `${botName || 'Bot'} falando…`
+    : callState === 'muted' ? 'Microfone mudo'
+    : callState === 'error' ? 'Sessão interrompida'
+    : 'Ouvindo em tempo real…';
+
+  return (
+    <div className="stack voice-call-body">
+      <div className="voice-mode-bar">
+        <span className="voice-mode-badge realtime" title={meta.model ? `${meta.model}${meta.voice ? ' · ' + meta.voice : ''}` : 'Gemini Live'}>
+          <span className={'voice-dot ' + (connectedAt && !reconnecting.active && callState !== 'error' ? 'on' : 'pulse')} />
+          <span>Tempo real · Gemini Live</span>
+        </span>
+        <div className="row" style={{ gap: 6 }}>
+          <CallDurationTimer started={connectedAt} />
+          <button type="button" className="ghost small voice-mode-switch" onClick={() => onSwitchClassic('')}>
+            Modo clássico
+          </button>
+        </div>
+      </div>
+
+      <div className="voice-orb-wrap">
+        <div
+          className={'voice-orb-ring ' + visualState}
+          style={{ transform: `scale(${glowScale.toFixed(3)})`, opacity: activeLevel > 0.04 ? Math.min(0.65, 0.18 + activeLevel * 0.6) : 0 }}
+        />
+        <div
+          className={'voice-orb ' + visualState}
+          style={{ transform: `scale(${orbScale.toFixed(3)})` }}
+        >
+          {visualState === 'tool' ? <span className="spin" />
+            : visualState === 'connecting' || visualState === 'reconnecting' ? <span className="spin" />
+            : visualState === 'muted' ? <MicOff size={30} />
+            : visualState === 'speaking' ? <Volume2 size={30} />
+            : <AudioLines size={30} />}
+        </div>
+      </div>
+
+      <div className="voice-status-line">
+        <b>{statusLabel}</b>
+        {callState === 'speaking' && !toolRunning && (
+          <span className="muted small">Fale a qualquer momento para interromper</span>
+        )}
+        {callState === 'listening' && !toolRunning && !reconnecting.active && (
+          <span className="muted small">Áudio bidirecional ativo · pode falar naturalmente</span>
+        )}
+      </div>
+
+      {reconnecting.active && (
+        <div className="voice-pill warn">
+          <RefreshCw size={13} className="spin-ic" />
+          <span>{reconnecting.reason || 'Reconectando sessão…'}</span>
+        </div>
+      )}
+
+      {activeTool && (
+        <div className={'voice-pill ' + (activeTool.status === 'error' ? 'err' : activeTool.status === 'done' ? 'ok' : 'warn')}>
+          {activeTool.status === 'running' ? <span className="spin voice-mini-spin" /> : <Wrench size={13} />}
+          <span>
+            {activeTool.status === 'running'
+              ? `Executando ação no agente: ${activeTool.name}`
+              : activeTool.status === 'error'
+                ? `Falha na ação: ${activeTool.name}`
+                : `Ação concluída: ${activeTool.name}`}
+            {activeTool.detail ? ` · ${activeTool.detail}` : ''}
+          </span>
+        </div>
+      )}
+
+      {err && <ErrorBox error={err} />}
+
+      {entries.length > 0 && (
+        <div ref={listRef} className="voice-transcript" data-no-swipe="1">
+          {entries.map((item) => (
+            <div key={item.id} className={'voice-turn ' + item.role + (item.final ? '' : ' live')}>
+              <b>{item.role === 'user' ? 'Você' : (botName || 'Bot')}:</b>{' '}
+              <span>{item.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
+        {callState === 'speaking' && (
+          <Btn icon={Square} onClick={handleInterrupt}>Interromper</Btn>
+        )}
+        {callState === 'error' && (
+          <>
+            <Btn icon={RefreshCw} onClick={() => { prepareCallAudio(); unlockLiveAudio(); setErr(''); sessionRef.current?.reconnect(); }}>
+              Reconectar
+            </Btn>
+            <Btn icon={ArrowLeftRight} className="ghost" onClick={() => onSwitchClassic('')}>
+              Usar modo clássico
+            </Btn>
+          </>
+        )}
+      </div>
+
+      <form className="row" style={{ width: '100%' }} onSubmit={submitTyped}>
+        <input
+          className="grow"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder="Ou digite durante a chamada…"
+          disabled={callState === 'connecting' || callState === 'error'}
+        />
+        <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || callState === 'connecting' || callState === 'error'}>Enviar</Btn>
+      </form>
+
+      <div className="row wrap" style={{ justifyContent: 'center', gap: 8, marginTop: 2 }}>
+        <Btn icon={muted ? Mic : MicOff} className="ghost small" onClick={toggleMute}>
+          {muted ? 'Ativar mic' : 'Mutar'}
+        </Btn>
+        <Btn
+          icon={lowVol ? Volume1 : Volume2}
+          className="ghost small"
+          title={lowVol ? 'Volume reduzido (menos eco no viva-voz)' : 'Volume normal'}
+          onClick={toggleVolume}
+        >
+          {lowVol ? 'Eco baixo' : 'Volume'}
+        </Btn>
+        <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ClassicVoiceCall({ chatId, botName, lang, messages, live, checkLimit, onLimitBlocked, realtimeCapable, fallbackNote, onSwitchRealtime, onClose }) {
   const t = useT();
   const toast = useToast();
   const [status, setStatus] = useState('idle'); // listening | sending | thinking | speaking | muted | idle
@@ -607,63 +921,149 @@ function LiveVoiceCallModal({ chatId, botName, lang, messages, live, checkLimit,
     : 'Pronto para falar';
 
   return (
-    <Modal title={`📞 Ligação ao vivo · ${botName || 'Agent'}`} onClose={onClose}>
-      <div className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: '12px 4px', gap: 10 }}>
-        <div
-          className="hero-ic"
-          style={{
-            width: 72, height: 72, borderRadius: '50%',
-            transition: 'transform 100ms ease, background 150ms ease',
-            transform: `scale(${orbScale.toFixed(3)})`,
-            background: status === 'listening'
-              ? (heardSpeech ? 'rgba(48, 209, 88, 0.28)' : 'rgba(48, 209, 88, 0.14)')
-              : status === 'speaking' ? 'rgba(10, 132, 255, 0.22)'
-              : status === 'thinking' || status === 'sending' ? 'rgba(255, 159, 10, 0.18)'
-              : 'var(--bg-soft)',
-          }}
-        >
-          {status === 'muted' ? <MicOff size={28} />
-            : status === 'speaking' ? <Volume2 size={28} />
-            : status === 'thinking' || status === 'sending' ? <span className="spin" />
-            : <AudioLines size={28} />}
-        </div>
-        <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-          <b>{statusLabel}</b>
-          {status === 'listening' && recStarted && <RecordingTimer started={recStarted} />}
-        </div>
-        {err && <ErrorBox error={err} />}
-        {transcript && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left' }}><b>Você:</b> {transcript}</div>}
-        {lastReply && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left', maxHeight: 160, overflow: 'auto' }}><b>{botName || 'Bot'}:</b> {lastReply}</div>}
-
-        <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
-          {status === 'listening' && (
-            <Btn icon={ArrowUp} onClick={sendRecordedTurn}>Enviar fala agora</Btn>
-          )}
-          {status === 'speaking' && (
-            <Btn icon={Mic} onClick={bargeIn}>Interromper e falar</Btn>
-          )}
-          {(status === 'idle' || status === 'muted') && (
-            <Btn icon={Mic} onClick={() => { prepareCallAudio(); setMuted(false); mutedRef.current = false; startListening(); }}>Tocar para falar</Btn>
-          )}
-          {(status === 'sending' || status === 'thinking') && (
-            <Btn icon={Square} className="ghost small" onClick={() => bridge.stopChat(chatId).catch(() => {})}>Interromper resposta</Btn>
-          )}
-        </div>
-
-        <form className="row" style={{ width: '100%' }} onSubmit={submitTyped}>
-          <input className="grow" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Ou digite durante a chamada…" />
-          <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || status === 'sending' || status === 'thinking'}>Enviar</Btn>
-        </form>
-
-        <div className="row wrap" style={{ justifyContent: 'center', gap: 8, marginTop: 2 }}>
-          <label className="check small" style={{ marginRight: 4 }}>
-            <input type="checkbox" checked={handsFree} onChange={(e) => setHandsFree(e.target.checked)} />
-            <span>Auto-enviar ao pausar</span>
-          </label>
-          <Btn icon={muted ? Mic : MicOff} className="ghost small" onClick={toggleMute}>{muted ? 'Ativar mic' : 'Mutar'}</Btn>
-          <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar</Btn>
-        </div>
+    <div className="stack voice-call-body">
+      <div className="voice-mode-bar">
+        <span className="voice-mode-badge classic">Modo clássico · por turno</span>
+        {realtimeCapable && (
+          <button type="button" className="ghost small voice-mode-switch" onClick={onSwitchRealtime}>
+            Usar tempo real
+          </button>
+        )}
       </div>
+
+      {fallbackNote && (
+        <div className="voice-pill muted">
+          <span>Tempo real indisponível ({fallbackNote}). Usando modo clássico.</span>
+        </div>
+      )}
+
+      <div
+        className="hero-ic"
+        style={{
+          width: 72, height: 72, borderRadius: '50%',
+          transition: 'transform 100ms ease, background 150ms ease',
+          transform: `scale(${orbScale.toFixed(3)})`,
+          background: status === 'listening'
+            ? (heardSpeech ? 'rgba(48, 209, 88, 0.28)' : 'rgba(48, 209, 88, 0.14)')
+            : status === 'speaking' ? 'rgba(10, 132, 255, 0.22)'
+            : status === 'thinking' || status === 'sending' ? 'rgba(255, 159, 10, 0.18)'
+            : 'var(--sunken)',
+        }}
+      >
+        {status === 'muted' ? <MicOff size={28} />
+          : status === 'speaking' ? <Volume2 size={28} />
+          : status === 'thinking' || status === 'sending' ? <span className="spin" />
+          : <AudioLines size={28} />}
+      </div>
+      <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
+        <b>{statusLabel}</b>
+        {status === 'listening' && recStarted && <RecordingTimer started={recStarted} />}
+      </div>
+      {err && <ErrorBox error={err} />}
+      {transcript && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left' }}><b>Você:</b> {transcript}</div>}
+      {lastReply && <div className="trigger-box small" style={{ width: '100%', textAlign: 'left', maxHeight: 160, overflow: 'auto' }}><b>{botName || 'Bot'}:</b> {lastReply}</div>}
+
+      <div className="row wrap" style={{ justifyContent: 'center', gap: 8 }}>
+        {status === 'listening' && (
+          <Btn icon={ArrowUp} onClick={sendRecordedTurn}>Enviar fala agora</Btn>
+        )}
+        {status === 'speaking' && (
+          <Btn icon={Mic} onClick={bargeIn}>Interromper e falar</Btn>
+        )}
+        {(status === 'idle' || status === 'muted') && (
+          <Btn icon={Mic} onClick={() => { prepareCallAudio(); setMuted(false); mutedRef.current = false; startListening(); }}>Tocar para falar</Btn>
+        )}
+        {(status === 'sending' || status === 'thinking') && (
+          <Btn icon={Square} className="ghost small" onClick={() => bridge.stopChat(chatId).catch(() => {})}>Interromper resposta</Btn>
+        )}
+      </div>
+
+      <form className="row" style={{ width: '100%' }} onSubmit={submitTyped}>
+        <input className="grow" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Ou digite durante a chamada…" />
+        <Btn icon={ArrowUp} className="small" disabled={!typed.trim() || status === 'sending' || status === 'thinking'}>Enviar</Btn>
+      </form>
+
+      <div className="row wrap" style={{ justifyContent: 'center', gap: 8, marginTop: 2 }}>
+        <label className="check small" style={{ marginRight: 4 }}>
+          <input type="checkbox" checked={handsFree} onChange={(e) => setHandsFree(e.target.checked)} />
+          <span>Auto-enviar ao pausar</span>
+        </label>
+        <Btn icon={muted ? Mic : MicOff} className="ghost small" onClick={toggleMute}>{muted ? 'Ativar mic' : 'Mutar'}</Btn>
+        <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Encerrar</Btn>
+      </div>
+    </div>
+  );
+}
+
+function LiveVoiceCallModal({ chatId, botId, botName, lang, messages, live, checkLimit, onLimitBlocked, onClose }) {
+  const [mode, setMode] = useState('checking'); // checking | realtime | classic
+  const [realtimeCapable, setRealtimeCapable] = useState(false);
+  const [statusInfo, setStatusInfo] = useState(null);
+  const [fallbackNote, setFallbackNote] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    bridge.voiceStatus()
+      .then((st) => {
+        if (!alive) return;
+        setStatusInfo(st);
+        const ok = isRealtimeAvailable(st);
+        setRealtimeCapable(ok);
+        setMode(ok ? 'realtime' : 'classic');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setRealtimeCapable(false);
+        setMode('classic');
+      });
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <Modal title={`📞 Ligação ao vivo · ${botName || 'Agent'}`} onClose={onClose}>
+      {mode === 'checking' && (
+        <div className="stack voice-call-body">
+          <div className="voice-orb-wrap">
+            <div className="voice-orb connecting"><span className="spin" /></div>
+          </div>
+          <b>Iniciando ligação…</b>
+          <Btn icon={PhoneOff} className="danger small" onClick={onClose}>Cancelar</Btn>
+        </div>
+      )}
+      {mode === 'realtime' && (
+        <RealtimeVoiceCall
+          chatId={chatId}
+          botId={botId}
+          botName={botName}
+          lang={lang}
+          statusInfo={statusInfo}
+          onSwitchClassic={(reason) => {
+            setFallbackNote(reason || '');
+            setMode('classic');
+          }}
+          onClose={onClose}
+        />
+      )}
+      {mode === 'classic' && (
+        <ClassicVoiceCall
+          chatId={chatId}
+          botName={botName}
+          lang={lang}
+          messages={messages}
+          live={live}
+          checkLimit={checkLimit}
+          onLimitBlocked={onLimitBlocked}
+          realtimeCapable={realtimeCapable}
+          fallbackNote={fallbackNote}
+          onSwitchRealtime={() => {
+            prepareCallAudio();
+            unlockLiveAudio();
+            setFallbackNote('');
+            setMode('realtime');
+          }}
+          onClose={onClose}
+        />
+      )}
     </Modal>
   );
 }
@@ -2134,7 +2534,7 @@ export default function Chat({ openMore, me }) {
           {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
-            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
+            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setLiveCallOpen(true); }} />}
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
             <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
           </div>
@@ -2151,7 +2551,7 @@ export default function Chat({ openMore, me }) {
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
           {info && <IconButton icon={Sparkles} className="ghost voice-toggle only-desktop" label="Conselho Multi-Modelo (/council)" onClick={() => { setText((prev) => (prev.startsWith('/council ') ? prev : '/council ' + prev)); inputRef.current?.focus(); }} />}
           <IconButton icon={Undo2} className="ghost voice-toggle only-desktop" label="Checkpoints & Desfazer no Workspace" onClick={() => setUndoOpen(true)} />
-          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); setLiveCallOpen(true); }} />}
+          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setLiveCallOpen(true); }} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
@@ -2367,7 +2767,7 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           <div className="group">
-            <button className="group-row press" onClick={() => { prepareCallAudio(); setShowOpts(false); setLiveCallOpen(true); }}>
+            <button className="group-row press" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setShowOpts(false); setLiveCallOpen(true); }}>
               <span className="row-ic ic-chat"><Phone size={17} /></span>
               <span className="grow"><b>Ligação de voz ao vivo</b><small className="muted">Conversa por voz em tempo real</small></span>
             </button>
@@ -2436,7 +2836,7 @@ export default function Chat({ openMore, me }) {
         </Modal>
       )}
       {liveCallOpen && current && (
-        <LiveVoiceCallModal chatId={current} botName={botsById[info?.bot || 'default']?.name || 'Agent'} lang={lang}
+        <LiveVoiceCallModal chatId={current} botId={info?.bot || 'default'} botName={botsById[info?.bot || 'default']?.name || 'Agent'} lang={lang}
           messages={messages} live={live}
           checkLimit={() => getProviderLimitStatus(usage.data, info, providers.data, Date.now())}
           onLimitBlocked={(lim) => { setLiveCallOpen(false); setLimitModal(lim); }}
