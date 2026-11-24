@@ -721,7 +721,7 @@ export function WaCallsProvider({ authed, children }) {
         available: st?.available !== false,
         running: Boolean(st?.running),
         port: st?.port || null,
-        sessions: typeof st?.sessions === 'number' ? st.sessions : 0,
+        sessions: Array.isArray(st?.sessions) ? st.sessions.length : (typeof st?.sessions === 'number' ? st.sessions : 0),
         error: st?.error || '',
       });
       return st;

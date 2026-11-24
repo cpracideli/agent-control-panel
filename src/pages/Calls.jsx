@@ -74,9 +74,9 @@ function QrCodeBox({ value }) {
 }
 
 function sessionBadge(session, t) {
-  if (session.paired && session.state === 'connected') return { kind: 'ok', label: t('calls.sess.connected') };
+  if (session.paired && (session.state === 'open' || session.state === 'connected')) return { kind: 'ok', label: t('calls.sess.connected') };
   if (session.paired) return { kind: 'warn', label: session.state || t('calls.sess.connecting') };
-  if (session.state === 'qr') return { kind: 'accent', label: t('calls.sess.qr') };
+  if (session.state === 'qr') return { kind: 'warn', label: t('calls.sess.qr') };
   return { kind: 'muted', label: session.state || t('calls.sess.disconnected') };
 }
 
@@ -95,7 +95,7 @@ export default function Calls() {
   const { t } = useI18n();
   const fmt = useFmt();
   const toast = useToast();
-  const [confirm, confirmEl] = useConfirm();
+  const confirm = useConfirm();
   const [busy, run] = useAction();
   const wa = useWaCalls();
 
@@ -206,13 +206,13 @@ export default function Calls() {
   };
 
   const handleDeleteSession = async (s) => {
-    const ok = await confirm(t('calls.deleteSessionConfirm', { n: s.name || s.id }));
+    const ok = await confirm(t('calls.deleteSessionConfirm', { n: s.name || s.id }), { danger: true });
     if (!ok) return;
     await run('del-' + s.id, () => deleteSession(s.id), t('calls.sessionDeleted'));
   };
 
   const handleLogoutSession = async (s) => {
-    const ok = await confirm(t('calls.logoutSessionConfirm', { n: s.name || s.id }));
+    const ok = await confirm(t('calls.logoutSessionConfirm', { n: s.name || s.id }), { danger: true });
     if (!ok) return;
     await run('logout-' + s.id, () => logoutSession(s.id), t('calls.sessionLoggedOut'));
   };
@@ -231,8 +231,6 @@ export default function Calls() {
 
   return (
     <div className="page wac-page">
-      {confirmEl}
-
       <Card
         title={t('calls.serviceTitle')}
         icon={PhoneCall}
@@ -253,15 +251,15 @@ export default function Calls() {
                 {sseConnected ? 'SSE' : 'Offline'}
               </Badge>
             )}
-            <Btn icon={RefreshCw} className="ghost small" busy={busy === 'refresh'} onClick={handleRefreshAll}>
+            <Btn icon={RefreshCw} className="ghost small" disabled={busy === 'refresh'} onClick={handleRefreshAll}>
               {t('calls.refresh')}
             </Btn>
             {serviceStatus.running ? (
-              <Btn icon={Square} className="ghost small" busy={busy === 'svc-stop'} onClick={() => run('svc-stop', stopService, t('calls.serviceStoppedToast'))}>
+              <Btn icon={Square} className="ghost small" disabled={busy === 'svc-stop'} onClick={() => run('svc-stop', stopService, t('calls.serviceStoppedToast'))}>
                 {t('common.stop')}
               </Btn>
             ) : (
-              <Btn icon={Play} className="small" busy={busy === 'svc-start'} disabled={serviceStatus.available === false} onClick={() => run('svc-start', startService, t('calls.serviceStartedToast'))}>
+              <Btn icon={Play} className="small" disabled={serviceStatus.available === false || busy === 'svc-start'} onClick={() => run('svc-start', startService, t('calls.serviceStartedToast'))}>
                 {t('calls.startService')}
               </Btn>
             )}
@@ -297,8 +295,7 @@ export default function Calls() {
             <p className="muted">{t('calls.heroDesc')}</p>
             <Btn
               icon={Play}
-              busy={busy === 'svc-start'}
-              disabled={serviceStatus.available === false}
+              disabled={serviceStatus.available === false || busy === 'svc-start'}
               onClick={() => run('svc-start', startService, t('calls.serviceStartedToast'))}
             >
               {t('calls.startService')}
@@ -439,7 +436,7 @@ export default function Calls() {
                       placeholder={t('calls.sessionNamePh')}
                       aria-label={t('calls.sessionNamePh')}
                     />
-                    <Btn type="submit" icon={Plus} className="small" busy={busy === 'create-session'}>
+                    <Btn type="submit" icon={Plus} className="small" disabled={busy === 'create-session'}>
                       {t('calls.createSession')}
                     </Btn>
                   </form>
@@ -475,7 +472,7 @@ export default function Calls() {
                                 <Btn
                                   icon={QrCode}
                                   className="small"
-                                  busy={busy === 'pair-' + s.id}
+                                  disabled={busy === 'pair-' + s.id}
                                   onClick={() => run('pair-' + s.id, () => pairSession(s.id), t('calls.qrRequested'))}
                                 >
                                   {t('calls.pairQr')}
@@ -485,7 +482,7 @@ export default function Calls() {
                                 <Btn
                                   icon={LogOut}
                                   className="ghost small"
-                                  busy={busy === 'logout-' + s.id}
+                                  disabled={busy === 'logout-' + s.id}
                                   onClick={() => handleLogoutSession(s)}
                                 >
                                   {t('calls.disconnect')}
@@ -494,7 +491,7 @@ export default function Calls() {
                               <Btn
                                 icon={Trash2}
                                 className="ghost small danger-text"
-                                busy={busy === 'del-' + s.id}
+                                disabled={busy === 'del-' + s.id}
                                 onClick={() => handleDeleteSession(s)}
                                 aria-label={t('common.delete')}
                               />
@@ -519,7 +516,7 @@ export default function Calls() {
               <Btn
                 icon={RefreshCw}
                 className="ghost small"
-                busy={historyLoading}
+                disabled={historyLoading}
                 onClick={() => reloadHistory(selectedSession?.id)}
               >
                 {t('calls.refresh')}

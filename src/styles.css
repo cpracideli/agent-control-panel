@@ -2074,7 +2074,7 @@ kbd { font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; bord
 .sheet-grab { background: color-mix(in srgb, var(--muted) 45%, transparent) !important; }
 
 /* sheets cover the tab bar (HIG): never let the dock float over an open sheet */
-body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg) .dock { opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
+body:has(.sheet-bg, .modal-bg, .asheet-bg, .doc-bg, .gsearch-bg, .wac-modal-bg) .dock { opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
 
 /* action sheet & context menu: same material family */
 :root:not([data-theme="terminal"]) .asheet-group {
