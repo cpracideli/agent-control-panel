@@ -36,11 +36,13 @@ export const localCache = {
   },
 };
 
-export async function api(method, path, body) {
+export async function api(method, path, body, extraHeaders) {
+  const headers = { ...(extraHeaders || {}) };
+  if (body !== undefined && body !== null) headers['Content-Type'] = 'application/json';
   const r = await fetch('/api' + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
+    body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
   });
   let data = null;
@@ -48,7 +50,7 @@ export async function api(method, path, body) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (r.status === 401 && path !== '/login') onUnauthorized();
   if (!r.ok) throw new ApiError((data && data.error) || `Erro ${r.status}`, r.status);
-  if (method === 'GET' && data !== null) localCache.set(path, data);
+  if (method === 'GET' && data !== null && !extraHeaders) localCache.set(path, data);
   return data;
 }
 
@@ -175,6 +177,28 @@ export const bridge = {
     return `${proto}//${window.location.host}/api/bridge/voice/ws${qs ? '?' + qs : ''}`;
   },
   voiceLiveConfig: () => get('/bridge/voice/live-config'),
+  wacallsStatus: () => get('/bridge/admin/wacalls/status'),
+  wacallsStart: () => post('/bridge/admin/wacalls/start', {}),
+  wacallsStop: () => post('/bridge/admin/wacalls/stop', {}),
+  wacallsEventsUrl: (clientId) => '/api/bridge/admin/wacalls/api/events?clientId=' + encodeURIComponent(clientId || ''),
+  wacallsWsUrl: ({ sid, callId, clientId }) => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const q = new URLSearchParams();
+    if (sid) q.set('sid', String(sid));
+    if (callId) q.set('callId', String(callId));
+    if (clientId) q.set('clientId', String(clientId));
+    return `${proto}//${window.location.host}/api/bridge/wacalls/ws?${q.toString()}`;
+  },
+  wacallsSessions: (clientId) => api('GET', '/bridge/admin/wacalls/api/sessions', undefined, { 'X-Client-Id': clientId }),
+  wacallsCreateSession: (name, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions', { name }, { 'X-Client-Id': clientId }),
+  wacallsDeleteSession: (sid, clientId) => api('DELETE', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid), undefined, { 'X-Client-Id': clientId }),
+  wacallsLogoutSession: (sid, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/logout', {}, { 'X-Client-Id': clientId }),
+  wacallsPairSession: (sid, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/pair', {}, { 'X-Client-Id': clientId }),
+  wacallsStartCall: (sid, phone, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls', { phone }, { 'X-Client-Id': clientId }),
+  wacallsAcceptCall: (sid, callId, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId) + '/accept', {}, { 'X-Client-Id': clientId }),
+  wacallsRejectCall: (sid, callId, clientId) => api('POST', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId) + '/reject', {}, { 'X-Client-Id': clientId }),
+  wacallsEndCall: (sid, callId, clientId) => api('DELETE', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/calls/' + encodeURIComponent(callId), undefined, { 'X-Client-Id': clientId }),
+  wacallsHistory: (sid, clientId) => api('GET', '/bridge/admin/wacalls/api/sessions/' + encodeURIComponent(sid) + '/history', undefined, { 'X-Client-Id': clientId }),
   sendWhatsApp: (to, text) => post('/bridge/send', { to, text }),
   search: (q, limit = 30) => get('/bridge/search?q=' + encodeURIComponent(q) + '&limit=' + limit),
   inbox: () => get('/bridge/inbox'),

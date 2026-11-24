@@ -6,6 +6,7 @@ import { bridge, localCache } from '../api.js';
 import { store, useI18n, useT } from '../i18n.jsx';
 import { MAX_FILE, MessageFiles, PendingFiles, RecordingTimer, SpeakButton, canRecord, hasTTS, pickAudioMime, prepareCallAudio, readAsBase64, setAudioSession, setCallAudioMode, speak, speakAndWait, stopSpeaking, unlockSpeech, useRecorder } from './chatMedia.jsx';
 import { VoiceLiveSession, isRealtimeAvailable, unlockLiveAudio } from './voiceLive.js';
+import { acquireVoiceMic, getActiveVoiceOwner, releaseVoiceMic } from '../lib/voiceLock.js';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, Sheet, haptic, useConfirm, useFmt, useLoad, useTheme, useToast } from '../ui.jsx';
 import { BotAvatar, BotSelect } from './Bots.jsx';
 import CameraCapture from './CameraCapture.jsx';
@@ -1000,6 +1001,15 @@ function LiveVoiceCallModal({ chatId, botId, botName, lang, messages, live, chec
   const [realtimeCapable, setRealtimeCapable] = useState(false);
   const [statusInfo, setStatusInfo] = useState(null);
   const [fallbackNote, setFallbackNote] = useState('');
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    acquireVoiceMic('bot-voice', {
+      onForceRelease: () => onCloseRef.current?.(),
+    });
+    return () => releaseVoiceMic('bot-voice');
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -1884,6 +1894,15 @@ export default function Chat({ openMore, me }) {
   const [refreshingLimit, setRefreshingLimit] = useState(false);
   const [limitNow, setLimitNow] = useState(() => Date.now());
   const [liveCallOpen, setLiveCallOpen] = useState(false);
+  const openLiveVoiceCall = () => {
+    if (getActiveVoiceOwner() === 'wacalls') {
+      toast('Encerre a ligação do WhatsApp antes de iniciar voz com o bot.', 'err');
+      return;
+    }
+    prepareCallAudio();
+    unlockLiveAudio();
+    setLiveCallOpen(true);
+  };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const chatTasks = useLoad(() => (current ? bridge.tasks(current) : Promise.resolve([])), [current], { interval: 8000 });
   const runningTasks = (chatTasks.data || []).filter((tk) => tk.status === 'running');
@@ -2534,7 +2553,7 @@ export default function Chat({ openMore, me }) {
           {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
           <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
-            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setLiveCallOpen(true); }} />}
+            {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={openLiveVoiceCall} />}
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
             <IconButton icon={Ellipsis} className="ghost" label={t('chat.options')} onClick={() => info && setShowOpts(true)} disabled={!info} />
           </div>
@@ -2551,7 +2570,7 @@ export default function Chat({ openMore, me }) {
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
           {info && <IconButton icon={Sparkles} className="ghost voice-toggle only-desktop" label="Conselho Multi-Modelo (/council)" onClick={() => { setText((prev) => (prev.startsWith('/council ') ? prev : '/council ' + prev)); inputRef.current?.focus(); }} />}
           <IconButton icon={Undo2} className="ghost voice-toggle only-desktop" label="Checkpoints & Desfazer no Workspace" onClick={() => setUndoOpen(true)} />
-          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setLiveCallOpen(true); }} />}
+          {info && <IconButton icon={Phone} className="ghost voice-toggle only-desktop" label="Ligação de voz ao vivo" onClick={openLiveVoiceCall} />}
           <IconButton icon={Monitor} className={'ghost voice-toggle only-desktop' + (compSt.data?.status === 'running' ? ' on' : '')} label={t('nav.computer')} onClick={() => { window.location.hash = '#/computer'; }} />
           {hasTTS() && (
             <IconButton icon={AudioLines} className={'ghost voice-toggle only-desktop' + (voiceMode ? ' on' : '')} label={t('chat.voiceMode') + ': ' + (voiceMode ? t('common.on') : t('common.off'))} onClick={() => setVoiceMode(!voiceMode)} />
@@ -2767,7 +2786,7 @@ export default function Chat({ openMore, me }) {
             </div>
           )}
           <div className="group">
-            <button className="group-row press" onClick={() => { prepareCallAudio(); unlockLiveAudio(); setShowOpts(false); setLiveCallOpen(true); }}>
+            <button className="group-row press" onClick={() => { setShowOpts(false); openLiveVoiceCall(); }}>
               <span className="row-ic ic-chat"><Phone size={17} /></span>
               <span className="grow"><b>Ligação de voz ao vivo</b><small className="muted">Conversa por voz em tempo real</small></span>
             </button>

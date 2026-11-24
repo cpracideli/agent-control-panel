@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BarChart3, Bell, BellRing, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, Plug, RefreshCw, ScrollText, Search, Send, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
+import { Activity, BarChart3, Bell, BellRing, Bot, Brain, CalendarClock, CheckSquare, ChevronLeft, ChevronRight, Download, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, LayoutDashboard, KeyRound, Languages, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, PanelBottom, PhoneCall, Plug, RefreshCw, ScrollText, Search, Send, Sparkles, SquareTerminal, Sun, UserRound, Wand2, WifiOff } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { api, bridge, prefs, setUnauthorizedHandler } from './api.js';
 import { DEFAULT_DOCK, DockSettingsModal, isSameList, normalizeDock } from './DockSettings.jsx';
@@ -10,8 +10,11 @@ import { ErrorBoundary, IconButton, Sheet, haptic, refreshAll, useTheme } from '
 import { ContextMenuHost, PullToRefresh, ScreenCtx } from './native.jsx';
 import { useEdgeBack, useNavStack } from './stack.jsx';
 import { ViewerHost } from './viewer.jsx';
+import { WaCallsProvider, useWaCalls } from './lib/wacalls.jsx';
+import WaCallsGlobalOverlay from './components/WaCallsGlobal.jsx';
 import Login from './pages/Login.jsx';
 import Chat from './pages/Chat.jsx';
+import Calls from './pages/Calls.jsx';
 import Bots from './pages/Bots.jsx';
 import Computer from './pages/Computer.jsx';
 import Skills from './pages/Skills.jsx';
@@ -35,6 +38,7 @@ const PAGE_GROUPS = ['work', 'auto', 'knowledge', 'system'];
 const PAGES = [
   { id: 'command', group: 'work', icon: LayoutDashboard, el: Command },
   { id: 'chat', group: 'work', icon: MessageSquare, el: Chat },
+  { id: 'calls', group: 'work', icon: PhoneCall, el: Calls },
   { id: 'board', group: 'work', icon: CheckSquare, el: Board },
   { id: 'bots', group: 'work', icon: Bot, el: Bots },
   { id: 'computer', group: 'work', icon: Monitor, el: Computer },
@@ -402,6 +406,18 @@ function TabLayer({ tab, stack, active, anim, onPop, renderScreen }) {
   );
 }
 
+function CallStatusDot({ inline }) {
+  const wa = useWaCalls();
+  if (!wa || (!wa.incoming && !wa.activeCall)) return null;
+  return (
+    <span
+      className={'nav-dot ' + (wa.incoming ? 'err' : 'ok')}
+      aria-label={wa.incoming ? 'Chamada recebida' : 'Chamada ativa'}
+      style={inline ? undefined : undefined}
+    />
+  );
+}
+
 export default function App() {
   const { t } = useI18n();
   const [authed, setAuthed] = useState(null);
@@ -625,6 +641,7 @@ export default function App() {
 
   return (
     <NotificationsProvider authed={Boolean(authed)}>
+    <WaCallsProvider authed={Boolean(authed)}>
     <div className={'shell' + (page === 'chat' ? ' on-chat' : '') + (nav.anim ? ' navigating' : '')}>
       <aside className="nav">
         <div className="brand"><img src="/pwa-192.png" alt="" width="26" height="26" className="app-icon sm" />Agent Control</div>
@@ -649,6 +666,7 @@ export default function App() {
                   {id === 'chat' && (navStatus.pendingPrompts > 0
                     ? <span className="nav-dot err" aria-label={t('prp.pending')} />
                     : (navStatus.webRunning > 0 || navStatus.unread > 0) && <span className="nav-dot warn" aria-label={t('common.running')} />)}
+                  {id === 'calls' && <CallStatusDot inline />}
                   {id === 'computer' && (navStatus.computerNeedsHuman
                     ? <span className="nav-dot err" aria-label={t('comp.needsYou')} />
                     : navStatus.computerRunning && <span className="nav-dot ok" aria-label={t('comp.running')} />)}
@@ -693,7 +711,7 @@ export default function App() {
                 aria-current={!action && active ? 'page' : undefined}
                 aria-expanded={action ? active : undefined}
               >
-                <span className="dock-ic"><Icon size={21} strokeWidth={active ? 2.3 : 1.9} />{dot && <span className={'nav-dot ' + dot} />}</span><span>{t('dock.label.' + id) !== 'dock.label.' + id ? t('dock.label.' + id) : t('nav.' + id)}</span>
+                <span className="dock-ic"><Icon size={21} strokeWidth={active ? 2.3 : 1.9} />{dot ? <span className={'nav-dot ' + dot} /> : id === 'calls' ? <CallStatusDot /> : null}</span><span>{t('dock.label.' + id) !== 'dock.label.' + id ? t('dock.label.' + id) : t('nav.' + id)}</span>
               </button>
             );
           })}
@@ -702,11 +720,13 @@ export default function App() {
 
       <ContextMenuHost />
       <ViewerHost />
+      <WaCallsGlobalOverlay />
       {more && <MoreSheet {...moreProps} onClose={() => setMore(false)} />}
       {dockModal && <DockSettingsModal pages={DOCK_OPTIONS} dock={dock} onSave={saveDock} onClose={() => setDockModal(false)} />}
       {searchOpen && <GlobalSearchModal onClose={() => setSearchOpen(false)} go={go} />}
       {inboxOpen && <ActionInboxModal onClose={() => { setInboxOpen(false); if (isInboxHash()) window.history.replaceState(null, '', hashOf(page)); }} go={go} />}
     </div>
+    </WaCallsProvider>
     </NotificationsProvider>
   );
 }

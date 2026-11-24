@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, BarChart3, Bot, Brain, CalendarClock, Check, CheckSquare, Clock, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, KeyRound, LayoutDashboard, Mail, MessageSquare, Monitor, Pencil, Plug, Plus, ScrollText, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { Activity, BarChart3, Bot, Brain, CalendarClock, Check, CheckSquare, Clock, FileCode2, FolderArchive, Gauge, GitBranch, Inbox, KeyRound, LayoutDashboard, Mail, MessageSquare, Monitor, Pencil, PhoneCall, Plug, Plus, ScrollText, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { bridge } from './api.js';
 import { useI18n } from './i18n.jsx';
 import { Badge, Btn, ErrorBox, Field, IconButton, Modal, useAction, useFmt, useLoad, useToast } from './ui.jsx';
@@ -8,6 +8,7 @@ import { Badge, Btn, ErrorBox, Field, IconButton, Modal, useAction, useFmt, useL
 const PALETTE_PAGES = [
   { id: 'command', icon: LayoutDashboard, kw: 'inicio home centro bots resumo dashboard' },
   { id: 'chat', icon: MessageSquare, kw: 'chat conversa mensagem whatsapp' },
+  { id: 'calls', icon: PhoneCall, kw: 'ligacoes chamadas telefone whatsapp voz discador wacalls' },
   { id: 'board', icon: CheckSquare, kw: 'board tarefas kanban tickets pendencias' },
   { id: 'schedules', icon: CalendarClock, kw: 'agendamentos rotinas cron webhook watch horario' },
   { id: 'workflows', icon: GitBranch, kw: 'fluxos workflows automacao pipeline' },

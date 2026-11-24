@@ -170,6 +170,9 @@ class VoicePlaybackProcessor extends AudioWorkletProcessor {
     this._srcRate = Number(opts.sourceSampleRate) || 24000;
     this._ratio = this._srcRate / sampleRate;
     this._prebufferSamples = Math.max(240, Math.round(this._srcRate * (Number(opts.prebufferSec) || 0.04)));
+    this._maxBufferSamples = Number(opts.maxBufferSec) > 0
+      ? Math.max(this._prebufferSamples * 2, Math.round(this._srcRate * Number(opts.maxBufferSec)))
+      : 0;
     this._volume = typeof opts.volume === 'number' ? opts.volume : 1;
     this._stopped = false;
 
@@ -198,6 +201,9 @@ class VoicePlaybackProcessor extends AudioWorkletProcessor {
           this._queue.push(samples);
           this._available += samples.length;
           this._turnComplete = false;
+          if (this._maxBufferSamples > 0 && this._available > this._maxBufferSamples) {
+            this._consume(this._available - this._prebufferSamples);
+          }
         }
       } else if (msg.type === 'clear') {
         // Instant barge-in flush with ~1.5ms click-free fade-out.

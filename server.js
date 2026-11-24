@@ -196,7 +196,7 @@ app.get('/api/me', async (req, res) => {
 });
 
 // ---------- per-user preferences (persisted in the bridge's settings.json) ----------
-const VALID_DOCK_PAGES = new Set(['command', 'status', 'workflows', 'chat', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs', 'search', 'inbox', 'more']);
+const VALID_DOCK_PAGES = new Set(['command', 'status', 'workflows', 'chat', 'calls', 'bots', 'computer', 'skills', 'board', 'dashboards', 'schedules', 'artifacts', 'memory', 'usage', 'overview', 'providers', 'mcp', 'envs', 'logs', 'search', 'inbox', 'more']);
 function parseDockPref(raw) {
   if (raw === null || raw === undefined) return null;
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > 5) return undefined;
@@ -502,24 +502,46 @@ app.post('/api/push/dispatch', async (req, res) => {
 // ---------- bridge /admin proxy (JSON and SSE) ----------
 app.all('/api/bridge/*', auth, async (req, res) => {
   if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
-  const target = BRIDGE_URL + '/admin/' + req.params[0] + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  const subPath = String(req.params[0] || '').replace(/^admin\/wacalls(\/|$)/, 'wacalls$1');
+  const target = BRIDGE_URL + '/admin/' + subPath + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
   const ctrl = new AbortController();
   res.on('close', () => ctrl.abort());
+  const isEventStreamPath = /(?:^|\/)events$/.test(subPath);
+  if (isEventStreamPath) {
+    req.setTimeout?.(0);
+    res.setTimeout?.(0);
+  }
   try {
+    const hdrs = {
+      Authorization: `Bearer ${BRIDGE_TOKEN}`,
+      // X-Panel-Url lets the bridge tell the agent the public address of routine webhooks.
+      'X-Panel-Url': PUBLIC_URL || `${req.protocol}://${req.get('host')}`,
+    };
+    const clientId = req.get('x-client-id');
+    if (clientId) hdrs['X-Client-Id'] = clientId;
+    const isBodylessMethod = ['GET', 'HEAD'].includes(req.method);
+    const hasDeleteBody = req.method === 'DELETE' && req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0;
+    const sendBody = !isBodylessMethod && (req.method !== 'DELETE' || hasDeleteBody);
+    if (sendBody) hdrs['Content-Type'] = 'application/json';
     const r = await fetch(target, {
       method: req.method,
-      // X-Panel-Url lets the bridge tell the agent the public address of routine webhooks.
-      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, 'Content-Type': 'application/json', 'X-Panel-Url': PUBLIC_URL || `${req.protocol}://${req.get('host')}` },
-      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body || {}),
+      headers: hdrs,
+      body: sendBody ? JSON.stringify(req.body || {}) : undefined,
       signal: ctrl.signal,
     });
+    if (r.status === 204 || r.status === 304) {
+      return res.status(r.status).end();
+    }
     const type = r.headers.get('content-type') || 'application/json';
     res.status(r.status === 401 ? 502 : r.status); // a bridge 401 means a bad BRIDGE_ADMIN_TOKEN, not an expired panel session
     res.setHeader('Content-Type', type);
     const disp = r.headers.get('content-disposition');
     if (disp) res.setHeader('Content-Disposition', disp);
     if (type.includes('text/event-stream')) {
+      req.setTimeout?.(0);
+      res.setTimeout?.(0);
       res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
       Readable.fromWeb(r.body).on('error', () => res.end()).pipe(res);
@@ -561,7 +583,7 @@ app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sen
 
 const httpServer = http.createServer(app);
 
-// WebSocket proxy for live agent computer (noVNC), Gemini Live voice (/api/bridge/voice/ws), AND Local Computer Bridge (/api/local-bridge/ws)
+// WebSocket proxy for live agent computer (noVNC), Gemini Live voice (/api/bridge/voice/ws), WaCalls audio (/api/bridge/wacalls/ws), AND Local Computer Bridge (/api/local-bridge/ws)
 httpServer.on('upgrade', (req, socket, head) => {
   const fullUrl = req.url || '/';
   const pathname = fullUrl.split('?')[0];
@@ -569,11 +591,12 @@ httpServer.on('upgrade', (req, socket, head) => {
   const isLocalBridge = pathname === '/api/local-bridge/ws';
   const isComputer = pathname === '/api/bridge/computer/ws';
   const isVoice = pathname === '/api/bridge/voice/ws';
-  if (!isLocalBridge && !isComputer && !isVoice) {
+  const isWaCalls = pathname === '/api/bridge/wacalls/ws';
+  if (!isLocalBridge && !isComputer && !isVoice && !isWaCalls) {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     return socket.destroy();
   }
-  if ((isComputer || isVoice) && (!BRIDGE_TOKEN || !validSession(req))) {
+  if ((isComputer || isVoice || isWaCalls) && (!BRIDGE_TOKEN || !validSession(req))) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     return socket.destroy();
   }
@@ -584,8 +607,11 @@ httpServer.on('upgrade', (req, socket, head) => {
     ? ('/admin/local-bridge/ws' + qs)
     : isVoice
       ? ('/admin/voice/ws' + qs)
-      : '/admin/computer/ws';
+      : isWaCalls
+        ? ('/admin/wacalls/ws' + qs)
+        : '/admin/computer/ws';
   const upstream = net.connect(port, target.hostname, () => {
+    try { socket.setNoDelay(true); upstream.setNoDelay(true); } catch {}
     const hdrs = [
       `GET ${upstreamPath} HTTP/1.1`,
       `Host: ${target.host}`,
