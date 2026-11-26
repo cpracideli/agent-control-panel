@@ -16,7 +16,7 @@ import { ProvIcon, ProvMark } from '../ProvIcon.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress, useScreen } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
 import ChannelMark from '../components/ChannelMark.jsx';
-import { channelLabel, chatChannel, isLiveSession, linkedChannels, matchesChannel, sessionNotice } from '../lib/chatChannel.js';
+import { channelLabel, chatActivity, chatChannel, isLiveSession, isSessionLocked, linkedChannels, matchesChannel, sessionNotice } from '../lib/chatChannel.js';
 import { formatResetInfo, getProviderLimitStatus, getProviderPickerLimit, isBridgeControlCommand } from '../providerLimits.js';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
@@ -1396,7 +1396,7 @@ function LiveRun({ live, bot, botsById, term, onPromptAnswered }) {
   );
 }
 
-function BotPicker({ bots, value, onChange, label, hint }) {
+function BotPicker({ bots, value, onChange, label, hint, disabled }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const cur = bots.find((b) => b.id === value) || bots[0];
@@ -1410,7 +1410,7 @@ function BotPicker({ bots, value, onChange, label, hint }) {
   if (!cur) return null;
   return (
     <div className="bot-picker" ref={ref}>
-      <button type="button" className="bot-picker-btn" aria-label={label} title={hint} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="bot-picker-btn" aria-label={label} title={hint} aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={() => !disabled && setOpen((o) => !o)}>
         <BotAvatar bot={cur} size={20} /><span className="ellipsis">{cur.name}</span>
       </button>
       {open && (
@@ -1428,7 +1428,7 @@ function BotPicker({ bots, value, onChange, label, hint }) {
   );
 }
 
-function ChatSettings({ chat, providers, bots, onChange }) {
+function ChatSettings({ chat, providers, bots, onChange, lockHint }) {
   const t = useT();
   if (!chat || !providers) return null;
   const prov = providers.providers.find((p) => p.id === chat.provider) || providers.providers[0];
@@ -1437,7 +1437,7 @@ function ChatSettings({ chat, providers, bots, onChange }) {
   const efforts = agy ? (agyModel ? agyModel.efforts : []) : prov.efforts;
   return (
     <div className="chat-settings">
-      {bots?.length > 1 && <BotPicker bots={bots} value={chat.bot || 'default'} onChange={(id) => onChange({ bot: id })} label={t('bots.label')} hint={t('bots.switchHint')} />}
+      {bots?.length > 1 && <BotPicker bots={bots} value={chat.bot || 'default'} onChange={(id) => onChange({ bot: id })} label={t('bots.label')} hint={lockHint || t('bots.switchHint')} disabled={Boolean(lockHint)} />}
       <select value={chat.provider} onChange={(e) => onChange({ provider: e.target.value })} aria-label={t('chat.provider')}>
         {providers.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.installed}>{p.name}{p.installed ? '' : ' (' + t('common.notInstalled') + ')'}</option>)}
       </select>
@@ -1887,7 +1887,7 @@ export default function Chat({ openMore, me }) {
       .filter((c) => (showArchived ? Boolean(c.archived) : !c.archived))
       .filter((c) => matchesChannel(c, activeChan))
       .filter((c) => !q || (c.title || '').toLowerCase().includes(q))
-      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || String(chatActivity(b)).localeCompare(String(chatActivity(a))));
   }, [webChats, chatSearch, showArchived, activeChan]);
   const shownMessages = useMemo(() => {
     const q = msgSearch.trim().toLowerCase();
@@ -2263,6 +2263,7 @@ export default function Chat({ openMore, me }) {
   );
   const onPaste = (e) => { const list = [...(e.clipboardData?.files || [])]; if (list.length) { e.preventDefault(); addFiles(list); } };
   const change = async (b) => {
+    if (lockHint && (b.reset || ('bot' in b && b.bot !== (info && info.bot)))) { toast(lockHint, 'err'); return; }
     const prev = chatInfo;
     if (info && (b.bot || 'provider' in b || 'model' in b || 'effort' in b || 'agyModel' in b || 'agyEffort' in b)) {
       setChatInfo({ ...info, ...b });
@@ -2297,6 +2298,7 @@ export default function Chat({ openMore, me }) {
   // The list (GET /chats, refreshed live) carries the freshest channel/live flags; chatInfo may be stale.
   const sessChat = info ? webChats.find((c) => c.id === info.id) || info : null;
   const sessNote = sessionNotice(sessChat);
+  const lockHint = isSessionLocked(sessChat) ? t('chat.liveLockHint', { c: channelLabel(chatChannel(sessChat)) }) : '';
   const activeBot = botsById[info?.bot || 'default'] || botsById.default || (botsL.data || []).find((b) => b.isDefault) || null;
 
   const ml = modelLabel(info, providers.data);
@@ -2408,7 +2410,7 @@ export default function Chat({ openMore, me }) {
                     {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
                     {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
                   </span>
-                  <small>{chatChannel(c) !== 'web' && (c.running || c.pinned) ? <><ChannelMark chat={c} size={12} /> </> : ''}{c.bot && c.bot !== 'default' && botsById[c.bot] ? <><BotAvatar bot={botsById[c.bot]} size={14} /> {botsById[c.bot].name} · </> : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                  <small>{chatChannel(c) !== 'web' && (c.running || c.pinned) ? <><ChannelMark chat={c} size={12} /> </> : ''}{c.bot && c.bot !== 'default' && botsById[c.bot] ? <><BotAvatar bot={botsById[c.bot]} size={14} /> {botsById[c.bot].name} · </> : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago(chatActivity(c))}</small>
                 </LongPressButton>
                 <div className="chat-item-actions">
                   <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
@@ -2532,7 +2534,7 @@ export default function Chat({ openMore, me }) {
               </span>
             </button>
           )}
-          {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>}
+          {info && <div className="only-desktop"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} lockHint={lockHint} /></div>}
           {info && <IconButton icon={Layers} className={'ghost voice-toggle only-desktop' + (runningTasks.length ? ' on' : '')} label="Nova tarefa paralela (Task Session)" onClick={() => setNewTaskOpen(true)} />}
           {info && <IconButton icon={Sparkles} className="ghost voice-toggle only-desktop" label="Conselho Multi-Modelo (/council)" onClick={() => { setText((prev) => (prev.startsWith('/council ') ? prev : '/council ' + prev)); inputRef.current?.focus(); }} />}
           <IconButton icon={Undo2} className="ghost voice-toggle only-desktop" label="Checkpoints & Desfazer no Workspace" onClick={() => setUndoOpen(true)} />
@@ -2544,7 +2546,7 @@ export default function Chat({ openMore, me }) {
           {info && (
             <div className="row only-desktop">
               <IconButton icon={Search} className={'ghost' + (showMsgSearch ? ' active' : '')} label={t('chat.searchMsgs')} onClick={() => { setShowMsgSearch((x) => !x); setMsgSearch(''); }} />
-              <IconButton icon={RotateCcw} label={t('common.newSession') + ' — ' + t('chat.resetTitle')} onClick={reset} />
+              <IconButton icon={RotateCcw} label={lockHint || t('common.newSession') + ' — ' + t('chat.resetTitle')} onClick={reset} disabled={Boolean(lockHint)} />
               <IconButton icon={Trash2} className="ghost danger-text" label={t('chat.delete')} onClick={() => remove(current)} />
             </div>
           )}
@@ -2612,7 +2614,6 @@ export default function Chat({ openMore, me }) {
             <div className={'session-note ch-' + sessNote.channel + (sessNote.live ? ' live' : '')} role="note">
               <ChannelMark channel={sessNote.channel} size={14} />
               <span>{t(sessNote.key, { c: channelLabel(sessNote.channel) })}</span>
-              {sessNote.live && <span className="live-badge">{t('chat.live')}</span>}
             </div>
           )}
           {!atBottom && <button type="button" className="glass-btn icon to-bottom press" aria-label="↓" onClick={() => toBottom(true)}><ArrowDown size={20} /></button>}
@@ -2719,7 +2720,7 @@ export default function Chat({ openMore, me }) {
       {showOpts && info && (
         <Sheet title={t('chat.options')} onClose={() => setShowOpts(false)}>
           <div className="group-label">{info.title}</div>
-          <div className="group pad group-open"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} /></div>
+          <div className="group pad group-open"><ChatSettings chat={info} providers={providers.data} bots={botsL.data} onChange={change} lockHint={lockHint} />{lockHint && <small className="muted live-lock-hint">{lockHint}</small>}</div>
           {(botsL.data || []).length > 1 && (
             <div className="group pad stack">
               <div className="row spread">
@@ -2784,9 +2785,9 @@ export default function Chat({ openMore, me }) {
               <span className="row-ic ic-skills"><Sparkles size={17} /></span>
               <span className="grow"><b>Conselho Multi-Modelo</b><small className="muted">Comparar 2–3 modelos em paralelo</small></span>
             </button>
-            <button className="group-row press" onClick={() => { setShowOpts(false); reset(); }}>
+            <button className="group-row press" disabled={Boolean(lockHint)} onClick={() => { setShowOpts(false); reset(); }}>
               <span className="row-ic ic-providers"><RotateCcw size={17} /></span>
-              <span className="grow"><b>{t('common.newSession')}</b><small className="muted">{t('chat.resetTitle')}</small></span>
+              <span className="grow"><b>{t('common.newSession')}</b><small className="muted">{lockHint || t('chat.resetTitle')}</small></span>
             </button>
             <button className="group-row press danger-text" onClick={() => { setShowOpts(false); remove(current); }}>
               <span className="row-ic ic-logout"><Trash2 size={17} /></span><span className="grow">{t('chat.delete')}</span>

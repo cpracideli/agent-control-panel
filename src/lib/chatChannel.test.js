@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatChannel, isLinkedSession, isLiveSession, matchesChannel, linkedChannels, sessionNotice, channelLabel } from './chatChannel.js';
+import { chatActivity, isSessionLocked, chatChannel, isLinkedSession, isLiveSession, matchesChannel, linkedChannels, sessionNotice, channelLabel } from './chatChannel.js';
 
 describe('chatChannel', () => {
   it('defaults to web when the bridge omits the field (older versions)', () => {
@@ -25,6 +25,17 @@ describe('chatChannel', () => {
     assert.deepEqual(list.filter((c) => matchesChannel(c, 'whatsapp')).map((c) => c.id), ['b']);
     assert.deepEqual(linkedChannels(list), ['whatsapp', 'telegram']);
     assert.deepEqual(linkedChannels([{ id: 'x' }]), []);
+  });
+  it('activity prefers updated, then last run, then created', () => {
+    assert.equal(chatActivity({ updated: '2026-11-25T10:00:00Z', runs: [{ at: '2026-11-24T00:00:00Z' }], created: '2026-01-01' }), '2026-11-25T10:00:00Z');
+    assert.equal(chatActivity({ runs: [{ at: 'a' }, { at: 'b' }], created: 'c' }), 'b');
+    assert.equal(chatActivity({ runs: [], created: 'c' }), 'c');
+    assert.equal(chatActivity(null), '');
+  });
+  it('locks bot/reset only on live linked sessions', () => {
+    assert.equal(isSessionLocked({ channel: 'whatsapp', live: true }), true);
+    assert.equal(isSessionLocked({ channel: 'whatsapp', live: false }), false);
+    assert.equal(isSessionLocked({ channel: 'web' }), false);
   });
   it('notice for live vs archived sessions', () => {
     assert.equal(sessionNotice({ id: 'w' }), null);

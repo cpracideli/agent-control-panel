@@ -194,7 +194,7 @@ const pt = {
   'bots.rulesTitle': 'Regras de permissão (Permitir / Bloquear)', 'bots.allowRules': 'Sempre permitir sem perguntar', 'bots.blockRules': 'Sempre bloquear / exigir aprovação', 'bots.allowPh': 'Ex.: Consultar clima, ler Gmail, gerar dashboards', 'bots.blockPh': 'Ex.: Nunca apagar e-mails, nunca enviar mensagens sem aprovação',
   'chat.selectText': 'Selecionar texto', 'common.share': 'Compartilhar', 'common.openOutside': 'Abrir fora do app', 'common.download': 'Baixar', 'ptr.pull': 'Puxe para atualizar', 'ptr.release': 'Solte para atualizar', 'ptr.loading': 'Atualizando…', 'common.retryBtn': 'Tentar de novo',
   'ov.status': 'Status', 'ov.totals': 'Totais', 'ov.repo': 'Repositório', 'use.limits': 'Limites do plano', 'use.tokens': 'Tokens', 'comp.screenTitle': 'Tela', 'comp.actions': 'Ações', 'comp.details': 'Detalhes', 'comp.statusLbl': 'Status', 'comp.openUrl': 'Abrir endereço', 'logs.linesLbl': 'Linhas', 'logs.tools': 'Ferramentas',
-  "chat.chAll": "Todas", "chat.chFilter": "Filtrar por canal", "chat.live": "ao vivo", "chat.sessLiveNote": "Sessão do {c} — respostas aparecem só aqui; ao voltar ao {c} a conversa continua.", "chat.sessArchivedNote": "Sessão arquivada do {c} — continuar aqui retoma de onde parou.", 
+  "chat.chAll": "Todas", "chat.chFilter": "Filtrar por canal", "chat.live": "ao vivo", "chat.sessLiveNote": "Sessão do {c} ao vivo · respostas só aqui", "chat.liveLockHint": "Troque o bot ou use /new pelo {c}", "chat.sessArchivedNote": "Sessão arquivada do {c} · continue daqui", 
   'chat.activity': 'Atividade', 'chat.noActivity': 'Nenhuma atividade recente.', 'chat.pin': 'Fixar', 'chat.unpin': 'Desafixar', 'chat.archive': 'Arquivar', 'chat.unarchive': 'Desarquivar', 'chat.showArchived': 'Ver arquivadas ({n})', 'chat.backToChats': 'Voltar às conversas', 'chat.quote': 'Citar',
   'sch.presetEmail': 'Preset: Novo e-mail (Gmail)', 'sch.presetFolder': 'Preset: Pasta inbox',
   'dock.title': 'Barra inferior', 'dock.preview': 'Pré-visualização da barra inferior', 'dock.selected': 'Na barra ({n}/5)',
@@ -586,7 +586,7 @@ const en = {
   'bots.rulesTitle': 'Permission rules (Allow / Block)', 'bots.allowRules': 'Always allow without asking', 'bots.blockRules': 'Always block / require approval', 'bots.allowPh': 'e.g. Read weather, check Gmail, build dashboards', 'bots.blockPh': 'e.g. Never delete emails, never send messages without approval',
   'chat.selectText': 'Select text', 'common.share': 'Share', 'common.openOutside': 'Open outside the app', 'common.download': 'Download', 'ptr.pull': 'Pull to refresh', 'ptr.release': 'Release to refresh', 'ptr.loading': 'Refreshing…', 'common.retryBtn': 'Try again',
   'ov.status': 'Status', 'ov.totals': 'Totals', 'ov.repo': 'Repository', 'use.limits': 'Plan limits', 'use.tokens': 'Tokens', 'comp.screenTitle': 'Screen', 'comp.actions': 'Actions', 'comp.details': 'Details', 'comp.statusLbl': 'Status', 'comp.openUrl': 'Open address', 'logs.linesLbl': 'Lines', 'logs.tools': 'Tools',
-  "chat.chAll": "All", "chat.chFilter": "Filter by channel", "chat.live": "live", "chat.sessLiveNote": "{c} session — replies show up only here; back on {c} the conversation continues.", "chat.sessArchivedNote": "Archived {c} session — continuing here picks up where it left off.", 
+  "chat.chAll": "All", "chat.chFilter": "Filter by channel", "chat.live": "live", "chat.sessLiveNote": "Live {c} session · replies only here", "chat.liveLockHint": "Switch bots or use /new from {c}", "chat.sessArchivedNote": "Archived {c} session · continue here", 
   'chat.activity': 'Activity', 'chat.noActivity': 'No recent activity.', 'chat.pin': 'Pin', 'chat.unpin': 'Unpin', 'chat.archive': 'Archive', 'chat.unarchive': 'Unarchive', 'chat.showArchived': 'Show archived ({n})', 'chat.backToChats': 'Back to chats', 'chat.quote': 'Quote',
   'sch.presetEmail': 'Preset: New Gmail', 'sch.presetFolder': 'Preset: Inbox folder',
   'dock.title': 'Bottom bar', 'dock.preview': 'Bottom bar preview', 'dock.selected': 'In bar ({n}/5)',
@@ -786,7 +786,7 @@ const en = {
 
 const es = {
   'app.loading': 'Cargando…',
-  "chat.chAll": "Todas", "chat.chFilter": "Filtrar por canal", "chat.live": "en vivo", "chat.sessLiveNote": "Sesión de {c} — las respuestas aparecen solo aquí; al volver a {c} la conversación continúa.", "chat.sessArchivedNote": "Sesión archivada de {c} — continuar aquí retoma donde quedó.",
+  "chat.chAll": "Todas", "chat.chFilter": "Filtrar por canal", "chat.live": "en vivo", "chat.sessLiveNote": "Sesión de {c} en vivo · respuestas solo aquí", "chat.liveLockHint": "Cambia de bot o usa /new desde {c}", "chat.sessArchivedNote": "Sesión archivada de {c} · continúa desde aquí",
   'nav.chat': 'Chat', 'nav.memory': 'Memoria', 'common.delete': 'Eliminar', 'mem.local': 'Memoria interna', 'mem.localSource': 'memoria interna de Claude Code (~/.claude/projects/-home-node-workspace/memory)',
   'mem.g.fact': 'Hechos', 'mem.g.session': 'Sesiones', 'mem.g.other': 'Otros', 'mem.g.all': 'Todo', 'mem.search': 'Buscar', 'mem.new': 'Nueva', 'mem.edit': 'Editar', 'mem.project': 'Proyecto',
   'mem.empty': 'Nada por aquí.', 'mem.updated': 'Actualizada {d}', 'mem.saved': 'Memoria guardada', 'mem.deleted': 'Página eliminada (ai-memory puede restaurarla)', 'mem.deletedLocal': 'Memoria eliminada (copia en la papelera del puente)',

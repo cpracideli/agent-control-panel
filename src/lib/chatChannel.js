@@ -30,4 +30,13 @@ export function sessionNotice(c) {
   return { key: isLiveSession(c) ? 'chat.sessLiveNote' : 'chat.sessArchivedNote', channel: ch, live: isLiveSession(c) };
 }
 
+// Last activity: the bridge's `updated` (ISO, since 760f0ac) when present, else last run, else creation.
+export function chatActivity(c) {
+  if (!c) return '';
+  return c.updated || (Array.isArray(c.runs) && c.runs.length && c.runs[c.runs.length - 1].at) || c.created || '';
+}
+
+// Live sessions share the WhatsApp/Telegram session: the bridge refuses bot switches and resets (use /new there).
+export const isSessionLocked = (c) => isLiveSession(c);
+
 export const channelLabel = (ch) => (ch === 'whatsapp' ? 'WhatsApp' : ch === 'telegram' ? 'Telegram' : 'Web');
