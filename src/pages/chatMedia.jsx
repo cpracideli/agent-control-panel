@@ -2,7 +2,7 @@
 // and audio playback for the web chat: one clip at a time, a shared speed (1x/1.5x/2x, remembered), and spoken
 // replies generated on the bridge (~/bin/falar) with the browser's speechSynthesis only as a fallback.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileText, Loader2, Pause, Play, X } from 'lucide-react';
+import { Download, FileText, Loader2, Pause, Play, X } from 'lucide-react';
 import { docLink, imageLink } from '../viewer.jsx';
 import { bridge } from '../api.js';
 import { store } from '../i18n.jsx';
@@ -382,16 +382,25 @@ export function PendingFiles({ files, onRemove }) {
   );
 }
 
-export function MessageFiles({ files, transcript, engine, pending, pendingLabel }) {
+export function MessageFiles({ files, transcript, engine, pending, pendingLabel, bot }) {
   if (!files?.length) return null;
   return (
-    <div className="msg-files">
+    <div className={'msg-files' + (bot ? ' from-bot' : '')}>
       {files.map((f) => {
         const url = bridge.fileUrl(f.file);
         if (f.type.startsWith('image/')) return <a key={f.file} {...imageLink(url, f.name)} className="msg-img"><img src={url} alt={f.name} loading="lazy" /></a>;
         if (f.type.startsWith('audio/') || f.voice) return <VoiceNote key={f.file} url={url} transcript={transcript} engine={engine} pending={pending} pendingLabel={pendingLabel} />;
         if (f.type.startsWith('video/')) return <video key={f.file} src={url} controls playsInline className="msg-video" />;
-        return <a key={f.file} {...docLink(url, f.name, f.type)} className="msg-file"><FileText size={18} /><span>{f.name}<small>{fmtSize(f.size)}</small></span></a>;
+        const ext = (/\.([a-z0-9]{1,5})$/i.exec(f.name || '') || [])[1];
+        return (
+          <div key={f.file} className="msg-file">
+            <a {...docLink(url, f.name, f.type)} className="mf-open" title={f.name}>
+              <FileText size={20} />
+              <span><span className="mf-name">{f.name}</span><small>{[ext && ext.toUpperCase(), f.size ? fmtSize(f.size) : ''].filter(Boolean).join(' · ')}</small></span>
+            </a>
+            <a href={url + '?download=1'} download={f.name} className="mf-dl" aria-label={'Baixar ' + f.name} title="Baixar"><Download size={17} /></a>
+          </div>
+        );
       })}
     </div>
   );

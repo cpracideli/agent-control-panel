@@ -358,17 +358,20 @@ app.get('/api/coolify/logs', auth, wrap((req) => coolify(`/applications/${APP_UU
 
 // ---------- web chat files with byte ranges ----------
 // Safari (iPhone/Mac) only plays <audio>/<video> when the server answers Range requests with 206.
-// Files are at most 25 MB, so the proxy fetches the whole file and slices it here.
+// Files are at most ~100 MB (agent uploads), so the proxy fetches the whole file and slices it here.
 app.get('/api/bridge/web/files/:name', auth, async (req, res) => {
   if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
   try {
-    const r = await fetch(BRIDGE_URL + '/admin/web/files/' + encodeURIComponent(req.params.name), { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
+    const r = await fetch(BRIDGE_URL + '/admin/web/files/' + encodeURIComponent(req.params.name) + (req.query.download ? '?download=1' : ''), { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
     if (!r.ok) return res.status(r.status === 401 ? 502 : r.status).json({ error: 'arquivo não encontrado' });
     const buf = Buffer.from(await r.arrayBuffer());
     const size = buf.length;
     res.setHeader('Content-Type', r.headers.get('content-type') || 'application/octet-stream');
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const cd = r.headers.get('content-disposition');
+    if (cd) res.setHeader('Content-Disposition', cd);
     const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
     if (!m || (!m[1] && !m[2])) { res.setHeader('Content-Length', size); return res.end(buf); }
     let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
