@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as webpushMod from 'web-push';
 const webpush = webpushMod.default || webpushMod;
@@ -359,14 +361,48 @@ app.get('/api/coolify/logs', auth, wrap((req) => coolify(`/applications/${APP_UU
 // ---------- web chat files with byte ranges ----------
 // Safari (iPhone/Mac) only plays <audio>/<video> when the server answers Range requests with 206.
 // Files are at most ~100 MB (agent uploads), so the proxy fetches the whole file and slices it here.
+// iPhone Safari can't play Ogg/Opus or WebM audio: ?as=m4a transcodes it to AAC once (ffmpeg) and caches the result.
+const M4A_DIR = path.join(os.tmpdir(), 'acp-m4a');
+const m4aJobs = new Map();
+const needsM4a = (name, type) => /\.(ogg|oga|opus|webm)$/i.test(name) || /audio\/(ogg|opus|webm)/i.test(type || '');
+function toM4a(name, buf) {
+  const out = path.join(M4A_DIR, crypto.createHash('sha1').update(name + ':' + buf.length).digest('hex') + '.m4a');
+  if (fs.existsSync(out)) return Promise.resolve(fs.readFileSync(out));
+  if (m4aJobs.has(out)) return m4aJobs.get(out);
+  const job = new Promise((resolve, reject) => {
+    fs.mkdirSync(M4A_DIR, { recursive: true });
+    const tmp = out + '.' + process.pid + '.tmp';
+    const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', 'pipe:0', '-vn', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', '-f', 'mp4', tmp]);
+    const timer = setTimeout(() => ff.kill('SIGKILL'), 60000);
+    let errTxt = '';
+    ff.stderr.on('data', (d) => { errTxt += d; });
+    ff.on('error', (e) => { clearTimeout(timer); reject(e); });
+    ff.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) { fs.rmSync(tmp, { force: true }); return reject(new Error('ffmpeg ' + code + ': ' + errTxt.slice(0, 200))); }
+      fs.renameSync(tmp, out);
+      resolve(fs.readFileSync(out));
+    });
+    ff.stdin.on('error', () => {});
+    ff.stdin.end(buf);
+  }).finally(() => m4aJobs.delete(out));
+  m4aJobs.set(out, job);
+  return job;
+}
+
 app.get('/api/bridge/web/files/:name', auth, async (req, res) => {
   if (!BRIDGE_TOKEN) return res.status(503).json({ error: 'BRIDGE_ADMIN_TOKEN não configurado no painel' });
   try {
     const r = await fetch(BRIDGE_URL + '/admin/web/files/' + encodeURIComponent(req.params.name) + (req.query.download ? '?download=1' : ''), { headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` } });
     if (!r.ok) return res.status(r.status === 401 ? 502 : r.status).json({ error: 'arquivo não encontrado' });
-    const buf = Buffer.from(await r.arrayBuffer());
+    let buf = Buffer.from(await r.arrayBuffer());
+    let ctype = r.headers.get('content-type') || 'application/octet-stream';
+    if (req.query.as === 'm4a' && !req.query.download && needsM4a(req.params.name, ctype)) {
+      try { buf = await toM4a(req.params.name, buf); ctype = 'audio/mp4'; }
+      catch (e) { console.error('m4a transcode failed:', e.message); }
+    }
     const size = buf.length;
-    res.setHeader('Content-Type', r.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Type', ctype);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('X-Content-Type-Options', 'nosniff');

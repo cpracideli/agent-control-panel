@@ -389,8 +389,18 @@ export function MessageFiles({ files, transcript, engine, pending, pendingLabel,
       {files.map((f) => {
         const url = bridge.fileUrl(f.file);
         if (f.type.startsWith('image/')) return <a key={f.file} {...imageLink(url, f.name)} className="msg-img"><img src={url} alt={f.name} loading="lazy" /></a>;
-        if (f.type.startsWith('audio/') || f.voice) return <VoiceNote key={f.file} url={url} transcript={transcript} engine={engine} pending={pending} pendingLabel={pendingLabel} />;
-        if (f.type.startsWith('video/')) return <video key={f.file} src={url} controls playsInline className="msg-video" />;
+        if (f.type.startsWith('audio/') || f.voice) {
+          const note = <VoiceNote key={f.file} url={url} name={f.name} type={f.type} transcript={transcript} engine={engine} pending={pending} pendingLabel={pendingLabel} bot={bot} />;
+          return bot ? <div key={f.file} className="media-wrap">{note}<MediaDownload url={url} name={f.name} size={f.size} /></div> : note;
+        }
+        if (f.type.startsWith('video/')) {
+          return (
+            <div key={f.file} className="media-wrap video">
+              <video src={url + '#t=0.001'} controls playsInline preload="metadata" className="msg-video" />
+              {bot && <MediaDownload url={url} name={f.name} size={f.size} />}
+            </div>
+          );
+        }
         const ext = (/\.([a-z0-9]{1,5})$/i.exec(f.name || '') || [])[1];
         return (
           <div key={f.file} className="msg-file">
@@ -406,33 +416,58 @@ export function MessageFiles({ files, transcript, engine, pending, pendingLabel,
   );
 }
 
-function VoiceNote({ url, transcript, engine, pending, pendingLabel }) {
+function MediaDownload({ url, name, size }) {
+  return (
+    <a href={url + '?download=1'} download={name} className="media-dl" title={name}>
+      <Download size={14} /><span className="mf-name">{name}</span>{size ? <small>{fmtSize(size)}</small> : null}
+    </a>
+  );
+}
+
+// Ogg/Opus and WebM don't play on iPhone Safari: the panel server converts them to AAC (?as=m4a).
+const needsM4a = (name, type) => /\.(ogg|oga|opus|webm)$/i.test(name || '') || /audio\/(ogg|opus|webm)/i.test(type || '');
+const canPlay = (mime) => { try { return Boolean(document.createElement('audio').canPlayType(mime)); } catch { return false; } };
+function playableUrl(url, name, type) {
+  if (!needsM4a(name, type)) return url;
+  const webm = /webm/i.test(type || '') || /\.webm$/i.test(name || '');
+  return canPlay(webm ? 'audio/webm; codecs="opus"' : 'audio/ogg; codecs="opus"') ? url : url + '?as=m4a';
+}
+
+function VoiceNote({ url, name, type, transcript, engine, pending, pendingLabel, bot }) {
   const ref = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [src, setSrc] = useState(() => playableUrl(url, name, type));
   const toggle = () => {
     const a = ref.current;
     if (playing) return a.pause();
     claim(a);
     a.play().catch(() => setFailed(true));
   };
+  const seek = (e) => {
+    const a = ref.current;
+    if (!a || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur;
+    setPos(a.currentTime);
+  };
   return (
-    <div className="voice-note">
+    <div className={'voice-note' + (bot ? ' from-bot' : '')}>
       <div className="vn-row">
-        <button type="button" className="vn-play" onClick={toggle} aria-label="play">
+        <button type="button" className="vn-play" onClick={toggle} aria-label={playing ? 'pause' : 'play'}>
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
-        <div className="vn-bar"><span style={{ transform: `scaleX(${dur ? Math.min(1, pos / dur) : 0})` }} /></div>
+        <div className="vn-bar" onClick={seek} role="slider" aria-label="posição" aria-valuemin={0} aria-valuemax={Math.round(dur)} aria-valuenow={Math.round(pos)}><span style={{ transform: `scaleX(${dur ? Math.min(1, pos / dur) : 0})` }} /></div>
         <span className="vn-time">{fmtClock(playing || pos ? pos : dur)}</span>
-        {(playing || pos > 0) && <RateButton />}
+        {(bot || playing || pos > 0) && <RateButton />}
       </div>
       {failed && <a className="vn-text" href={url} target="_blank" rel="noreferrer">Este navegador não tocou o áudio: abrir o arquivo</a>}
       {transcript ? <div className="vn-text">{transcript}{engine && <small className="vn-engine"> · {engine}</small>}</div>
         : pending ? <div className="vn-text vn-pending"><Loader2 size={12} className="spin-ic" /> {pendingLabel}</div> : null}
-      <audio ref={ref} src={url} preload="metadata"
-        onError={() => setFailed(true)}
+      <audio ref={ref} src={src} preload="metadata"
+        onError={() => { if (src === url && needsM4a(name, type)) setSrc(url + '?as=m4a'); else setFailed(true); }}
         onLoadedMetadata={(e) => {
           const a = e.target;
           if (Number.isFinite(a.duration)) return setDur(a.duration);

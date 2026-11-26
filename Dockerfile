@@ -8,6 +8,8 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# ffmpeg: converts Ogg/Opus and WebM audio to AAC for iPhone Safari (GET /api/bridge/web/files/:name?as=m4a)
+RUN apk add --no-cache ffmpeg
 COPY package*.json ./
 RUN (npm ci --omit=dev || npm install --omit=dev) && npm cache clean --force
 COPY server.js ./
