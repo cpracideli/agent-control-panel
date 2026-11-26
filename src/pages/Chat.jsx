@@ -15,6 +15,8 @@ import { provName } from '../prov.js';
 import { ProvIcon, ProvMark } from '../ProvIcon.jsx';
 import { Disclosure, LongPressButton, openContextMenu, useLongPress, useScreen } from '../native.jsx';
 import { openDocument, openImage } from '../viewer.jsx';
+import ChannelMark from '../components/ChannelMark.jsx';
+import { channelLabel, chatChannel, isLiveSession, linkedChannels, matchesChannel, sessionNotice } from '../lib/chatChannel.js';
 import { formatResetInfo, getProviderLimitStatus, getProviderPickerLimit, isBridgeControlCommand } from '../providerLimits.js';
 
 const LAST_CHAT_KEY = 'acp_last_chat';
@@ -1679,6 +1681,8 @@ export default function Chat({ openMore, me }) {
   const botsById = useMemo(() => Object.fromEntries((botsL.data || []).map((b) => [b.id, b])), [botsL.data]);
   const [listTab, setListTab] = useState('chats');
   const [showArchived, setShowArchived] = useState(false);
+  const [chanFilter, setChanFilterState] = useState(() => store.get('acp_chat_channel') || 'all');
+  const setChanFilter = (v) => { store.set('acp_chat_channel', v); setChanFilterState(v); };
   const [swipedId, setSwipedId] = useState(null);
   const [current, setCurrent] = useState(() => chatFromHash() || store.get(LAST_CHAT_KEY) || null);
   const currentRef = useRef(current);
@@ -1874,13 +1878,17 @@ export default function Chat({ openMore, me }) {
 
   const webChats = useMemo(() => (chats.data || []).filter((c) => c.kind === 'web'), [chats.data]);
   const archivedCount = useMemo(() => webChats.filter((c) => c.archived).length, [webChats]);
+  // Linked WhatsApp/Telegram sessions (ticket 15f0c2); the channel filter only shows up when there are any.
+  const chatChannels = useMemo(() => linkedChannels(webChats), [webChats]);
+  const activeChan = chanFilter === 'all' || chanFilter === 'web' || chatChannels.includes(chanFilter) ? (chatChannels.length ? chanFilter : 'all') : 'all';
   const filteredChats = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
     return webChats
       .filter((c) => (showArchived ? Boolean(c.archived) : !c.archived))
-      .filter((c) => !q || c.title.toLowerCase().includes(q))
+      .filter((c) => matchesChannel(c, activeChan))
+      .filter((c) => !q || (c.title || '').toLowerCase().includes(q))
       .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
-  }, [webChats, chatSearch, showArchived]);
+  }, [webChats, chatSearch, showArchived, activeChan]);
   const shownMessages = useMemo(() => {
     const q = msgSearch.trim().toLowerCase();
     return q ? messages.filter((m) => (m.text || m.transcript || '').toLowerCase().includes(q)) : messages;
@@ -2286,6 +2294,9 @@ export default function Chat({ openMore, me }) {
   const stop = async () => { try { await bridge.stopChat(current); } catch (e) { toast(e.message, 'err'); } };
 
   const info = (chatInfo && (!chatInfo.id || chatInfo.id === current) ? chatInfo : null) || webChats.find((c) => c.id === current);
+  // The list (GET /chats, refreshed live) carries the freshest channel/live flags; chatInfo may be stale.
+  const sessChat = info ? webChats.find((c) => c.id === info.id) || info : null;
+  const sessNote = sessionNotice(sessChat);
   const activeBot = botsById[info?.bot || 'default'] || botsById.default || (botsL.data || []).find((b) => b.isDefault) || null;
 
   const ml = modelLabel(info, providers.data);
@@ -2391,12 +2402,13 @@ export default function Chat({ openMore, me }) {
                     { icon: Trash2, label: t('chat.delete'), danger: true, onClick: () => remove(c.id) },
                   ] })}>
                   <span className="chat-title">
-                    {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : <MessageCircle size={18} strokeWidth={1.7} />}
+                    {c.running ? <span className="spin" /> : c.pinned ? <Pin size={14} strokeWidth={2} /> : chatChannel(c) !== 'web' ? <ChannelMark chat={c} size={18} /> : <MessageCircle size={18} strokeWidth={1.7} />}
                     <span className="ellipsis">{c.title}</span>
+                    {isLiveSession(c) && <span className="live-badge" title={channelLabel(chatChannel(c)) + ' · ' + t('chat.live')}>{t('chat.live')}</span>}
                     {c.pendingPrompt && <span className="nav-dot err" title={t('prp.pending')} />}
                     {!c.pendingPrompt && c.unread && c.id !== current && <span className="nav-dot warn" title={t('chat.unread')} />}
                   </span>
-                  <small>{c.bot && c.bot !== 'default' && botsById[c.bot] ? <><BotAvatar bot={botsById[c.bot]} size={14} /> {botsById[c.bot].name} · </> : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
+                  <small>{chatChannel(c) !== 'web' && (c.running || c.pinned) ? <><ChannelMark chat={c} size={12} /> </> : ''}{c.bot && c.bot !== 'default' && botsById[c.bot] ? <><BotAvatar bot={botsById[c.bot]} size={14} /> {botsById[c.bot].name} · </> : ''}<ProvMark id={c.provider} size={12} /> · {t('chat.msgs', { n: c.totals.runs })} · {f.ago((c.runs.at(-1) || {}).at || c.created)}</small>
                 </LongPressButton>
                 <div className="chat-item-actions">
                   <IconButton icon={Pin} size={13} className={'ghost bare' + (c.pinned ? ' on' : '')} label={c.pinned ? t('chat.unpin') : t('chat.pin')} onClick={(e) => { e.stopPropagation(); togglePin(c); }} />
@@ -2446,6 +2458,16 @@ export default function Chat({ openMore, me }) {
         {listTab === 'chats' ? (
           <>
             <label className="search chat-search"><Search size={14} /><input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder={t('chat.searchChats')} />{chatSearch && <button type="button" className="ghost bare icon" onClick={() => setChatSearch('')}><X size={13} /></button>}</label>
+            {chatChannels.length > 0 && (
+              <div className="seg chat-channel-seg" role="group" aria-label={t('chat.chFilter')}>
+                {['all', 'web', ...chatChannels].map((ch) => (
+                  <button key={ch} type="button" className={activeChan === ch ? 'on' : ''} aria-pressed={activeChan === ch} onClick={() => setChanFilter(ch)}>
+                    {ch !== 'all' && ch !== 'web' && <ChannelMark channel={ch} size={12} />}
+                    {ch === 'all' ? t('chat.chAll') : channelLabel(ch)}
+                  </button>
+                ))}
+              </div>
+            )}
             <ErrorBox error={chats.error} onRetry={() => chats.reload()} />
             {chatRows}
             {!chats.loading && !filteredChats.length && <p className="muted small">{t('chat.none')}</p>}
@@ -2495,7 +2517,7 @@ export default function Chat({ openMore, me }) {
           <IconButton icon={Menu} className="ghost only-mobile nav-btn" label={t('chat.conversations')} onClick={() => setShowList((x) => !x)} />
           <IconButton icon={listHidden ? PanelLeftOpen : PanelLeftClose} className="ghost bare only-desktop list-toggle" label={(listHidden ? t('chat.showList') : t('chat.hideList')) + ' (⌘/Ctrl+B)'} aria-controls="chat-list" aria-expanded={!listHidden} onClick={toggleListHidden} />
           {listHidden && <IconButton icon={SquarePen} className="ghost bare only-desktop list-toggle" label={t('chat.new')} onClick={newChat} />}
-          <div className="chat-head-title">{info ? info.title : t('chat.new')}</div>
+          <div className="chat-head-title">{sessNote && <ChannelMark channel={sessNote.channel} size={14} />}{info ? info.title : t('chat.new')}</div>
           <div className="head-capsule only-mobile">
             {info && <IconButton icon={Phone} className="ghost" label="Ligação de voz ao vivo" onClick={openLiveVoiceCall} />}
             <IconButton icon={SquarePen} className="ghost" label={t('chat.new')} onClick={newChat} />
@@ -2586,6 +2608,13 @@ export default function Chat({ openMore, me }) {
 
         <div className="composer-dock" ref={composerRef}>
           {queuedAhead > 0 && <div className="queue-pill"><Badge kind="warn">{t('chat.queuedBanner', { n: queuedAhead })}</Badge></div>}
+          {sessNote && (
+            <div className={'session-note ch-' + sessNote.channel + (sessNote.live ? ' live' : '')} role="note">
+              <ChannelMark channel={sessNote.channel} size={14} />
+              <span>{t(sessNote.key, { c: channelLabel(sessNote.channel) })}</span>
+              {sessNote.live && <span className="live-badge">{t('chat.live')}</span>}
+            </div>
+          )}
           {!atBottom && <button type="button" className="glass-btn icon to-bottom press" aria-label="↓" onClick={() => toBottom(true)}><ArrowDown size={20} /></button>}
           {rec.recording && !hold ? (
             <div className="composer recording">
