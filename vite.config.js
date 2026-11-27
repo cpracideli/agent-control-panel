@@ -40,7 +40,8 @@ export default defineConfig({
         globIgnores: ['splash/**'],
         importScripts: ['/push-sw.js'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        // /p/ID/TOKEN são Páginas públicas servidas pelo server.js: o SW não pode trocá-las pelo app shell.
+        navigateFallbackDenylist: [/^\/api\//, /^\/p\//],
         cleanupOutdatedCaches: true,
         runtimeCaching: [],
       },

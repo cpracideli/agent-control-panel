@@ -221,6 +221,12 @@ function PageHistoryModal({ page, onClose, onRestored }) {
   );
 }
 
+function hashPageId() {
+  const m = /^#\/(?:dashboards|pages)\/([^/?#]+)/.exec(window.location.hash || '');
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
 export default function Dashboards() {
   const t = useT();
   const f = useFmt();
@@ -235,6 +241,30 @@ export default function Dashboards() {
   const [dataModal, setDataModal] = useState(null);
   const [gallery, setGallery] = useState(false);
   const [busy, run] = useAction();
+
+  // Deep link: #/dashboards/ID (ou #/pages/ID, normalizado no App) abre a Página direto no visualizador.
+  const [linkedId, setLinkedId] = useState(hashPageId);
+  useEffect(() => {
+    const onHash = () => setLinkedId(hashPageId());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    if (!linkedId || !pages.data) return;
+    const found = pages.data.find((p) => p.id === linkedId);
+    if (found) setViewer(found);
+    else toast(t('pg.notFound'), 'err');
+    setLinkedId('');
+  }, [linkedId, pages.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openViewer = (p) => {
+    setViewer(p);
+    const h = '#/dashboards/' + encodeURIComponent(p.id);
+    if (window.location.hash !== h) window.history.replaceState(window.history.state, '', h);
+  };
+  const closeViewer = () => {
+    setViewer(null);
+    if (hashPageId()) window.history.replaceState(window.history.state, '', '#/dashboards');
+  };
 
   return (
     <div className="page">
@@ -278,7 +308,7 @@ export default function Dashboards() {
                   </div>
                 )}
                 <div className="row bot-actions" style={{ position: 'relative' }}>
-                  <Btn icon={Maximize2} className="small" onClick={() => setViewer(p)}>{t('pg.open')}</Btn>
+                  <Btn icon={Maximize2} className="small" onClick={() => openViewer(p)}>{t('pg.open')}</Btn>
                   <span className="grow" />
                   <IconButton icon={MoreHorizontal} label={t('pg.more')} onClick={() => setOpenMenu(openMenu === p.id ? null : p.id)} />
                   {openMenu === p.id && (
@@ -317,7 +347,7 @@ export default function Dashboards() {
           })}
         </div>
       </Card>
-      {viewer && <PageViewer page={viewer} onClose={() => setViewer(null)} onEdit={(p) => setForm(p)} />}
+      {viewer && <PageViewer page={viewer} onClose={closeViewer} onEdit={(p) => setForm(p)} />}
       {form && <PageForm initial={form} bots={bots.data} onClose={() => setForm(null)} onSaved={() => pages.reload(true)} />}
       {gallery && <TemplateGallery bots={bots.data || []} onClose={() => setGallery(false)} onCreated={() => pages.reload(true)} />}
       {history && <PageHistoryModal page={history} onClose={() => setHistory(null)} onRestored={() => pages.reload(true)} />}

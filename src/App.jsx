@@ -57,8 +57,17 @@ const PAGES = [
   { id: 'overview', group: 'system', icon: Gauge, el: Overview },
 ];
 
+// Links gerados pela ponte usam #/pages[/ID] (nome público da aba), mas o id interno é 'dashboards'.
+const PAGE_ALIASES = { pages: 'dashboards' };
+const normalizeHash = () => {
+  const m = /^#\/?([^/?#]+)(.*)$/.exec(window.location.hash || '');
+  if (m && PAGE_ALIASES[m[1]]) window.history.replaceState(window.history.state, '', '#/' + PAGE_ALIASES[m[1]] + m[2]);
+};
+normalizeHash();
+
 const pageFromHash = (raw = window.location.hash) => {
-  const h = String(raw || '').replace(/^#\/?/, '').split(/[/?#]/)[0];
+  let h = String(raw || '').replace(/^#\/?/, '').split(/[/?#]/)[0];
+  h = PAGE_ALIASES[h] || h;
   return h === 'more' || PAGES.some((p) => p.id === h) ? h : 'chat';
 };
 
@@ -529,6 +538,7 @@ export default function App() {
       } catch { setMe({ google: false, password: true }); setAuthed(false); }
     })();
     const onHash = () => {
+      normalizeHash();
       if (isInboxHash()) {
         setMore(false);
         setDockModal(false);
@@ -561,7 +571,7 @@ export default function App() {
         return;
       }
       const targetPage = pageFromHash(hash);
-      const nextHash = hash || hashOf(targetPage);
+      const nextHash = (hash && hash.replace(/^#\/pages(?=$|[/?#])/, '#/dashboards')) || hashOf(targetPage);
       if (window.location.hash !== nextHash) window.history.replaceState(null, '', nextHash);
       stackNavRef.current.go(targetPage);
     };

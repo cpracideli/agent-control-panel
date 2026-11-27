@@ -111,6 +111,12 @@ export function GlobalSearchModal({ onClose, go }) {
       try { localStorage.setItem('acp_chat_open', item.id); } catch {}
       window.dispatchEvent(new CustomEvent('acp:open-chat', { detail: { chatId: item.id } }));
     }
+    if (pageId === 'dashboards' && item?.id) {
+      // hashchange → App navega até a aba e Dashboards abre o visualizador da Página
+      window.location.hash = '#/dashboards/' + encodeURIComponent(item.id);
+      onClose();
+      return;
+    }
     go(pageId);
     onClose();
   };
