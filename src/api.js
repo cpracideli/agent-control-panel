@@ -133,6 +133,7 @@ export const bridge = {
   computerTimelineFrameUrl: (id) => '/api/bridge/computer/timeline/' + encodeURIComponent(id),
   computerViewerUrl: (viewOnly) => '/api/bridge/computer/viewer?viewOnly=' + (viewOnly ? '1' : '0') + '&ws=' + encodeURIComponent('/api/bridge/computer/ws'),
   computerScreenshotUrl: () => '/api/bridge/computer/screenshot?t=' + Date.now(),
+  computerEventsUrl: () => '/api/bridge/computer/events',
   artifacts: () => get('/bridge/artifacts'),
   artifactFileUrl: (name) => '/api/bridge/artifacts/file/' + encodeURIComponent(name),
   deleteArtifact: (name) => del('/bridge/artifacts/' + encodeURIComponent(name)),

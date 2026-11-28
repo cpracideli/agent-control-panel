@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Camera, Check, Copy, Download, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Laptop, Maximize2, Monitor, PenTool, Play, Plus, Power, RefreshCw, Send, SkipForward, Trash2 } from 'lucide-react';
+import { AlertTriangle, Camera, Check, Copy, Download, ExternalLink, Eye, Globe, GraduationCap, Hand, History, KeyRound, Laptop, Maximize2, Monitor, MousePointer2, PenTool, Play, Plus, Power, RefreshCw, Send, SkipForward, Trash2 } from 'lucide-react';
 import { bridge } from '../api.js';
-import { useT } from '../i18n.jsx';
+import { store, useT } from '../i18n.jsx';
 import { Badge, Btn, Card, ErrorBox, Field, Modal, useAction, useFmt, useLoad, useToast } from '../ui.jsx';
 import { imageLink, openImage } from '../viewer.jsx';
 import { ListGroup, Row, useIsMobile } from '../native.jsx';
@@ -196,6 +196,120 @@ function LocalBridgeCard() {
   );
 }
 
+const CURSOR_PREF_KEY = 'acp_computer_cursor';
+const CURSOR_HIDE_MS = 6000;
+const BADGE_HIDE_MS = 1800;
+
+function clipText(val, max = 28) {
+  const s = String(val ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function formatCursorBadge(ev, fillingLoginLabel) {
+  const kind = ev?.kind;
+  if (kind === 'type') {
+    if (ev.sensitive === true) return { text: '🔒 ••••••', sensitive: true };
+    const txt = clipText(ev.text, 28);
+    return { text: txt ? `⌨ ${txt}` : '⌨ …', sensitive: false };
+  }
+  if (kind === 'key') {
+    const k = clipText(ev.text || ev.label, 24);
+    return k ? { text: `⌘ ${k}`, sensitive: false } : null;
+  }
+  if (kind === 'scroll') {
+    const arrow = (Number(ev.deltaY) || 0) >= 0 ? '↓' : '↑';
+    const lbl = clipText(ev.label, 20);
+    return { text: lbl ? `${arrow} ${lbl}` : arrow, sensitive: false };
+  }
+  if (kind === 'navigate') {
+    const lbl = clipText(ev.label || ev.text, 32);
+    return lbl ? { text: `🌐 ${lbl}`, sensitive: false } : null;
+  }
+  if (kind === 'fill_login') {
+    const lbl = clipText(ev.label, 28) || fillingLoginLabel;
+    return { text: `🔐 ${lbl}`, sensitive: true };
+  }
+  if (kind === 'click' || kind === 'dblclick') {
+    const lbl = clipText(ev.label, 28);
+    return lbl ? { text: lbl, sensitive: false } : null;
+  }
+  return null;
+}
+
+function BotCursorOverlay({ visible, rect, fb, cursor, badge, ripples }) {
+  if (!visible || !rect || rect.width <= 0 || rect.height <= 0) return null;
+  if (!cursor && !ripples.length) return null;
+
+  const refW = cursor?.w || fb?.w || 1280;
+  const refH = cursor?.h || fb?.h || 800;
+  const tx = cursor ? Math.max(0, Math.min(rect.width, (cursor.x / refW) * rect.width)) : 0;
+  const ty = cursor ? Math.max(0, Math.min(rect.height, (cursor.y / refH) * rect.height)) : 0;
+  const flipX = tx > rect.width - 190;
+  const flipY = ty > rect.height - 76;
+
+  return (
+    <div
+      className="bot-cursor-layer"
+      aria-hidden="true"
+      style={{
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      }}
+    >
+      {ripples.map((r) => {
+        const rx = Math.max(0, Math.min(rect.width, r.xNorm * rect.width));
+        const ry = Math.max(0, Math.min(rect.height, r.yNorm * rect.height));
+        return (
+          <div
+            key={r.id}
+            className={'bot-cursor-ripple' + (r.dbl ? ' dbl' : '') + (r.right ? ' right' : '')}
+            style={{ transform: `translate3d(${rx}px, ${ry}px, 0)` }}
+          >
+            <span className="bot-cursor-ring ring-1" />
+            {r.dbl && <span className="bot-cursor-ring ring-2" />}
+          </div>
+        );
+      })}
+      {cursor && (
+        <div
+          className="bot-cursor-node"
+          style={{ transform: `translate3d(${tx}px, ${ty}px, 0)` }}
+        >
+          <svg
+            className="bot-cursor-arrow"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M2.2 1.8L20.4 10.2C21.2 10.6 21.1 11.7 20.2 11.9L12.7 13.7L9.3 20.8C8.9 21.6 7.7 21.4 7.5 20.5L2.2 1.8Z"
+              fill="#0a84ff"
+              stroke="#ffffff"
+              strokeWidth="1.9"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {(cursor.botName || badge?.text) && (
+            <div className={'bot-cursor-tags' + (flipX ? ' flip-x' : '') + (flipY ? ' flip-y' : '')}>
+              {cursor.botName && <span className="bot-cursor-pill">{clipText(cursor.botName, 20)}</span>}
+              {badge?.text && (
+                <span className={'bot-cursor-badge' + (badge.sensitive ? ' sensitive' : '')}>
+                  {badge.text}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Computer() {
   const t = useT();
   const f = useFmt();
@@ -204,29 +318,240 @@ export default function Computer() {
   const tl = useLoad(() => bridge.computerTimeline(), [], { interval: 15000 });
   const secs = useLoad(() => bridge.secrets(), [], { cacheKey: '/bridge/secrets' });
   const loginSecrets = (secs.data || []).filter((s) => s.kind === 'login' || s.username || s.domain);
+  const [liveState, setLiveState] = useState(null);
   const [url, setUrl] = useState('');
   const [loginPick, setLoginPick] = useState('');
   const [viewerKey, setViewerKey] = useState(0);
   const [teaching, setTeaching] = useState(false);
   const [annotating, setAnnotating] = useState(false);
+  const [cursorEnabled, setCursorEnabled] = useState(() => store.get(CURSOR_PREF_KEY) !== '0');
+  const [canvasRect, setCanvasRect] = useState(null);
+  const [fbSize, setFbSize] = useState({ w: 1280, h: 800 });
+  const [cursor, setCursor] = useState(null);
+  const [cursorBadge, setCursorBadge] = useState(null);
+  const [ripples, setRipples] = useState([]);
   const [busy, run] = useAction();
   const frameRef = useRef(null);
   const wrapRef = useRef(null);
+  const fbSizeRef = useRef(fbSize);
+  fbSizeRef.current = fbSize;
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  const hideTimerRef = useRef(null);
+  const badgeTimerRef = useRef(null);
+  const rippleTimersRef = useRef(new Set());
+  const rippleSeqRef = useRef(0);
   const mobile = useIsMobile();
 
-  const d = st.data;
+  useEffect(() => { setLiveState(null); }, [st.data]);
+
+  const d = st.data || liveState ? { ...(st.data || {}), ...(liveState || {}) } : null;
   const running = d?.status === 'running';
   const human = d?.control === 'human';
   const needs = d?.needsHuman?.active;
+
+  const clearCursorVisuals = useCallback(() => {
+    if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+    if (badgeTimerRef.current) { clearTimeout(badgeTimerRef.current); badgeTimerRef.current = null; }
+    for (const tm of rippleTimersRef.current) clearTimeout(tm);
+    rippleTimersRef.current.clear();
+    setCursor(null);
+    setCursorBadge(null);
+    setRipples([]);
+  }, []);
+
+  const toggleCursor = useCallback(() => {
+    setCursorEnabled((prev) => {
+      const next = !prev;
+      store.set(CURSOR_PREF_KEY, next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const requestCanvasRect = useCallback(() => {
+    const viewer = frameRef.current?.contentWindow;
+    if (!viewer) return;
+    viewer.postMessage({ type: 'computer-rect-request' }, window.location.origin);
+  }, []);
 
   const syncViewerControl = useCallback(() => {
     const viewer = frameRef.current?.contentWindow;
     if (!viewer) return;
     viewer.postMessage({ type: 'viewOnly', value: !human }, window.location.origin);
     if (human) viewer.postMessage({ type: 'computer-focus' }, window.location.origin);
+    viewer.postMessage({ type: 'computer-rect-request' }, window.location.origin);
   }, [human]);
 
   useEffect(() => { syncViewerControl(); }, [syncViewerControl]);
+
+  useEffect(() => {
+    if (!running) setCanvasRect(null);
+  }, [running]);
+
+  useEffect(() => {
+    if (human || !running || !cursorEnabled) clearCursorVisuals();
+  }, [human, running, cursorEnabled, clearCursorVisuals]);
+
+  useEffect(() => () => clearCursorVisuals(), [clearCursorVisuals]);
+
+  useEffect(() => {
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin) return;
+      const viewer = frameRef.current?.contentWindow;
+      if (!viewer || e.source !== viewer) return;
+      const msg = e.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'computer-connected') {
+        requestCanvasRect();
+        return;
+      }
+      if (msg.type === 'computer-canvas-rect') {
+        if (msg.fb && Number(msg.fb.w) > 0 && Number(msg.fb.h) > 0) {
+          setFbSize({ w: Number(msg.fb.w), h: Number(msg.fb.h) });
+        }
+        const r = msg.rect;
+        if (r && Number(r.width) > 0 && Number(r.height) > 0) {
+          setCanvasRect({
+            left: Number(r.left) || 0,
+            top: Number(r.top) || 0,
+            width: Number(r.width),
+            height: Number(r.height),
+          });
+        } else {
+          setCanvasRect(null);
+        }
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [requestCanvasRect]);
+
+  useEffect(() => {
+    let settleTimer = null;
+    const onLayoutChange = () => {
+      requestCanvasRect();
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(requestCanvasRect, 140);
+    };
+    document.addEventListener('fullscreenchange', onLayoutChange);
+    window.addEventListener('resize', onLayoutChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onLayoutChange);
+      window.removeEventListener('resize', onLayoutChange);
+      if (settleTimer) clearTimeout(settleTimer);
+    };
+  }, [requestCanvasRect]);
+
+  const applyCursorEvent = useCallback((ev, { skipRipple = false } = {}) => {
+    if (!ev || typeof ev !== 'object') return;
+    if (ev.kind === 'hide') {
+      clearCursorVisuals();
+      return;
+    }
+    const refW = Number(ev.w) > 0 ? Number(ev.w) : (fbSizeRef.current.w || 1280);
+    const refH = Number(ev.h) > 0 ? Number(ev.h) : (fbSizeRef.current.h || 800);
+    const hasCoords = typeof ev.x === 'number' && Number.isFinite(ev.x) && typeof ev.y === 'number' && Number.isFinite(ev.y);
+    const prev = cursorRef.current;
+    const x = hasCoords ? ev.x : (prev ? prev.x : refW / 2);
+    const y = hasCoords ? ev.y : (prev ? prev.y : refH / 2);
+
+    setCursor({
+      x,
+      y,
+      w: refW,
+      h: refH,
+      kind: ev.kind || 'move',
+      button: ev.button || 'left',
+      botId: ev.botId || prev?.botId || '',
+      botName: ev.botName || prev?.botName || '',
+      source: ev.source || '',
+      ts: ev.ts || Date.now(),
+    });
+
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      setCursor(null);
+      setCursorBadge(null);
+    }, CURSOR_HIDE_MS);
+
+    if (!skipRipple && (ev.kind === 'click' || ev.kind === 'dblclick')) {
+      const id = ++rippleSeqRef.current;
+      const dbl = ev.kind === 'dblclick';
+      const right = ev.button === 'right' || ev.button === 2;
+      const xNorm = Math.max(0, Math.min(1, x / refW));
+      const yNorm = Math.max(0, Math.min(1, y / refH));
+      setRipples((list) => [...list.slice(-7), { id, xNorm, yNorm, dbl, right }]);
+      const tm = setTimeout(() => {
+        rippleTimersRef.current.delete(tm);
+        setRipples((list) => list.filter((r) => r.id !== id));
+      }, dbl ? 680 : 480);
+      rippleTimersRef.current.add(tm);
+    }
+
+    const nextBadge = formatCursorBadge(ev, t('comp.fillingLogin'));
+    if (nextBadge) {
+      setCursorBadge({ id: Date.now() + Math.random(), ...nextBadge });
+      if (badgeTimerRef.current) clearTimeout(badgeTimerRef.current);
+      badgeTimerRef.current = setTimeout(() => {
+        badgeTimerRef.current = null;
+        setCursorBadge(null);
+      }, BADGE_HIDE_MS);
+    }
+  }, [clearCursorVisuals, t]);
+
+  const applyCursorRef = useRef(applyCursorEvent);
+  applyCursorRef.current = applyCursorEvent;
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return undefined;
+    const es = new EventSource(bridge.computerEventsUrl());
+    es.onmessage = (m) => {
+      if (!m.data) return;
+      let ev;
+      try { ev = JSON.parse(m.data); } catch { return; }
+      if (!ev || typeof ev !== 'object') return;
+      if (ev.type === 'hello') {
+        if (ev.screen && Number(ev.screen.w) > 0 && Number(ev.screen.h) > 0) {
+          setFbSize({ w: Number(ev.screen.w), h: Number(ev.screen.h) });
+        }
+        setLiveState((prev) => {
+          const next = { ...(prev || {}) };
+          if (ev.status !== undefined) next.status = ev.status;
+          if (ev.control !== undefined) next.control = ev.control;
+          return Object.keys(next).length ? next : prev;
+        });
+        if (ev.lastCursor && ev.lastCursor.kind !== 'hide') {
+          const fresh = typeof ev.lastCursor.ts !== 'number' || (Date.now() - ev.lastCursor.ts) < CURSOR_HIDE_MS;
+          if (fresh && ev.control !== 'human' && ev.status === 'running') {
+            applyCursorRef.current(ev.lastCursor, { skipRipple: true });
+          }
+        }
+      } else if (ev.type === 'computer_state') {
+        setLiveState((prev) => {
+          const next = { ...(prev || {}) };
+          if (ev.status !== undefined) next.status = ev.status;
+          if (ev.control !== undefined) next.control = ev.control;
+          if (ev.currentUrl !== undefined) next.currentUrl = ev.currentUrl;
+          if (ev.needsHuman !== undefined) {
+            next.needsHuman = typeof ev.needsHuman === 'boolean'
+              ? { ...(prev?.needsHuman || {}), active: ev.needsHuman }
+              : ev.needsHuman;
+          }
+          return next;
+        });
+        if (ev.control === 'human' || (ev.status !== undefined && ev.status !== 'running')) {
+          clearCursorVisuals();
+        }
+      } else if (ev.type === 'computer_cursor') {
+        applyCursorRef.current(ev);
+      }
+    };
+    es.onerror = () => {
+      // EventSource reconecta automaticamente; não poluir a UI.
+    };
+    return () => { try { es.close(); } catch {} };
+  }, [clearCursorVisuals]);
 
   const openViewerKeyboard = () => {
     frameRef.current?.contentWindow?.postMessage(
@@ -274,7 +599,25 @@ export default function Computer() {
   const screen = (
     <div ref={wrapRef} className={'computer-screen' + (human ? ' human' : '')}>
       {running ? (
-        <iframe key={viewerKey} ref={frameRef} src={bridge.computerViewerUrl(true)} title={t('comp.title')} className="computer-frame" tabIndex={0} onLoad={syncViewerControl} />
+        <>
+          <iframe
+            key={viewerKey}
+            ref={frameRef}
+            src={bridge.computerViewerUrl(true)}
+            title={t('comp.title')}
+            className="computer-frame"
+            tabIndex={0}
+            onLoad={syncViewerControl}
+          />
+          <BotCursorOverlay
+            visible={running && !human && cursorEnabled}
+            rect={canvasRect}
+            fb={fbSize}
+            cursor={cursor}
+            badge={cursorBadge}
+            ripples={ripples}
+          />
+        </>
       ) : (
         <div className="computer-off">
           <Monitor size={42} className="muted" />
@@ -321,6 +664,13 @@ export default function Computer() {
             <>
               <Row icon={human ? Eye : Hand} tint={human ? 'ic-schedules' : 'ic-overview'} label={human ? t('comp.releaseControl') : t('comp.takeControl')} kind="accent" disabled={busy === 'ctrl'} onClick={toggleControl} chevron />
               {human && <Row icon={KeyRound} tint="ic-plain" label="Digitar no navegador" onClick={openViewerKeyboard} chevron />}
+              <Row
+                icon={MousePointer2}
+                tint="ic-computer"
+                label={t('comp.cursor')}
+                value={<Badge kind={cursorEnabled ? 'ok' : 'muted'}>{cursorEnabled ? t('comp.cursorOn') : t('comp.cursorOff')}</Badge>}
+                onClick={toggleCursor}
+              />
               <Row icon={GraduationCap} tint="ic-skills" label={t('comp.teach')} onClick={teach} chevron />
               <Row icon={Camera} tint="ic-dashboards" label={t('comp.screenshot')} onClick={() => openImage(bridge.computerScreenshotUrl(), t('comp.screenshot'))} chevron />
               <Row icon={RefreshCw} tint="ic-plain" label={t('comp.reconnect')} onClick={() => setViewerKey((k) => k + 1)} />
@@ -347,17 +697,7 @@ export default function Computer() {
       <ErrorBox error={st.error} onRetry={() => st.reload()} />
       <p className="muted page-intro">{t('comp.intro')}</p>
 
-      {needs && (
-        <div className="banner warn computer-need-banner">
-          <AlertTriangle size={18} />
-          <div className="grow">
-            <b>{t('comp.needsYou')}</b>
-            <div className="small">{d.needsHuman.reason}</div>
-          </div>
-          <Btn icon={Check} className="small" disabled={busy === 'res'} onClick={() => resolveHuman('done')}>{t('comp.imDone')}</Btn>
-          <Btn icon={SkipForward} className="ghost small" disabled={busy === 'res'} onClick={() => resolveHuman('skip')}>{t('comp.skip')}</Btn>
-        </div>
-      )}
+      {needBanner}
 
       <Card title={t('comp.title')} icon={Monitor} actions={
         <div className="row wrap">
@@ -372,7 +712,7 @@ export default function Computer() {
               <Btn icon={human ? Eye : Hand} className={human ? 'warn small' : 'small'} disabled={busy === 'ctrl'} onClick={toggleControl}>
                 {human ? t('comp.releaseControl') : t('comp.takeControl')}
               </Btn>
-              <Btn icon={GraduationCap} className="ghost small" onClick={async () => { if (!human) await run('ctrl', () => bridge.computerControl('human')); st.reload(true); setTeaching(true); }}>
+              <Btn icon={GraduationCap} className="ghost small" onClick={teach}>
                 {t('comp.teach')}
               </Btn>
               <Btn icon={Power} className="ghost danger-text small" disabled={busy === 'stop'} onClick={stop}>{t('comp.stop')}</Btn>
@@ -388,6 +728,16 @@ export default function Computer() {
                 <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={d?.currentUrl || 'https://...'} />
               </label>
               <Btn icon={ExternalLink} className="ghost small" type="submit" disabled={busy === 'open' || !url.trim()}>{t('comp.go')}</Btn>
+              <Btn
+                icon={MousePointer2}
+                type="button"
+                className={'ghost small computer-cursor-toggle' + (cursorEnabled ? ' on' : '')}
+                aria-pressed={cursorEnabled}
+                title={t('comp.cursorHint')}
+                onClick={toggleCursor}
+              >
+                {t('comp.cursor')}
+              </Btn>
               <Btn icon={PenTool} type="button" className="ghost small" onClick={() => setAnnotating(true)}>Anotar</Btn>
               <a className="btn ghost small" {...imageLink(bridge.computerScreenshotUrl(), t('comp.screenshot'))}><Camera size={14} /> {t('comp.screenshot')}</a>
               <Btn icon={RefreshCw} type="button" className="ghost small" onClick={() => setViewerKey((k) => k + 1)}>{t('comp.reconnect')}</Btn>
@@ -409,26 +759,7 @@ export default function Computer() {
           </div>
         )}
 
-        <div ref={wrapRef} className={'computer-screen' + (human ? ' human' : '')}>
-          {running ? (
-            <iframe
-              key={viewerKey}
-              ref={frameRef}
-              src={bridge.computerViewerUrl(true)}
-              title={t('comp.title')}
-              className="computer-frame"
-              tabIndex={0}
-              onLoad={syncViewerControl}
-            />
-          ) : (
-            <div className="computer-off">
-              <Monitor size={42} className="muted" />
-              <h3>{t('comp.offTitle')}</h3>
-              <p className="muted small" style={{ maxWidth: 460, textAlign: 'center' }}>{t('comp.offHint')}</p>
-              <Btn icon={Play} disabled={busy === 'start'} onClick={start}>{t('comp.start')}</Btn>
-            </div>
-          )}
-        </div>
+        {screen}
 
         {d && (
           <div className="row wrap muted small" style={{ marginTop: 10 }}>
